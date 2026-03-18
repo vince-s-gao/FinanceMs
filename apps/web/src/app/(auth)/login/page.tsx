@@ -35,6 +35,10 @@ function LoginPageContent() {
   const [feishuLoading, setFeishuLoading] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
 
+  const ensureCsrfToken = async () => {
+    await api.get('/auth/csrf');
+  };
+
   // 处理飞书登录错误
   useEffect(() => {
     const error = searchParams.get('error');
@@ -45,9 +49,17 @@ function LoginPageContent() {
     }
   }, [searchParams]);
 
+  // 无痕/首次访问时先拿到 CSRF token，避免首次登录被拦截
+  useEffect(() => {
+    ensureCsrfToken().catch(() => {
+      // 用户提交时会再次尝试获取 token
+    });
+  }, []);
+
   // 邮箱密码登录
   const handleSubmit = async (values: LoginForm) => {
     try {
+      await ensureCsrfToken();
       await login(values.email, values.password);
       message.success('登录成功');
       

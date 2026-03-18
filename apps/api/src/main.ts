@@ -82,9 +82,14 @@ async function bootstrap() {
   app.use('/api/auth/feishu/login', authLimiter);
   app.use('/api/auth/feishu/exchange-ticket', authLimiter);
 
+  const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:43001')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
   // CORS配置
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: corsOrigins,
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Skip-Auth-Refresh'],
   });
