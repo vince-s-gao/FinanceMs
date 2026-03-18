@@ -24,7 +24,8 @@ html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
-  font-family: 'Avenir Next', 'PingFang SC', 'Noto Sans SC', 'Segoe UI', sans-serif;
+  font-family:
+    "Avenir Next", "PingFang SC", "Noto Sans SC", "Segoe UI", sans-serif;
 }
 
 /* 滚动条样式 */
@@ -103,20 +104,32 @@ body {
   position: relative;
   overflow: hidden;
   background:
-    radial-gradient(circle at 18% 12%, rgba(45, 212, 255, 0.18), transparent 40%),
-    radial-gradient(circle at 82% 82%, rgba(15, 216, 168, 0.15), transparent 35%),
+    radial-gradient(
+      circle at 18% 12%,
+      rgba(45, 212, 255, 0.18),
+      transparent 40%
+    ),
+    radial-gradient(
+      circle at 82% 82%,
+      rgba(15, 216, 168, 0.15),
+      transparent 35%
+    ),
     linear-gradient(135deg, #031022 0%, #0b2142 55%, #132f5f 100%);
 }
 
 .auth-tech-bg::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
   background-size: 36px 36px;
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.95), rgba(0, 0, 0, 0.45));
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.95),
+    rgba(0, 0, 0, 0.45)
+  );
   pointer-events: none;
 }
 
@@ -124,20 +137,30 @@ body {
   border: 1px solid rgba(117, 235, 255, 0.34);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 24px 58px rgba(2, 18, 41, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 24px 58px rgba(2, 18, 41, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 /* 后台布局科技感 */
 .tech-app-bg {
   background:
     radial-gradient(circle at 12% 8%, rgba(45, 212, 255, 0.2), transparent 32%),
-    radial-gradient(circle at 90% 92%, rgba(15, 216, 168, 0.15), transparent 36%),
+    radial-gradient(
+      circle at 90% 92%,
+      rgba(15, 216, 168, 0.15),
+      transparent 36%
+    ),
     linear-gradient(145deg, var(--tech-bg-1) 0%, var(--tech-bg-2) 100%);
 }
 
 .tech-sider {
   border-right: 1px solid rgba(88, 204, 255, 0.22) !important;
-  background: linear-gradient(180deg, rgba(7, 26, 50, 0.96) 0%, rgba(8, 31, 63, 0.95) 100%) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(7, 26, 50, 0.96) 0%,
+    rgba(8, 31, 63, 0.95) 100%
+  ) !important;
   box-shadow: 6px 0 22px rgba(3, 12, 26, 0.38);
 }
 
@@ -152,27 +175,54 @@ body {
 }
 
 .tech-menu.ant-menu {
-  color: #aac8e9;
+  color: #cfe8ff;
   background: transparent;
 }
 
 .tech-menu.ant-menu .ant-menu-item-group-title {
-  color: #74a9d7 !important;
+  color: #8db7de !important;
+  font-weight: 600;
+  letter-spacing: 0.4px;
 }
 
 .tech-menu.ant-menu .ant-menu-item {
   margin-inline: 10px;
   border-radius: 10px;
+  color: #cfe8ff !important;
+}
+
+.tech-menu.ant-menu .ant-menu-item .ant-menu-title-content {
+  color: #cfe8ff !important;
+  font-weight: 500;
+}
+
+.tech-menu.ant-menu .ant-menu-item .anticon {
+  color: #8fd0ff !important;
 }
 
 .tech-menu.ant-menu .ant-menu-item-selected {
-  background: linear-gradient(90deg, rgba(45, 212, 255, 0.22), rgba(15, 216, 168, 0.2)) !important;
+  background: linear-gradient(
+    90deg,
+    rgba(45, 212, 255, 0.22),
+    rgba(15, 216, 168, 0.2)
+  ) !important;
   color: #e6f8ff !important;
+}
+
+.tech-menu.ant-menu .ant-menu-item-selected .ant-menu-title-content,
+.tech-menu.ant-menu .ant-menu-item-selected .anticon {
+  color: #f2fdff !important;
+  font-weight: 600;
 }
 
 .tech-menu.ant-menu .ant-menu-item:hover {
   color: #d9f2ff !important;
   background: rgba(57, 180, 255, 0.16) !important;
+}
+
+.tech-menu.ant-menu .ant-menu-item:hover .ant-menu-title-content,
+.tech-menu.ant-menu .ant-menu-item:hover .anticon {
+  color: #e8f8ff !important;
 }
 
 .tech-header {
@@ -197,7 +247,12 @@ body {
   padding: 20px;
   color: var(--tech-text);
   background:
-    linear-gradient(110deg, rgba(6, 34, 71, 0.92) 10%, rgba(6, 45, 84, 0.72) 58%, rgba(6, 51, 73, 0.88) 100%),
+    linear-gradient(
+      110deg,
+      rgba(6, 34, 71, 0.92) 10%,
+      rgba(6, 45, 84, 0.72) 58%,
+      rgba(6, 51, 73, 0.88) 100%
+    ),
     radial-gradient(circle at 10% 20%, rgba(48, 226, 255, 0.2), transparent 35%);
   box-shadow: 0 12px 34px rgba(4, 14, 32, 0.36);
 }
