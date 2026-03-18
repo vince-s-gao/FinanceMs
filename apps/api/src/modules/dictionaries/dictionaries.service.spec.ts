@@ -276,4 +276,43 @@ describe('DictionariesService', () => {
     ]);
     expect(result).toEqual([{ id: 'e1' }]);
   });
+
+  it('should initialize default contract types by delegating to batchCreate', async () => {
+    const batchSpy = jest.spyOn(service, 'batchCreate').mockResolvedValueOnce([{ id: 'ct1' }] as any);
+
+    const result = await service.initContractTypes();
+
+    expect(batchSpy).toHaveBeenCalledWith([
+      {
+        type: 'CONTRACT_TYPE',
+        code: 'SALES',
+        name: '销售合同',
+        color: 'blue',
+        sortOrder: 1,
+        isDefault: true,
+      },
+      {
+        type: 'CONTRACT_TYPE',
+        code: 'PURCHASE',
+        name: '采购合同',
+        color: 'cyan',
+        sortOrder: 2,
+      },
+      {
+        type: 'CONTRACT_TYPE',
+        code: 'SERVICE',
+        name: '服务合同',
+        color: 'green',
+        sortOrder: 3,
+      },
+      {
+        type: 'CONTRACT_TYPE',
+        code: 'OTHER',
+        name: '其他',
+        color: 'default',
+        sortOrder: 4,
+      },
+    ]);
+    expect(result).toEqual([{ id: 'ct1' }]);
+  });
 });

@@ -96,6 +96,8 @@ export type ContractStatus = 'DRAFT' | 'EXECUTING' | 'COMPLETED' | 'TERMINATED';
 export interface CreateContractRequest {
   name: string;
   customerId: string;
+  signingEntity?: string;
+  contractType?: string;
   amountWithTax: number;
   amountWithoutTax: number;
   taxRate?: number;
@@ -268,6 +270,29 @@ export interface NotificationItem {
   isRead: boolean;
   readAt?: string | null;
   createdAt: string;
+}
+
+// ==================== 日志管理 ====================
+
+export type AuditAction = 'LOGIN' | 'CREATE' | 'UPDATE' | 'DELETE';
+
+export interface AuditLogItem {
+  id: string;
+  userId: string;
+  action: AuditAction | string;
+  entityType: string;
+  entityId: string;
+  oldValue?: unknown;
+  newValue?: unknown;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  createdAt: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  } | null;
 }
 
 // ==================== 报表相关类型 ====================

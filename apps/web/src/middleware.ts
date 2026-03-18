@@ -38,6 +38,12 @@ export function middleware(request: NextRequest) {
   const hasAccess = hasValidJwt(token);
   const canAutoRefresh = !!refreshToken;
 
+  // Next.js 内置 /error 路径会触发框架错误页，统一改写到业务路由避免用户误入。
+  if (pathname === '/error' || pathname === '/_error') {
+    const fallback = hasAccess || canAutoRefresh ? '/dashboard' : '/login';
+    return NextResponse.redirect(new URL(fallback, request.url));
+  }
+
   // 如果访问公共路径且已登录，重定向到 dashboard
   if (isPublicPath && hasAccess && pathname === '/login') {
     return NextResponse.redirect(new URL('/dashboard', request.url));

@@ -35,6 +35,8 @@ interface Contract {
   id: string;
   contractNo: string;
   name: string;
+  signingEntity?: string | null;
+  contractType?: string | null;
   customer: {
     id: string;
     name: string;
@@ -70,11 +72,18 @@ interface PaymentRecord {
   remark?: string;
 }
 
+interface DictionaryItem {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export default function ContractDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [contract, setContract] = useState<Contract | null>(null);
+  const [contractTypeMap, setContractTypeMap] = useState<Record<string, string>>({});
 
   const contractId = params.id as string;
 
@@ -91,7 +100,26 @@ export default function ContractDetailPage() {
     }
   };
 
+  const fetchContractTypes = async () => {
+    try {
+      const types = await api.get<DictionaryItem[]>('/dictionaries/by-type/CONTRACT_TYPE');
+      const map = types.reduce<Record<string, string>>((acc, item) => {
+        acc[item.code] = item.name;
+        return acc;
+      }, {});
+      setContractTypeMap(map);
+    } catch {
+      setContractTypeMap({
+        SALES: '销售合同',
+        PURCHASE: '采购合同',
+        SERVICE: '服务合同',
+        OTHER: '其他',
+      });
+    }
+  };
+
   useEffect(() => {
+    fetchContractTypes();
     if (contractId) {
       fetchContract();
     }
@@ -241,6 +269,15 @@ export default function ContractDetailPage() {
           </Descriptions.Item>
           <Descriptions.Item label="客户">
             {contract.customer?.name || '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="签约年份">
+            {contract.signDate ? new Date(contract.signDate).getFullYear() : '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="公司签约主体">
+            {contract.signingEntity || '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="合同类型">
+            {contract.contractType ? contractTypeMap[contract.contractType] || contract.contractType : '-'}
           </Descriptions.Item>
           <Descriptions.Item label="合同状态">
             <Tag color={CONTRACT_STATUS_COLORS[contract.status]}>

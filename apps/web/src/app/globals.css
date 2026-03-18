@@ -196,6 +196,12 @@ body {
   font-weight: 500;
 }
 
+.tech-menu.ant-menu .ant-menu-item a,
+.tech-menu.ant-menu .ant-menu-submenu-title a,
+.tech-sider .ant-typography {
+  color: #d7ecff !important;
+}
+
 .tech-menu.ant-menu .ant-menu-item .anticon {
   color: #8fd0ff !important;
 }
@@ -231,6 +237,15 @@ body {
   background: rgba(249, 252, 255, 0.86);
   backdrop-filter: blur(10px);
   box-shadow: 0 8px 26px rgba(3, 11, 23, 0.32);
+}
+
+.tech-user-name.ant-typography {
+  color: #0d2b4f !important;
+}
+
+.tech-user-role .ant-badge-count {
+  color: #f6fbff !important;
+  font-weight: 600;
 }
 
 .tech-content {

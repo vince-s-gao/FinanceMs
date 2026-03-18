@@ -37,6 +37,8 @@ interface Contract {
   amountWithTax: number;
   amountWithoutTax: number;
   taxRate: number;
+  signingEntity?: string;
+  contractType?: string;
   status: string;
   signDate: string;
   startDate?: string;
@@ -50,6 +52,12 @@ interface CustomerOption {
   name: string;
 }
 
+interface DictionaryItem {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export default function ContractEditPage() {
   const params = useParams();
   const router = useRouter();
@@ -58,6 +66,7 @@ export default function ContractEditPage() {
   const [submitting, setSubmitting] = useState(false);
   const [contract, setContract] = useState<Contract | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [contractTypes, setContractTypes] = useState<DictionaryItem[]>([]);
 
   const contractId = params.id as string;
 
@@ -68,6 +77,20 @@ export default function ContractEditPage() {
       setCustomers(res);
     } catch (error) {
       console.error('加载客户列表失败', error);
+    }
+  };
+
+  const fetchContractTypes = async () => {
+    try {
+      const res = await api.get<DictionaryItem[]>('/dictionaries/by-type/CONTRACT_TYPE');
+      setContractTypes(res);
+    } catch {
+      setContractTypes([
+        { id: '1', code: 'SALES', name: '销售合同' },
+        { id: '2', code: 'PURCHASE', name: '采购合同' },
+        { id: '3', code: 'SERVICE', name: '服务合同' },
+        { id: '4', code: 'OTHER', name: '其他' },
+      ]);
     }
   };
 
@@ -94,6 +117,7 @@ export default function ContractEditPage() {
 
   useEffect(() => {
     fetchCustomers();
+    fetchContractTypes();
     if (contractId) {
       fetchContract();
     }
@@ -191,6 +215,28 @@ export default function ContractEditPage() {
             rules={[{ required: true, message: '请输入合同名称' }]}
           >
             <Input placeholder="请输入合同名称" />
+          </Form.Item>
+
+          <Form.Item
+            name="contractType"
+            label="合同类型"
+            rules={[{ required: true, message: '请选择合同类型' }]}
+          >
+            <Select placeholder="请选择合同类型">
+              {contractTypes.map((type) => (
+                <Option key={type.code} value={type.code}>
+                  {type.name}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="signingEntity"
+            label="公司签约主体"
+            rules={[{ required: true, message: '请输入公司签约主体' }]}
+          >
+            <Input placeholder="请输入公司签约主体" />
           </Form.Item>
 
           <Form.Item

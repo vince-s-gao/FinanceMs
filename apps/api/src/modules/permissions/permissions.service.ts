@@ -9,7 +9,7 @@ const DEFAULT_MENU_PERMISSIONS: Record<string, string[]> = {
   SALES: ['/dashboard', '/customers', '/contracts', '/payments', '/expenses'],
   FINANCE: ['/dashboard', '/customers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports'],
   MANAGER: ['/dashboard', '/customers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports'],
-  ADMIN: ['/dashboard', '/customers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/departments', '/permissions', '/settings'],
+  ADMIN: ['/dashboard', '/customers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/departments', '/permissions', '/settings', '/settings/dictionaries', '/audit-logs'],
 };
 
 // 默认功能权限配置
@@ -35,6 +35,8 @@ const ALL_MENUS = [
   { key: '/departments', name: '部门管理' },
   { key: '/permissions', name: '权限管理' },
   { key: '/settings', name: '系统设置' },
+  { key: '/settings/dictionaries', name: '数据字典' },
+  { key: '/audit-logs', name: '日志管理' },
 ];
 
 // 所有功能定义

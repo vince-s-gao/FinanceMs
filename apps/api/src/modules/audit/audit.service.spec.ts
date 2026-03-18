@@ -9,6 +9,7 @@ describe('AuditService', () => {
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'log-1' }),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
       },
     };
 
@@ -189,5 +190,44 @@ describe('AuditService', () => {
   it('should mask non-string sensitive values as stars', () => {
     const masked = (service as any).maskSensitiveValue('password', 123456);
     expect(masked).toBe('***');
+  });
+
+  it('should query paginated audit logs with filters', async () => {
+    prisma.auditLog.findMany.mockResolvedValueOnce([{ id: 'l1' }]);
+    prisma.auditLog.count.mockResolvedValueOnce(1);
+
+    const result = await service.findAll({
+      page: 2,
+      pageSize: 10,
+      action: 'UPDATE',
+      entityType: 'users',
+      userId: 'u1',
+      keyword: 'alice',
+      sortBy: 'createdAt',
+      sortOrder: 'asc',
+    } as any);
+
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 10,
+        take: 10,
+        orderBy: { createdAt: 'asc' },
+      }),
+    );
+    expect(prisma.auditLog.count).toHaveBeenCalledTimes(1);
+    expect(result.total).toBe(1);
+    expect(result.totalPages).toBe(1);
+  });
+
+  it('should return audit meta with actions and entityTypes', async () => {
+    prisma.auditLog.findMany.mockResolvedValueOnce([
+      { entityType: 'users' },
+      { entityType: 'contracts' },
+    ]);
+
+    const result = await service.getMeta();
+
+    expect(result.actions).toEqual(['LOGIN', 'CREATE', 'UPDATE', 'DELETE']);
+    expect(result.entityTypes).toEqual(['users', 'contracts']);
   });
 });

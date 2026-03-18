@@ -75,6 +75,13 @@ export class DictionariesController {
     return this.dictionariesService.initExpenseTypes();
   }
 
+  @Post('init-contract-types')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: '初始化默认合同类型' })
+  async initContractTypes() {
+    return this.dictionariesService.initContractTypes();
+  }
+
   @Patch(':id')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: '更新字典项' })

@@ -23,9 +23,12 @@ import {
   EditOutlined,
   StopOutlined,
   CheckOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import { api } from '@/lib/api';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
+import { getErrorMessage } from '@/lib/error';
+import { useAuthStore } from '@/stores/auth';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -42,11 +45,13 @@ interface User {
 }
 
 export default function SettingsPage() {
+  const currentUser = useAuthStore((state) => state.user);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
 
   // 弹窗状态
   const [modalVisible, setModalVisible] = useState(false);
@@ -59,11 +64,13 @@ export default function SettingsPage() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const res = await api.get<any>('/users', { params: { page, pageSize } });
+      const isActive =
+        statusFilter === 'all' ? undefined : statusFilter === 'active';
+      const res = await api.get<any>('/users', { params: { page, pageSize, isActive } });
       setUsers(res.items);
       setTotal(res.total);
-    } catch (error: any) {
-      message.error(error.message || '加载失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '加载失败'));
     } finally {
       setLoading(false);
     }
@@ -71,7 +78,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [page, pageSize]);
+  }, [page, pageSize, statusFilter]);
 
   // 打开新增弹窗
   const handleAdd = () => {
@@ -112,10 +119,8 @@ export default function SettingsPage() {
 
       setModalVisible(false);
       fetchUsers();
-    } catch (error: any) {
-      if (error.message) {
-        message.error(error.message);
-      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '提交失败'));
     } finally {
       setSubmitting(false);
     }
@@ -127,8 +132,18 @@ export default function SettingsPage() {
       await api.patch(`/users/${id}`, { isActive: !isActive });
       message.success(isActive ? '已禁用' : '已启用');
       fetchUsers();
-    } catch (error: any) {
-      message.error(error.message || '操作失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '操作失败'));
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    try {
+      await api.delete(`/users/${id}`);
+      message.success('删除成功');
+      await fetchUsers();
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '删除失败'));
     }
   };
 
@@ -181,7 +196,7 @@ export default function SettingsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 150,
+      width: 220,
       render: (_: any, record: User) => (
         <Space size="small">
           <Button
@@ -205,6 +220,24 @@ export default function SettingsPage() {
               {record.isActive ? '禁用' : '启用'}
             </Button>
           </Popconfirm>
+          <Popconfirm
+            title="确定删除该用户吗？"
+            description="删除后该账号将被禁用且无法登录"
+            onConfirm={() => handleDeleteUser(record.id)}
+            okText="确定"
+            cancelText="取消"
+            disabled={record.id === currentUser?.id}
+          >
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              disabled={record.id === currentUser?.id}
+            >
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -216,7 +249,22 @@ export default function SettingsPage() {
       label: '用户管理',
       children: (
         <div>
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-between mb-4">
+            <Space>
+              <Text type="secondary">状态筛选</Text>
+              <Select
+                style={{ width: 140 }}
+                value={statusFilter}
+                onChange={(value) => {
+                  setPage(1);
+                  setStatusFilter(value);
+                }}
+              >
+                <Option value="active">仅启用中</Option>
+                <Option value="inactive">仅已禁用</Option>
+                <Option value="all">全部用户</Option>
+              </Select>
+            </Space>
             <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
               新增用户
             </Button>

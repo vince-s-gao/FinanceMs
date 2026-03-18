@@ -5,6 +5,7 @@ import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { QueryProvider } from '@/providers/QueryProvider';
+import ServiceWorkerReset from '@/components/common/ServiceWorkerReset';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -20,21 +21,20 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body>
-        <QueryProvider>
-          <AntdRegistry>
-            <ConfigProvider
-              locale={zhCN}
-              theme={{
-                token: {
-                  colorPrimary: '#1890ff',
-                  borderRadius: 6,
-                },
-              }}
-            >
-              {children}
-            </ConfigProvider>
-          </AntdRegistry>
-        </QueryProvider>
+        <ServiceWorkerReset />
+        <AntdRegistry>
+          <ConfigProvider
+            locale={zhCN}
+            theme={{
+              token: {
+                colorPrimary: '#1890ff',
+                borderRadius: 6,
+              },
+            }}
+          >
+            <QueryProvider>{children}</QueryProvider>
+          </ConfigProvider>
+        </AntdRegistry>
       </body>
     </html>
   );

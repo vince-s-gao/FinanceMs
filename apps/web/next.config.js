@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
+const isDev = process.env.NODE_ENV !== 'production';
+
 const nextConfig = {
+  // 隔离开发与生产构建目录，避免并行执行 dev/build 时 chunk 互相覆盖导致模块丢失
+  distDir: isDev ? '.next-dev' : '.next',
+
   // 转译 workspace 包
   transpilePackages: ['@inffinancems/shared'],
   

@@ -3,6 +3,7 @@
 // InfFinanceMs - 主布局组件（简化版）
 
 import { useState, useEffect } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Layout, Menu, Avatar, Dropdown, Space, Typography, Spin, Badge, Popover, List, Button, message } from 'antd';
 import {
@@ -25,6 +26,7 @@ import {
   SafetyOutlined,
   DatabaseOutlined,
   BellOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/stores/auth';
 import { ROLE_LABELS } from '@/lib/constants';
@@ -74,6 +76,7 @@ const ALL_MENU_ITEMS = [
       { key: '/permissions', icon: <SafetyOutlined />, label: '权限管理' },
       { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
       { key: '/settings/dictionaries', icon: <DatabaseOutlined />, label: '数据字典' },
+      { key: '/audit-logs', icon: <FileSearchOutlined />, label: '日志管理' },
     ],
   },
 ];
@@ -84,7 +87,7 @@ const ROLE_MENU_CONFIG: Record<string, string[]> = {
   SALES: ['/dashboard', '/customers', '/contracts', '/payments', '/expenses', '/projects'],
   FINANCE: ['/dashboard', '/customers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
   MANAGER: ['/dashboard', '/customers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
-  ADMIN: ['/dashboard', '/customers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects', '/departments', '/permissions', '/settings', '/settings/dictionaries'],
+  ADMIN: ['/dashboard', '/customers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects', '/departments', '/permissions', '/settings', '/settings/dictionaries', '/audit-logs'],
 };
 
 interface MainLayoutProps {
@@ -99,6 +102,21 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationLoading, setNotificationLoading] = useState(false);
+  const prefetchedRoutesRef = useRef<Set<string>>(new Set());
+
+  const allowedPaths = useMemo(
+    () => ROLE_MENU_CONFIG[user?.role || 'EMPLOYEE'] || ROLE_MENU_CONFIG.EMPLOYEE,
+    [user?.role],
+  );
+
+  const prefetchRoute = useCallback(
+    (path: string) => {
+      if (!path || prefetchedRoutesRef.current.has(path)) return;
+      prefetchedRoutesRef.current.add(path);
+      router.prefetch(path);
+    },
+    [router],
+  );
 
   // 初始化时从服务端 Cookie 恢复认证状态
   useEffect(() => {
@@ -140,8 +158,15 @@ export default function MainLayout({ children }: MainLayoutProps) {
     return () => clearInterval(timer);
   }, [isHydrated, isAuthenticated, user?.id, pathname]);
 
+  // 预取当前角色可访问页面，减少侧边栏切换时的等待时间
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !user) return;
+    allowedPaths.slice(0, 5).forEach((path) => prefetchRoute(path));
+  }, [allowedPaths, isAuthenticated, isHydrated, prefetchRoute, user]);
+
   // 处理菜单点击
   const handleMenuClick = ({ key }: { key: string }) => {
+    if (key === pathname) return;
     router.push(key);
   };
 
@@ -226,9 +251,6 @@ export default function MainLayout({ children }: MainLayoutProps) {
     );
   }
 
-  // 根据角色过滤菜单
-  const allowedPaths = ROLE_MENU_CONFIG[user.role] || ROLE_MENU_CONFIG.EMPLOYEE;
-  
   // 过滤分组菜单，只保留用户有权限访问的菜单项
   const menuItems = ALL_MENU_ITEMS.map(group => {
     if (group.type === 'group' && group.children) {
@@ -240,7 +262,14 @@ export default function MainLayout({ children }: MainLayoutProps) {
       }
       return {
         ...group,
-        children: filteredChildren,
+        children: filteredChildren.map((item) => ({
+          ...item,
+          label: (
+            <span onMouseEnter={() => prefetchRoute(item.key)}>
+              {item.label}
+            </span>
+          ),
+        })),
       };
     }
     return group;
@@ -343,10 +372,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
                   className="bg-blue-600"
                 />
                 <div className="hidden sm:block">
-                  <Text strong className="text-gray-800">{user.name}</Text>
+                  <Text strong className="tech-user-name">{user.name}</Text>
                   <Badge
                     count={ROLE_LABELS[user.role] || user.role}
-                    className="ml-2"
+                    className="ml-2 tech-user-role"
                     style={{ backgroundColor: '#1890ff' }}
                   />
                 </div>

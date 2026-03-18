@@ -3,6 +3,7 @@
 // InfFinanceMs - 数据字典管理页面
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Table,
   Button,
@@ -59,9 +60,11 @@ const COLOR_OPTIONS = [
 const DICT_TYPES = [
   { value: 'CUSTOMER_TYPE', label: '客户类型' },
   { value: 'EXPENSE_TYPE', label: '报销类型' },
+  { value: 'CONTRACT_TYPE', label: '合同类型' },
 ];
 
 export default function DictionariesPage() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [dictionaries, setDictionaries] = useState<Dictionary[]>([]);
   const [typeFilter, setTypeFilter] = useState<string>('CUSTOMER_TYPE');
@@ -171,6 +174,23 @@ export default function DictionariesPage() {
     }
   };
 
+  const handleInitContractTypes = async () => {
+    try {
+      await api.post('/dictionaries/init-contract-types');
+      message.success('初始化成功');
+      fetchDictionaries();
+    } catch (error: any) {
+      message.error(error.message || '初始化失败');
+    }
+  };
+
+  useEffect(() => {
+    const initialType = searchParams.get('type');
+    if (initialType && DICT_TYPES.some((item) => item.value === initialType)) {
+      setTypeFilter(initialType);
+    }
+  }, [searchParams]);
+
   // 表格列定义
   const columns = [
     {
@@ -259,6 +279,9 @@ export default function DictionariesPage() {
           </Button>
           <Button onClick={handleInitExpenseTypes}>
             初始化报销类型
+          </Button>
+          <Button onClick={handleInitContractTypes}>
+            初始化合同类型
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             新增字典项

@@ -47,7 +47,9 @@ const MENU_PERMISSIONS = [
   { key: '/reports', name: '报表看板', description: '数据统计与分析' },
   { key: '/departments', name: '部门管理', description: '组织架构管理' },
   { key: '/settings', name: '系统设置', description: '用户与系统配置' },
+  { key: '/settings/dictionaries', name: '数据字典', description: '字典项维护' },
   { key: '/permissions', name: '权限管理', description: '角色权限配置' },
+  { key: '/audit-logs', name: '日志管理', description: '登录与增删改日志审计' },
 ];
 
 // 功能权限配置

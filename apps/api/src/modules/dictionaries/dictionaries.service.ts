@@ -210,4 +210,18 @@ export class DictionariesService {
 
     return this.batchCreate(defaultTypes);
   }
+
+  /**
+   * 初始化默认合同类型
+   */
+  async initContractTypes() {
+    const defaultTypes = [
+      { type: 'CONTRACT_TYPE', code: 'SALES', name: '销售合同', color: 'blue', sortOrder: 1, isDefault: true },
+      { type: 'CONTRACT_TYPE', code: 'PURCHASE', name: '采购合同', color: 'cyan', sortOrder: 2 },
+      { type: 'CONTRACT_TYPE', code: 'SERVICE', name: '服务合同', color: 'green', sortOrder: 3 },
+      { type: 'CONTRACT_TYPE', code: 'OTHER', name: '其他', color: 'default', sortOrder: 4 },
+    ];
+
+    return this.batchCreate(defaultTypes);
+  }
 }

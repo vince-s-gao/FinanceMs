@@ -147,6 +147,36 @@ describe('UsersService', () => {
     });
   });
 
+  it('should throw when removing current login user', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce({ id: 'u1', role: 'ADMIN', isActive: true });
+
+    await expect(service.remove('u1', 'u1')).rejects.toThrow(ConflictException);
+  });
+
+  it('should throw when removing last active admin', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce({ id: 'u1', role: 'ADMIN', isActive: true });
+    prisma.user.count.mockResolvedValueOnce(1);
+
+    await expect(service.remove('u1', 'u2')).rejects.toThrow(ConflictException);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('should allow removing admin when more than one active admin exists', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce({ id: 'u1', role: 'ADMIN', isActive: true });
+    prisma.user.count.mockResolvedValueOnce(2);
+    prisma.user.update.mockResolvedValueOnce({ id: 'u1', isActive: false });
+
+    await service.remove('u1', 'u2');
+
+    expect(prisma.user.count).toHaveBeenCalledWith({
+      where: { role: 'ADMIN', isActive: true },
+    });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'u1' },
+      data: { isActive: false },
+    });
+  });
+
   it('should throw when removing non-existing user', async () => {
     prisma.user.findUnique.mockResolvedValueOnce(null);
 

@@ -89,7 +89,7 @@ function LoginPageContent() {
       <Card className="auth-tech-card w-full max-w-md tech-float" variant="borderless">
         <div className="text-center mb-8">
           <Title level={2} className="!mb-2 !text-[#0b2751]">
-            欢迎登录InfFinaceMs
+            欢迎登录InfFinanceMs
           </Title>
           <Text type="secondary">智能财务管理系统 · 安全高效的企业财务协作平台</Text>
         </div>

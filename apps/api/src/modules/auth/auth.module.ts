@@ -10,6 +10,7 @@ import { FeishuService } from './feishu.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { AuditModule } from '../audit/audit.module';
 
 const DEV_FALLBACK_JWT_SECRET = 'development-only-jwt-secret-change-me';
 
@@ -17,6 +18,7 @@ const DEV_FALLBACK_JWT_SECRET = 'development-only-jwt-secret-change-me';
   imports: [
     UsersModule,
     PrismaModule,
+    AuditModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

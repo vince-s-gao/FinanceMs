@@ -152,10 +152,24 @@ export class UsersService {
   /**
    * 删除用户（禁用）
    */
-  async remove(id: string) {
+  async remove(id: string, operatorId?: string) {
     const user = await this.findById(id);
     if (!user) {
       throw new NotFoundException('用户不存在');
+    }
+
+    if (operatorId && operatorId === id) {
+      throw new ConflictException('不允许删除当前登录账号');
+    }
+
+    if (user.role === 'ADMIN' && user.isActive) {
+      const activeAdminCount = await this.prisma.user.count({
+        where: { role: 'ADMIN', isActive: true },
+      });
+
+      if (activeAdminCount <= 1) {
+        throw new ConflictException('系统至少需要保留一个启用状态的管理员');
+      }
     }
 
     return this.prisma.user.update({

@@ -42,6 +42,7 @@ model User {
   submittedPaymentRequests PaymentRequest[] @relation("PaymentRequestApplicant") // 提交的付款申请
   approvedPaymentRequests  PaymentRequest[] @relation("PaymentRequestApprover") // 审批的付款申请
   notifications      Notification[] // 消息通知
+  contractImportLogs ContractImportLog[] // 合同导入日志
 
   @@map("users")
 }
@@ -108,6 +109,8 @@ model Contract {
   contractNo       String         @unique // 合同编号
   name             String // 合同名称
   customerId       String // 客户ID
+  signingEntity    String? // 公司签约主体
+  contractType     String? // 合同类型（关联数据字典 CONTRACT_TYPE）
   
   // 产品部分金额和税率
   productAmount      Decimal?       @db.Decimal(15, 2) // 产品含税金额
@@ -142,7 +145,31 @@ model Contract {
   expenses       Expense[] // 报销单
   costs          Cost[] // 费用
 
+  @@index([signDate])
+  @@index([endDate])
+  @@index([contractType])
+  @@index([signingEntity])
+  @@index([customerId, signDate])
   @@map("contracts")
+}
+
+/// 合同批量导入日志
+model ContractImportLog {
+  id           String   @id @default(cuid())
+  operatorId   String?
+  fileName     String
+  total        Int
+  success      Int
+  failed       Int
+  allowPartial Boolean  @default(false)
+  errors       Json?
+  createdAt    DateTime @default(now())
+
+  operator User?     @relation(fields: [operatorId], references: [id], onDelete: SetNull)
+
+  @@index([operatorId, createdAt])
+  @@index([createdAt])
+  @@map("contract_import_logs")
 }
 
 /// 合同状态枚举

@@ -24,6 +24,7 @@ import { CurrentUser } from '../../common/decorators';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { ERROR_CODE } from '@inffinancems/shared';
+import { AuditService } from '../audit/audit.service';
 
 // 公开接口装饰器
 const Public = () => SetMetadata('isPublic', true);
@@ -35,6 +36,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly feishuService: FeishuService,
     private readonly configService: ConfigService,
+    private readonly auditService: AuditService,
   ) {}
 
   private isProduction() {
@@ -125,15 +127,34 @@ export class AuthController {
     return decodeURIComponent(target.substring(name.length + 1));
   }
 
+  private async logLogin(user: { id: string; email: string }, req: Request) {
+    const userAgent = req.headers['user-agent'];
+    await this.auditService.log(
+      user.id,
+      'LOGIN',
+      'auth',
+      user.id,
+      null,
+      { email: user.email },
+      req.ip,
+      typeof userAgent === 'string' ? userAgent : undefined,
+    );
+  }
+
   @Public()
   @Post('login')
   @ApiOperation({ summary: '用户登录（邮箱密码）' })
-  async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body() loginDto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.authService.login(loginDto);
     this.setAuthCookies(res, {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
     });
+    await this.logLogin(result.user, req);
     return {
       user: result.user,
     };
@@ -194,6 +215,7 @@ export class AuthController {
   @ApiOperation({ summary: '飞书登录（前端传递授权码）' })
   async feishuLogin(
     @Body() feishuLoginDto: FeishuLoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<any> {
     const result = await this.feishuService.loginWithFeishu(feishuLoginDto.code);
@@ -201,6 +223,7 @@ export class AuthController {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
     });
+    await this.logLogin(result.user, req);
     return {
       user: result.user,
     };
@@ -211,6 +234,7 @@ export class AuthController {
   @ApiOperation({ summary: '使用一次性 ticket 交换登录令牌' })
   async exchangeFeishuTicket(
     @Body() exchangeDto: ExchangeFeishuTicketDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<any> {
     const result = this.feishuService.exchangeLoginTicket(exchangeDto.ticket);
@@ -218,6 +242,7 @@ export class AuthController {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
     });
+    await this.logLogin(result.user, req);
     return {
       user: result.user,
     };

@@ -1,6 +1,6 @@
 // InfFinanceMs - 查询合同DTO
 
-import { IsOptional, IsString, IsIn, IsDateString } from 'class-validator';
+import { IsOptional, IsString, IsIn, IsDateString, IsInt, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
@@ -9,10 +9,26 @@ const CONTRACT_STATUS = ['DRAFT', 'EXECUTING', 'COMPLETED', 'TERMINATED'] as con
 type ContractStatus = typeof CONTRACT_STATUS[number];
 
 export class QueryContractDto extends PaginationDto {
-  @ApiPropertyOptional({ description: '关键词搜索（编号、名称、客户名称）' })
+  @ApiPropertyOptional({ description: '关键词搜索（合同编号、合同名称）' })
   @IsOptional()
   @IsString()
   keyword?: string;
+
+  @ApiPropertyOptional({ description: '客户名称模糊搜索' })
+  @IsOptional()
+  @IsString()
+  customerKeyword?: string;
+
+  @ApiPropertyOptional({ description: '签约年份', example: 2026 })
+  @IsOptional()
+  @IsInt()
+  @Min(2000)
+  signYear?: number;
+
+  @ApiPropertyOptional({ description: '合同类型（数据字典编码）', example: 'SERVICE' })
+  @IsOptional()
+  @IsString()
+  contractType?: string;
 
   @ApiPropertyOptional({ description: '合同状态', enum: CONTRACT_STATUS })
   @IsOptional()

@@ -23,6 +23,16 @@ describe('ContractsService', () => {
       },
       customer: {
         findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      dictionary: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      contractImportLog: {
+        create: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn(),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
 
@@ -73,6 +83,9 @@ describe('ContractsService', () => {
   it('should build all optional filters in findAll', async () => {
     await service.findAll({
       keyword: '测试',
+      customerKeyword: '客户A',
+      signYear: 2026,
+      contractType: 'SERVICE',
       status: 'DRAFT',
       customerId: 'cus-1',
       startDate: '2026-03-01',
@@ -83,8 +96,14 @@ describe('ContractsService', () => {
 
     const callArg = prisma.contract.findMany.mock.calls[0][0];
     expect(callArg.where.OR).toBeDefined();
+    expect(callArg.where.customer).toEqual({
+      name: { contains: '客户A', mode: 'insensitive' },
+    });
+    expect(callArg.where.contractType).toBe('SERVICE');
     expect(callArg.where.status).toBe('DRAFT');
     expect(callArg.where.customerId).toBe('cus-1');
+    expect(callArg.where.signDate.gte).toBeInstanceOf(Date);
+    expect(callArg.where.signDate.lte).toBeInstanceOf(Date);
     expect(callArg.skip).toBe(5);
     expect(callArg.take).toBe(5);
   });
@@ -509,5 +528,312 @@ describe('ContractsService', () => {
     await service.checkAndCompleteContract('c1');
 
     expect(reconcileSpy).toHaveBeenCalledWith('c1');
+  });
+
+  it('should export contracts csv with required headers', async () => {
+    jest.spyOn(service, 'findAll').mockResolvedValueOnce({
+      items: [
+        {
+          contractNo: 'HT202603-0001',
+          signDate: new Date('2026-03-18'),
+          name: '测试合同',
+          customer: { name: '测试客户' },
+          signingEntity: 'InfFinanceMs',
+          contractType: 'SERVICE',
+          amountWithTax: new Decimal(1000),
+          endDate: new Date('2026-12-31'),
+          status: 'EXECUTING',
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 10000,
+      totalPages: 1,
+    } as any);
+
+    const csv = await service.exportCsv({ keyword: '测试' } as any);
+
+    expect(csv).toContain('合同编号');
+    expect(csv).toContain('签约年份');
+    expect(csv).toContain('测试合同');
+    expect(csv).toContain('InfFinanceMs');
+    expect(csv).toContain('执行中');
+  });
+
+  it('should import contracts from csv and return summary', async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: 'SERVICE', name: '服务合同' },
+    ]);
+    prisma.customer.findMany.mockResolvedValueOnce([
+      { id: 'cus-1', name: '测试客户' },
+    ]);
+    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import' } as any);
+
+    const csv = Buffer.from(
+      [
+        '合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
+        '导入合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const result = await service.importCsv(csv);
+
+    expect(result).toEqual({
+      total: 1,
+      success: 1,
+      failed: 0,
+      errors: [],
+    });
+    expect(service.create).toHaveBeenCalledTimes(1);
+    expect(prisma.contractImportLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fileName: 'contracts-import.csv',
+          total: 1,
+          success: 1,
+          failed: 0,
+          allowPartial: false,
+        }),
+      }),
+    );
+  });
+
+  it('should preview import csv before commit', async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: 'SERVICE', name: '服务合同' },
+    ]);
+    prisma.customer.findMany.mockResolvedValueOnce([
+      { id: 'cus-1', name: '测试客户' },
+    ]);
+
+    const csv = Buffer.from(
+      [
+        '合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
+        '导入合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const result = await service.previewImportCsv(csv);
+
+    expect(result).toEqual({
+      total: 1,
+      valid: 1,
+      invalid: 0,
+      errors: [],
+      samples: [
+        {
+          row: 2,
+          name: '导入合同A',
+          customerName: '测试客户',
+          contractType: '服务合同',
+          amount: 1000,
+          signDate: '2026-03-18',
+        },
+      ],
+    });
+  });
+
+  it('should support english alias headers when importing csv', async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([{ code: 'SERVICE', name: '服务合同' }]);
+    prisma.customer.findMany.mockResolvedValueOnce([{ id: 'cus-1', name: '测试客户' }]);
+    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import-2' } as any);
+
+    const csv = Buffer.from(
+      [
+        'name,customer_name,signing_entity,contract_type,amount,sign_date,end_date',
+        'Alias合同,测试客户,InfFinanceMs,SERVICE,8888,2026-04-01,2026-12-31',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const result = await service.importCsv(csv);
+
+    expect(result.success).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(service.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Alias合同',
+        contractType: 'SERVICE',
+        amountWithTax: 8888,
+        signDate: '2026-04-01',
+      }),
+    );
+  });
+
+  it('should record row errors when import data is invalid', async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: 'SERVICE', name: '服务合同' },
+    ]);
+    prisma.customer.findMany.mockResolvedValueOnce([
+      { id: 'cus-1', name: '测试客户' },
+    ]);
+
+    const csv = Buffer.from(
+      [
+        '合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
+        ',测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
+        '导入合同B,未知客户,InfFinanceMs,服务合同,1000,2026-03-18,',
+        '导入合同C,测试客户,InfFinanceMs,未知类型,1000,2026-03-18,',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    await expect(service.importCsv(csv)).rejects.toThrow(BadRequestException);
+    expect(prisma.contractImportLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fileName: 'contracts-import.csv',
+          total: 3,
+          success: 0,
+          failed: 3,
+          allowPartial: false,
+        }),
+      }),
+    );
+  });
+
+  it('should import valid rows when allowPartial is enabled', async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([{ code: 'SERVICE', name: '服务合同' }]);
+    prisma.customer.findMany.mockResolvedValueOnce([{ id: 'cus-1', name: '测试客户' }]);
+    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import-ok' } as any);
+
+    const csv = Buffer.from(
+      [
+        '合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
+        '导入合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
+        ',测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const result = await service.importCsv(csv, { allowPartial: true });
+
+    expect(result.total).toBe(2);
+    expect(result.success).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.errors).toHaveLength(1);
+    expect(service.create).toHaveBeenCalledTimes(1);
+    expect(prisma.contractImportLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          allowPartial: true,
+          total: 2,
+          success: 1,
+          failed: 1,
+        }),
+      }),
+    );
+  });
+
+  it('should return import history with sanitized errors and operator', async () => {
+    prisma.contractImportLog.findMany.mockResolvedValueOnce([
+      {
+        id: 'log-1',
+        fileName: 'contracts-a.csv',
+        total: 5,
+        success: 4,
+        failed: 1,
+        allowPartial: true,
+        errors: [{ row: 2, message: '客户不存在' }, { row: 0, message: 'invalid' }],
+        createdAt: new Date('2026-03-18T10:00:00.000Z'),
+        operator: {
+          id: 'u-1',
+          name: '财务A',
+          email: 'finance@inffinancems.com',
+        },
+      },
+    ]);
+
+    const result = await service.getImportHistory(10, 'u-1');
+
+    expect(prisma.contractImportLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { operatorId: 'u-1' },
+        take: 10,
+      }),
+    );
+    expect(result).toEqual([
+      {
+        id: 'log-1',
+        fileName: 'contracts-a.csv',
+        total: 5,
+        success: 4,
+        failed: 1,
+        allowPartial: true,
+        errors: [{ row: 2, message: '客户不存在' }],
+        createdAt: new Date('2026-03-18T10:00:00.000Z'),
+        operator: {
+          id: 'u-1',
+          name: '财务A',
+          email: 'finance@inffinancems.com',
+        },
+      },
+    ]);
+  });
+
+  it('should clamp import history limit between 1 and 50', async () => {
+    await service.getImportHistory(0);
+    expect(prisma.contractImportLog.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 1,
+      }),
+    );
+
+    await service.getImportHistory(999);
+    expect(prisma.contractImportLog.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 50,
+      }),
+    );
+  });
+
+  it('should clear import history by operator scope', async () => {
+    await service.clearImportHistory('u-1');
+    expect(prisma.contractImportLog.deleteMany).toHaveBeenCalledWith({
+      where: { operatorId: 'u-1' },
+    });
+
+    await service.clearImportHistory();
+    expect(prisma.contractImportLog.deleteMany).toHaveBeenLastCalledWith({
+      where: {},
+    });
+  });
+
+  it('should export import error csv by log id', async () => {
+    prisma.contractImportLog.findFirst.mockResolvedValueOnce({
+      id: 'log-1',
+      fileName: 'contracts-a.csv',
+      errors: [{ row: 3, message: '合同金额无效' }],
+    });
+
+    const payload = await service.exportImportErrorCsv('log-1', 'u-1');
+
+    expect(prisma.contractImportLog.findFirst).toHaveBeenCalledWith({
+      where: { id: 'log-1', operatorId: 'u-1' },
+      select: {
+        id: true,
+        fileName: true,
+        errors: true,
+      },
+    });
+    expect(payload.fileName).toContain('contracts-import-errors-log-1.csv');
+    expect(payload.csv).toContain('行号');
+    expect(payload.csv).toContain('合同金额无效');
+  });
+
+  it('should reject exporting error csv when log does not exist', async () => {
+    prisma.contractImportLog.findFirst.mockResolvedValueOnce(null);
+    await expect(service.exportImportErrorCsv('missing', 'u-1')).rejects.toThrow(NotFoundException);
+  });
+
+  it('should reject exporting error csv when log has no errors', async () => {
+    prisma.contractImportLog.findFirst.mockResolvedValueOnce({
+      id: 'log-1',
+      fileName: 'contracts-a.csv',
+      errors: [],
+    });
+    await expect(service.exportImportErrorCsv('log-1')).rejects.toThrow(BadRequestException);
   });
 });

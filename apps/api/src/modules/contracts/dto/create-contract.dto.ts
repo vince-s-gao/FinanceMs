@@ -12,6 +12,16 @@ export class CreateContractDto {
   @IsString()
   customerId: string;
 
+  @ApiPropertyOptional({ description: '公司签约主体' })
+  @IsOptional()
+  @IsString()
+  signingEntity?: string;
+
+  @ApiPropertyOptional({ description: '合同类型（数据字典编码）', example: 'SERVICE' })
+  @IsOptional()
+  @IsString()
+  contractType?: string;
+
   // 产品部分
   @ApiPropertyOptional({ description: '产品含税金额' })
   @IsOptional()

@@ -8,6 +8,8 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { logger } from './common/logger/winston.logger';
+import { AuditService } from './modules/audit/audit.service';
+import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -31,6 +33,9 @@ async function bootstrap() {
 
   // 全局异常过滤器
   app.useGlobalFilters(new HttpExceptionFilter());
+
+  // 全局审计日志拦截器（仅记录登录/增删改，不记录浏览日志）
+  app.useGlobalInterceptors(new AuditLogInterceptor(app.get(AuditService)));
 
   // 安全头配置
   app.use(

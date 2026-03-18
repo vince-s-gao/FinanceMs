@@ -2,6 +2,8 @@
 
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { parseDateRangeEnd, parseDateRangeStart } from '../../common/utils/query.utils';
+import { QueryAuditLogDto, AUDIT_ACTION_OPTIONS } from './dto/query-audit-log.dto';
 
 /**
  * 审计日志服务
@@ -285,5 +287,88 @@ export class AuditService {
         },
       },
     });
+  }
+
+  /**
+   * 分页查询操作日志
+   */
+  async findAll(query: QueryAuditLogDto) {
+    const {
+      page = 1,
+      pageSize = 20,
+      action,
+      entityType,
+      userId,
+      keyword,
+      startDate,
+      endDate,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = query;
+
+    const skip = (page - 1) * pageSize;
+    const where: any = {};
+
+    if (action) where.action = action;
+    if (entityType) where.entityType = entityType.toLowerCase();
+    if (userId) where.userId = userId;
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = parseDateRangeStart(startDate);
+      if (endDate) where.createdAt.lte = parseDateRangeEnd(endDate);
+    }
+
+    if (keyword) {
+      where.OR = [
+        { entityId: { contains: keyword, mode: 'insensitive' } },
+        { user: { is: { name: { contains: keyword, mode: 'insensitive' } } } },
+        { user: { is: { email: { contains: keyword, mode: 'insensitive' } } } },
+      ];
+    }
+
+    const safeSortBy = sortBy === 'createdAt' ? 'createdAt' : 'createdAt';
+    const safeSortOrder = sortOrder === 'asc' ? 'asc' : 'desc';
+
+    const [items, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { [safeSortBy]: safeSortOrder },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+        },
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async getMeta() {
+    const entityTypes = await this.prisma.auditLog.findMany({
+      distinct: ['entityType'],
+      select: { entityType: true },
+      orderBy: { entityType: 'asc' },
+    });
+
+    return {
+      actions: [...AUDIT_ACTION_OPTIONS],
+      entityTypes: entityTypes.map((item) => item.entityType).filter(Boolean),
+    };
   }
 }

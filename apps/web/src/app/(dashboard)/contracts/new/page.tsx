@@ -20,7 +20,7 @@ import {
   Row,
   Col,
 } from 'antd';
-import { ArrowLeftOutlined, SaveOutlined, UploadOutlined, InboxOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, SaveOutlined, InboxOutlined } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 import { api } from '@/lib/api';
 import apiClient from '@/lib/api';
@@ -36,11 +36,19 @@ interface CustomerOption {
   name: string;
 }
 
+interface DictionaryItem {
+  id: string;
+  code: string;
+  name: string;
+  color?: string;
+}
+
 export default function ContractNewPage() {
   const router = useRouter();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [contractTypes, setContractTypes] = useState<DictionaryItem[]>([]);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [uploadedFile, setUploadedFile] = useState<{ url: string; filename: string } | null>(null);
 
@@ -54,13 +62,28 @@ export default function ContractNewPage() {
     }
   };
 
+  const fetchContractTypes = async () => {
+    try {
+      const res = await api.get<DictionaryItem[]>('/dictionaries/by-type/CONTRACT_TYPE');
+      setContractTypes(res);
+    } catch {
+      setContractTypes([
+        { id: '1', code: 'SALES', name: '销售合同' },
+        { id: '2', code: 'PURCHASE', name: '采购合同' },
+        { id: '3', code: 'SERVICE', name: '服务合同' },
+        { id: '4', code: 'OTHER', name: '其他' },
+      ]);
+    }
+  };
+
   useEffect(() => {
     fetchCustomers();
+    fetchContractTypes();
     // 设置默认值
     form.setFieldsValue({
-      status: 'DRAFT',
       productTaxRate: 13,
       serviceTaxRate: 6,
+      signingEntity: 'InfFinanceMs',
     });
   }, []);
 
@@ -223,16 +246,31 @@ export default function ContractNewPage() {
           <Row gutter={24}>
             <Col span={12}>
               <Form.Item
-                name="status"
-                label="合同状态"
-                rules={[{ required: true, message: '请选择合同状态' }]}
+                name="contractType"
+                label="合同类型"
+                rules={[{ required: true, message: '请选择合同类型' }]}
               >
-                <Select placeholder="请选择合同状态">
-                  <Option value="DRAFT">草稿</Option>
-                  <Option value="EXECUTING">执行中</Option>
+                <Select placeholder="请选择合同类型">
+                  {contractTypes.map((type) => (
+                    <Option key={type.code} value={type.code}>
+                      {type.name}
+                    </Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
+            <Col span={12}>
+              <Form.Item
+                name="signingEntity"
+                label="公司签约主体"
+                rules={[{ required: true, message: '请输入公司签约主体' }]}
+              >
+                <Input placeholder="请输入公司签约主体" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={24}>
             <Col span={12}>
               <Form.Item
                 name="signDate"

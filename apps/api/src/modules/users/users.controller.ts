@@ -16,7 +16,7 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards';
-import { Roles } from '../../common/decorators';
+import { CurrentUser, Roles } from '../../common/decorators';
 
 // 角色常量
 const Role = {
@@ -37,12 +37,22 @@ export class UsersController {
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: '获取用户列表' })
   async findAll(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
     @Query('role') role?: string,
-    @Query('isActive') isActive?: boolean,
+    @Query('isActive') isActive?: string,
   ) {
-    return this.usersService.findAll({ page, pageSize, role, isActive });
+    const parsedPage = page ? Number(page) : undefined;
+    const parsedPageSize = pageSize ? Number(pageSize) : undefined;
+    const parsedIsActive =
+      isActive === undefined ? undefined : String(isActive).toLowerCase() === 'true';
+
+    return this.usersService.findAll({
+      page: Number.isFinite(parsedPage) ? parsedPage : undefined,
+      pageSize: Number.isFinite(parsedPageSize) ? parsedPageSize : undefined,
+      role,
+      isActive: parsedIsActive,
+    });
   }
 
   @Get('options')
@@ -76,7 +86,7 @@ export class UsersController {
   @Delete(':id')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: '删除用户' })
-  async remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+  async remove(@Param('id') id: string, @CurrentUser('id') operatorId?: string) {
+    return this.usersService.remove(id, operatorId);
   }
 }

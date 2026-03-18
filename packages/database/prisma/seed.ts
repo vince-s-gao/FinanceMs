@@ -131,6 +131,18 @@ async function main() {
   });
   console.log('✅ 创建项目:', project3.name);
 
+  // 5.3 创建数据字典 - 合同类型
+  await prisma.dictionary.createMany({
+    data: [
+      { type: 'CONTRACT_TYPE', code: 'SALES', name: '销售合同', color: 'blue', sortOrder: 1, isDefault: true },
+      { type: 'CONTRACT_TYPE', code: 'PURCHASE', name: '采购合同', color: 'cyan', sortOrder: 2 },
+      { type: 'CONTRACT_TYPE', code: 'SERVICE', name: '服务合同', color: 'green', sortOrder: 3 },
+      { type: 'CONTRACT_TYPE', code: 'OTHER', name: '其他', color: 'default', sortOrder: 4 },
+    ],
+    skipDuplicates: true,
+  });
+  console.log('✅ 创建数据字典: 合同类型');
+
   // 6. 创建示例客户
   const customer1 = await prisma.customer.upsert({
     where: { code: 'CUS000001' },
@@ -172,6 +184,8 @@ async function main() {
       contractNo: 'HT202601-0001',
       name: '软件开发服务合同',
       customerId: customer1.id,
+      signingEntity: 'InfFinanceMs',
+      contractType: 'SERVICE',
       amountWithTax: 100000,
       amountWithoutTax: 88495.58,
       taxRate: 13,
