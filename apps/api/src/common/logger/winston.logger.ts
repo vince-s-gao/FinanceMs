@@ -19,7 +19,7 @@ const logFormat = winston.format.combine(
 const consoleFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.ms(),
-  utilities.format.nestLike('CiyuanFinance', {
+  utilities.format.nestLike('InfFinanceMs', {
     colors: true,
     prettyPrint: true,
   })

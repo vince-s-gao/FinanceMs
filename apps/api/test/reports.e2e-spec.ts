@@ -11,6 +11,9 @@ describe('ReportsController Flow (e2e-like)', () => {
     getExpenseAnalysis: jest.fn(),
     getContractDashboard: jest.fn(),
     getContractProfitAnalysis: jest.fn(),
+    exportReceivablesOverviewCsv: jest.fn(),
+    exportCustomerReportCsv: jest.fn(),
+    exportContractProfitCsv: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -56,5 +59,38 @@ describe('ReportsController Flow (e2e-like)', () => {
 
     expect(serviceMock.getContractProfitAnalysis).toHaveBeenCalledWith('ct-1');
     expect(result[0].contractId).toBe('ct-1');
+  });
+
+  it('should export csv responses with attachment headers', async () => {
+    serviceMock.exportReceivablesOverviewCsv.mockResolvedValueOnce('h1,h2');
+    serviceMock.exportCustomerReportCsv.mockResolvedValueOnce('h1,h2');
+    serviceMock.exportContractProfitCsv.mockResolvedValueOnce('h1,h2');
+
+    const buildRes = () =>
+      ({
+        setHeader: jest.fn(),
+        send: jest.fn(),
+      }) as any;
+
+    const receivablesRes = buildRes();
+    const customersRes = buildRes();
+    const profitRes = buildRes();
+
+    await controller.exportReceivablesCsv(receivablesRes);
+    await controller.exportCustomerCsv(customersRes);
+    await controller.exportContractProfitCsv(profitRes, 'ct-2');
+
+    expect(serviceMock.exportReceivablesOverviewCsv).toHaveBeenCalledTimes(1);
+    expect(serviceMock.exportCustomerReportCsv).toHaveBeenCalledTimes(1);
+    expect(serviceMock.exportContractProfitCsv).toHaveBeenCalledWith('ct-2');
+
+    expect(receivablesRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
+    expect(receivablesRes.setHeader).toHaveBeenCalledWith(
+      'Content-Disposition',
+      expect.stringMatching(/^attachment; filename="receivables-overview-\d{8}\.csv"; filename\*=UTF-8''receivables-overview-\d{8}\.csv$/),
+    );
+    expect(receivablesRes.send).toHaveBeenCalledWith(expect.stringContaining('h1,h2'));
+    expect(customersRes.send).toHaveBeenCalledWith(expect.stringContaining('h1,h2'));
+    expect(profitRes.send).toHaveBeenCalledWith(expect.stringContaining('h1,h2'));
   });
 });

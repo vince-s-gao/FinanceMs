@@ -408,4 +408,103 @@ describe('ReportsService', () => {
     expect(result[0].profitRate).toBe(0);
     expect(result[0].isLoss).toBe(true);
   });
+
+  it('should export receivables overview as csv', async () => {
+    jest.spyOn(service, 'getReceivablesOverview').mockResolvedValueOnce({
+      totalContractAmount: 1000,
+      totalReceived: 200,
+      totalReceivable: 800,
+      agingDistribution: {
+        normal: 100,
+        days0to30: 200,
+        days31to90: 300,
+        daysOver90: 200,
+      },
+    });
+
+    const csv = await service.exportReceivablesOverviewCsv();
+
+    expect(csv).toContain('"指标","金额"');
+    expect(csv).toContain('"合同总额","1000"');
+    expect(csv).toContain('"账龄-90天以上","200"');
+  });
+
+  it('should export customer report csv', async () => {
+    jest.spyOn(service, 'getCustomerReport').mockResolvedValueOnce([
+      {
+        customerId: 'cus-1',
+        customerName: '客户A',
+        contractCount: 2,
+        totalAmount: 1000,
+        receivedAmount: 800,
+        receivableAmount: 200,
+        overdueOver90: 50,
+      },
+    ] as any);
+
+    const csv = await service.exportCustomerReportCsv();
+
+    expect(csv).toContain('"客户名称","合同数","合同总额","已收款","应收款","90天以上逾期"');
+    expect(csv).toContain('"客户A","2","1000","800","200","50"');
+  });
+
+  it('should render empty csv cell when customer field is null', async () => {
+    jest.spyOn(service, 'getCustomerReport').mockResolvedValueOnce([
+      {
+        customerId: 'cus-2',
+        customerName: null,
+        contractCount: 1,
+        totalAmount: 10,
+        receivedAmount: 5,
+        receivableAmount: 5,
+        overdueOver90: 0,
+      },
+    ] as any);
+
+    const csv = await service.exportCustomerReportCsv();
+    expect(csv).toContain(',"1","10","5","5","0"');
+  });
+
+  it('should export contract profit csv with loss marker', async () => {
+    const profitSpy = jest.spyOn(service, 'getContractProfitAnalysis').mockResolvedValueOnce([
+      {
+        contractId: 'c1',
+        contractNo: 'HT-001',
+        contractName: '合同A',
+        customerName: '客户A',
+        contractAmount: 1000,
+        totalReceived: 900,
+        totalCost: 1000,
+        profit: -100,
+        profitRate: -11.11,
+        isLoss: true,
+      },
+    ] as any);
+
+    const csv = await service.exportContractProfitCsv('c1');
+
+    expect(profitSpy).toHaveBeenCalledWith('c1');
+    expect(csv).toContain('"合同编号","合同名称","客户","合同金额","已回款","总成本","毛利","毛利率(%)","是否亏损"');
+    expect(csv).toContain('"HT-001","合同A","客户A","1000","900","1000","-100","-11.11","是"');
+  });
+
+  it('should export contract profit csv with non-loss marker', async () => {
+    jest.spyOn(service, 'getContractProfitAnalysis').mockResolvedValueOnce([
+      {
+        contractId: 'c2',
+        contractNo: 'HT-002',
+        contractName: '合同B',
+        customerName: '客户B',
+        contractAmount: 2000,
+        totalReceived: 1800,
+        totalCost: 1000,
+        profit: 800,
+        profitRate: 44.44,
+        isLoss: false,
+      },
+    ] as any);
+
+    const csv = await service.exportContractProfitCsv();
+    expect(csv).toContain('"HT-002","合同B","客户B","2000","1800","1000","800","44.44","否"');
+  });
 });

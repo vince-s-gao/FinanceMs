@@ -206,6 +206,17 @@ describe('AuthService', () => {
     expect(result.user.id).toBe('u1');
   });
 
+  it('should reject refresh when refreshed user is inactive', async () => {
+    jwtService.verifyAsync.mockResolvedValueOnce({ sub: 'u2', type: 'refresh' });
+    usersService.findById.mockResolvedValueOnce({
+      id: 'u2',
+      email: 'b@example.com',
+      isActive: false,
+    });
+
+    await expect(service.refresh('refresh-token')).rejects.toThrow(UnauthorizedException);
+  });
+
   it('should validate password complexity for invalid and valid inputs', () => {
     const validate = (service as any).validatePasswordComplexity.bind(service);
 

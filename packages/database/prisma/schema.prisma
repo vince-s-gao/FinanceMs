@@ -41,6 +41,7 @@ model User {
   approvedCustomers  Customer[] @relation("CustomerApprover") // 审批的客户
   submittedPaymentRequests PaymentRequest[] @relation("PaymentRequestApplicant") // 提交的付款申请
   approvedPaymentRequests  PaymentRequest[] @relation("PaymentRequestApprover") // 审批的付款申请
+  notifications      Notification[] // 消息通知
 
   @@map("users")
 }
@@ -420,6 +421,36 @@ model AuditLog {
   user User @relation(fields: [userId], references: [id])
 
   @@map("audit_logs")
+}
+
+// ==================== 消息通知 ====================
+
+/// 通知类型枚举
+enum NotificationType {
+  SYSTEM
+  APPROVAL
+  PAYMENT
+  ALERT
+}
+
+/// 站内消息通知
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType @default(SYSTEM)
+  title     String
+  content   String
+  link      String?
+  metadata  Json?
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@index([createdAt])
+  @@map("notifications")
 }
 
 // ==================== 权限管理 ====================

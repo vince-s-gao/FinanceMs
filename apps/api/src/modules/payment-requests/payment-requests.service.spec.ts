@@ -5,6 +5,7 @@ import { PaymentRequestsService } from './payment-requests.service';
 describe('PaymentRequestsService', () => {
   let service: PaymentRequestsService;
   let prisma: any;
+  let notificationsService: any;
 
   beforeEach(() => {
     prisma = {
@@ -28,9 +29,17 @@ describe('PaymentRequestsService', () => {
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: 'proj-1', isDeleted: false }),
       },
+      user: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
-    service = new PaymentRequestsService(prisma);
+    notificationsService = {
+      createForUsers: jest.fn().mockResolvedValue({ count: 0 }),
+      createNotification: jest.fn().mockResolvedValue({ id: 'n-1' }),
+    };
+
+    service = new PaymentRequestsService(prisma, notificationsService);
   });
 
   it('should use full-day range for date-only filters in findAll', async () => {
@@ -302,6 +311,14 @@ describe('PaymentRequestsService', () => {
 
   it('should submit draft request to pending', async () => {
     prisma.paymentRequest.update.mockResolvedValueOnce({ id: 'pr-1', status: 'PENDING' });
+    prisma.paymentRequest.findUnique.mockResolvedValueOnce({
+      id: 'pr-1',
+      isDeleted: false,
+      status: 'DRAFT',
+      requestNo: 'FK202603170001',
+      applicantId: 'u1',
+    });
+    prisma.user.findMany.mockResolvedValueOnce([{ id: 'manager-1' }]);
 
     await service.submit('pr-1');
 
@@ -312,6 +329,34 @@ describe('PaymentRequestsService', () => {
           status: 'PENDING',
           submitDate: expect.any(Date),
         }),
+      }),
+    );
+    expect(notificationsService.createForUsers).toHaveBeenCalledWith(
+      ['manager-1'],
+      expect.objectContaining({
+        type: 'APPROVAL',
+        title: '新的付款申请待审批',
+      }),
+    );
+  });
+
+  it('should exclude applicant from approver notification list on submit', async () => {
+    prisma.paymentRequest.update.mockResolvedValueOnce({ id: 'pr-1', status: 'PENDING' });
+    prisma.paymentRequest.findUnique.mockResolvedValueOnce({
+      id: 'pr-1',
+      isDeleted: false,
+      status: 'DRAFT',
+      requestNo: 'FK202603170002',
+      applicantId: 'manager-1',
+    });
+    prisma.user.findMany.mockResolvedValueOnce([{ id: 'manager-1' }, { id: 'admin-1' }]);
+
+    await service.submit('pr-1');
+
+    expect(notificationsService.createForUsers).toHaveBeenCalledWith(
+      ['admin-1'],
+      expect.objectContaining({
+        type: 'APPROVAL',
       }),
     );
   });
@@ -333,6 +378,8 @@ describe('PaymentRequestsService', () => {
       id: 'pr-1',
       isDeleted: false,
       status: 'PENDING',
+      requestNo: 'FK202603170001',
+      applicantId: 'u1',
     });
 
     await service.approve(
@@ -353,6 +400,59 @@ describe('PaymentRequestsService', () => {
         }),
       }),
     );
+    expect(notificationsService.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'u1',
+        type: 'APPROVAL',
+      }),
+    );
+  });
+
+  it('should send rejected notification to applicant when approve status is REJECTED', async () => {
+    prisma.paymentRequest.findUnique.mockResolvedValueOnce({
+      id: 'pr-1',
+      isDeleted: false,
+      status: 'PENDING',
+      requestNo: 'FK202603170010',
+      applicantId: 'u9',
+    });
+
+    await service.approve(
+      'pr-1',
+      {
+        status: 'REJECTED',
+        approvalRemark: '资料不完整',
+      } as any,
+      'approver-1',
+    );
+
+    expect(notificationsService.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'u9',
+        title: '付款申请已被驳回',
+        type: 'APPROVAL',
+      }),
+    );
+  });
+
+  it('should skip applicant notification when applicantId is empty', async () => {
+    prisma.paymentRequest.findUnique.mockResolvedValueOnce({
+      id: 'pr-1',
+      isDeleted: false,
+      status: 'PENDING',
+      requestNo: 'FK202603170011',
+      applicantId: '',
+    });
+
+    await service.approve(
+      'pr-1',
+      {
+        status: 'APPROVED',
+      } as any,
+      'approver-1',
+    );
+
+    expect(notificationsService.createNotification).not.toHaveBeenCalled();
   });
 
   it('should reject confirmPayment when status is not approved', async () => {
@@ -372,6 +472,8 @@ describe('PaymentRequestsService', () => {
       isDeleted: false,
       status: 'APPROVED',
       remark: 'old',
+      requestNo: 'FK202603170001',
+      applicantId: 'u1',
     });
 
     await service.confirmPayment('pr-1');
@@ -382,6 +484,12 @@ describe('PaymentRequestsService', () => {
           status: 'PAID',
           remark: 'old',
         },
+      }),
+    );
+    expect(notificationsService.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'u1',
+        type: 'PAYMENT',
       }),
     );
   });

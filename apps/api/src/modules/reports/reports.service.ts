@@ -43,6 +43,18 @@ function getAgingBucket(agingDays: number): 'normal' | '0-30' | '31-90' | '90+' 
   return '90+';
 }
 
+function formatCsvCell(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const text = String(value).replace(/"/g, '""');
+  return `"${text}"`;
+}
+
+function toCsv(headers: string[], rows: unknown[][]): string {
+  const headerLine = headers.map((item) => formatCsvCell(item)).join(',');
+  const rowLines = rows.map((row) => row.map((cell) => formatCsvCell(cell)).join(','));
+  return [headerLine, ...rowLines].join('\n');
+}
+
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
@@ -374,5 +386,60 @@ export class ReportsService {
         isLoss: profit.lt(0),
       };
     });
+  }
+
+  /**
+   * 导出应收账款总览（CSV）
+   */
+  async exportReceivablesOverviewCsv() {
+    const data = await this.getReceivablesOverview();
+    const headers = ['指标', '金额'];
+    const rows: unknown[][] = [
+      ['合同总额', data.totalContractAmount],
+      ['已回款', data.totalReceived],
+      ['应收余额', data.totalReceivable],
+      ['账龄-正常', data.agingDistribution.normal],
+      ['账龄-0到30天', data.agingDistribution.days0to30],
+      ['账龄-31到90天', data.agingDistribution.days31to90],
+      ['账龄-90天以上', data.agingDistribution.daysOver90],
+    ];
+    return toCsv(headers, rows);
+  }
+
+  /**
+   * 导出客户维度报表（CSV）
+   */
+  async exportCustomerReportCsv() {
+    const report = await this.getCustomerReport();
+    const headers = ['客户名称', '合同数', '合同总额', '已收款', '应收款', '90天以上逾期'];
+    const rows = report.map((item) => [
+      item.customerName,
+      item.contractCount,
+      item.totalAmount,
+      item.receivedAmount,
+      item.receivableAmount,
+      item.overdueOver90,
+    ]);
+    return toCsv(headers, rows);
+  }
+
+  /**
+   * 导出合同毛利分析（CSV）
+   */
+  async exportContractProfitCsv(contractId?: string) {
+    const report = await this.getContractProfitAnalysis(contractId);
+    const headers = ['合同编号', '合同名称', '客户', '合同金额', '已回款', '总成本', '毛利', '毛利率(%)', '是否亏损'];
+    const rows = report.map((item) => [
+      item.contractNo,
+      item.contractName,
+      item.customerName,
+      item.contractAmount,
+      item.totalReceived,
+      item.totalCost,
+      item.profit,
+      item.profitRate,
+      item.isLoss ? '是' : '否',
+    ]);
+    return toCsv(headers, rows);
   }
 }

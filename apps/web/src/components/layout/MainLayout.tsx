@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Layout, Menu, Avatar, Dropdown, Space, Typography, Spin, Badge } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Space, Typography, Spin, Badge, Popover, List, Button, message } from 'antd';
 import {
   DashboardOutlined,
   TeamOutlined,
@@ -24,9 +24,13 @@ import {
   ApartmentOutlined,
   SafetyOutlined,
   DatabaseOutlined,
+  BellOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/stores/auth';
 import { ROLE_LABELS } from '@/lib/constants';
+import { api } from '@/lib/api';
+import { getErrorMessage } from '@/lib/error';
+import type { NotificationItem } from '@inffinancems/shared';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -92,6 +96,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const pathname = usePathname();
   const { user, isAuthenticated, logout, hydrate, isHydrated } = useAuthStore();
   const [collapsed, setCollapsed] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationLoading, setNotificationLoading] = useState(false);
 
   // 初始化时从服务端 Cookie 恢复认证状态
   useEffect(() => {
@@ -107,6 +114,32 @@ export default function MainLayout({ children }: MainLayoutProps) {
     }
   }, [isHydrated, isAuthenticated, router]);
 
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !user) return;
+
+    const loadNotifications = async () => {
+      setNotificationLoading(true);
+      try {
+        const [countRes, listRes] = await Promise.all([
+          api.get<{ unreadCount: number }>('/notifications/unread-count'),
+          api.get<{ items: NotificationItem[] }>('/notifications', {
+            params: { page: 1, pageSize: 8 },
+          }),
+        ]);
+        setUnreadCount(countRes.unreadCount || 0);
+        setNotifications(listRes.items || []);
+      } catch {
+        // keep silent to avoid layout-level toast noise
+      } finally {
+        setNotificationLoading(false);
+      }
+    };
+
+    loadNotifications();
+    const timer = setInterval(loadNotifications, 30000);
+    return () => clearInterval(timer);
+  }, [isHydrated, isAuthenticated, user?.id, pathname]);
+
   // 处理菜单点击
   const handleMenuClick = ({ key }: { key: string }) => {
     router.push(key);
@@ -116,6 +149,45 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const handleLogout = async () => {
     await logout();
     router.replace('/login');
+  };
+
+  const refreshNotifications = async () => {
+    try {
+      const [countRes, listRes] = await Promise.all([
+        api.get<{ unreadCount: number }>('/notifications/unread-count'),
+        api.get<{ items: NotificationItem[] }>('/notifications', {
+          params: { page: 1, pageSize: 8 },
+        }),
+      ]);
+      setUnreadCount(countRes.unreadCount || 0);
+      setNotifications(listRes.items || []);
+    } catch {
+      // keep silent to avoid layout-level toast noise
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await api.post('/notifications/read-all', {});
+      await refreshNotifications();
+      message.success('已全部标记为已读');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '操作失败'));
+    }
+  };
+
+  const handleOpenNotification = async (item: NotificationItem) => {
+    try {
+      if (!item.isRead) {
+        await api.post(`/notifications/${item.id}/read`, {});
+      }
+      if (item.link) {
+        router.push(item.link);
+      }
+      await refreshNotifications();
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '打开通知失败'));
+    }
   };
 
   // 用户下拉菜单
@@ -214,25 +286,73 @@ export default function MainLayout({ children }: MainLayoutProps) {
             {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
           </div>
 
-          {/* 用户信息 */}
-          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-            <Space className="cursor-pointer hover:bg-gray-50 px-3 py-1 rounded-lg transition-colors">
-              <Avatar
-                size="small"
-                icon={<UserOutlined />}
-                src={user.avatar}
-                className="bg-blue-600"
-              />
-              <div className="hidden sm:block">
-                <Text strong className="text-gray-800">{user.name}</Text>
-                <Badge 
-                  count={ROLE_LABELS[user.role] || user.role} 
-                  className="ml-2"
-                  style={{ backgroundColor: '#1890ff' }}
+          <Space size={16}>
+            <Popover
+              trigger="click"
+              placement="bottomRight"
+              content={
+                <div className="w-[360px] max-h-[420px] overflow-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <Text strong>消息通知</Text>
+                    <Button size="small" type="link" onClick={handleMarkAllRead} disabled={!unreadCount}>
+                      全部已读
+                    </Button>
+                  </div>
+                  <List
+                    loading={notificationLoading}
+                    locale={{ emptyText: '暂无消息' }}
+                    dataSource={notifications}
+                    renderItem={(item) => (
+                      <List.Item
+                        className={`cursor-pointer rounded px-2 ${item.isRead ? '' : 'bg-blue-50'}`}
+                        onClick={() => handleOpenNotification(item)}
+                      >
+                        <List.Item.Meta
+                          title={
+                            <div className="flex items-center gap-2">
+                              {!item.isRead && <Badge status="processing" />}
+                              <span>{item.title}</span>
+                            </div>
+                          }
+                          description={
+                            <div>
+                              <div>{item.content}</div>
+                              <Text type="secondary" className="text-xs">
+                                {new Date(item.createdAt).toLocaleString('zh-CN')}
+                              </Text>
+                            </div>
+                          }
+                        />
+                      </List.Item>
+                    )}
+                  />
+                </div>
+              }
+            >
+              <Badge count={unreadCount} size="small">
+                <Button shape="circle" icon={<BellOutlined />} />
+              </Badge>
+            </Popover>
+
+            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+              <Space className="cursor-pointer hover:bg-gray-50 px-3 py-1 rounded-lg transition-colors">
+                <Avatar
+                  size="small"
+                  icon={<UserOutlined />}
+                  src={user.avatar}
+                  className="bg-blue-600"
                 />
-              </div>
-            </Space>
-          </Dropdown>
+                <div className="hidden sm:block">
+                  <Text strong className="text-gray-800">{user.name}</Text>
+                  <Badge
+                    count={ROLE_LABELS[user.role] || user.role}
+                    className="ml-2"
+                    style={{ backgroundColor: '#1890ff' }}
+                  />
+                </div>
+              </Space>
+            </Dropdown>
+          </Space>
         </Header>
 
         {/* 内容区域 */}

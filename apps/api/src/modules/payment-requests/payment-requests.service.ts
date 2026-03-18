@@ -7,10 +7,55 @@ import { QueryPaymentRequestDto } from './dto/query-payment-request.dto';
 import { ApprovePaymentRequestDto } from './dto/approve-payment-request.dto';
 import { Prisma } from '@prisma/client';
 import { parseDateRangeEnd, parseDateRangeStart } from '../../common/utils/query.utils';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PaymentRequestsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
+
+  private async notifyApproversForSubmit(request: any) {
+    const approvers = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        role: { in: ['MANAGER', 'ADMIN'] },
+      },
+      select: { id: true },
+    });
+    const approverIds = approvers.map((item) => item.id).filter((id) => id !== request.applicantId);
+    await this.notificationsService.createForUsers(approverIds, {
+      type: 'APPROVAL',
+      title: '新的付款申请待审批',
+      content: `付款申请 ${request.requestNo} 已提交，等待审批`,
+      link: `/payment-requests/${request.id}`,
+      metadata: {
+        requestId: request.id,
+        requestNo: request.requestNo,
+      },
+    });
+  }
+
+  private async notifyApplicant(
+    request: any,
+    title: string,
+    content: string,
+    type: 'SYSTEM' | 'APPROVAL' | 'PAYMENT' | 'ALERT',
+  ) {
+    if (!request.applicantId) return;
+    await this.notificationsService.createNotification({
+      userId: request.applicantId,
+      title,
+      content,
+      type,
+      link: `/payment-requests/${request.id}`,
+      metadata: {
+        requestId: request.id,
+        requestNo: request.requestNo,
+      },
+    });
+  }
 
   /**
    * 生成付款申请单号
@@ -305,7 +350,7 @@ export class PaymentRequestsService {
       throw new BadRequestException('只有草稿状态的申请可以提交');
     }
 
-    return this.prisma.paymentRequest.update({
+    const updated = await this.prisma.paymentRequest.update({
       where: { id },
       data: {
         status: 'PENDING',
@@ -318,6 +363,9 @@ export class PaymentRequestsService {
         },
       },
     });
+
+    await this.notifyApproversForSubmit(request);
+    return updated;
   }
 
   /**
@@ -330,7 +378,7 @@ export class PaymentRequestsService {
       throw new BadRequestException('只有待审批状态的申请可以审批');
     }
 
-    return this.prisma.paymentRequest.update({
+    const updated = await this.prisma.paymentRequest.update({
       where: { id },
       data: {
         status: approveDto.status,
@@ -348,6 +396,18 @@ export class PaymentRequestsService {
         },
       },
     });
+
+    const isApproved = approveDto.status === 'APPROVED';
+    await this.notifyApplicant(
+      request,
+      isApproved ? '付款申请已审批通过' : '付款申请已被驳回',
+      isApproved
+        ? `付款申请 ${request.requestNo} 已审批通过`
+        : `付款申请 ${request.requestNo} 已被驳回`,
+      'APPROVAL',
+    );
+
+    return updated;
   }
 
   /**
@@ -360,7 +420,7 @@ export class PaymentRequestsService {
       throw new BadRequestException('只有已通过的申请可以确认付款');
     }
 
-    return this.prisma.paymentRequest.update({
+    const updated = await this.prisma.paymentRequest.update({
       where: { id },
       data: {
         status: 'PAID',
@@ -376,6 +436,15 @@ export class PaymentRequestsService {
         },
       },
     });
+
+    await this.notifyApplicant(
+      request,
+      '付款申请已完成付款',
+      `付款申请 ${request.requestNo} 已完成付款处理`,
+      'PAYMENT',
+    );
+
+    return updated;
   }
 
   /**

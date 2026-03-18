@@ -3,20 +3,24 @@
 // InfFinanceMs - 报表看板页面
 
 import { useEffect, useState } from 'react';
-import { Row, Col, Card, Table, Statistic, Typography, Spin, message, Tabs } from 'antd';
+import { Row, Col, Card, Table, Statistic, Typography, Spin, message, Tabs, Button, Space } from 'antd';
 import {
   DollarOutlined,
   TeamOutlined,
   FileTextOutlined,
   WarningOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
-import { api } from '@/lib/api';
+import apiClient, { api } from '@/lib/api';
 import { formatAmount } from '@/lib/constants';
+import { getErrorMessage } from '@/lib/error';
 
 const { Title, Text } = Typography;
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [activeTab, setActiveTab] = useState('receivables');
   const [receivables, setReceivables] = useState<any>(null);
   const [customerReport, setCustomerReport] = useState<any[]>([]);
   const [profitAnalysis, setProfitAnalysis] = useState<any[]>([]);
@@ -33,8 +37,8 @@ export default function ReportsPage() {
         setReceivables(receivablesRes);
         setCustomerReport(customerRes as any[]);
         setProfitAnalysis(profitRes as any[]);
-      } catch (error: any) {
-        message.error(error.message || '加载数据失败');
+      } catch (error: unknown) {
+        message.error(getErrorMessage(error, '加载数据失败'));
       } finally {
         setLoading(false);
       }
@@ -100,6 +104,51 @@ export default function ReportsPage() {
       ),
     },
   ];
+
+  const getExportEndpoint = (tab: string) => {
+    if (tab === 'customers') return '/reports/export/customers';
+    if (tab === 'profit') return '/reports/export/contracts/profit';
+    return '/reports/export/receivables';
+  };
+
+  const getDefaultFilename = (tab: string) => {
+    if (tab === 'customers') return 'customer-report.csv';
+    if (tab === 'profit') return 'contract-profit.csv';
+    return 'receivables-overview.csv';
+  };
+
+  const parseFilename = (disposition?: string | null) => {
+    if (!disposition) return undefined;
+    const utf8Matched = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Matched?.[1]) return decodeURIComponent(utf8Matched[1]);
+    const matched = disposition.match(/filename="?([^"]+)"?/i);
+    return matched?.[1];
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const response = await apiClient.get(getExportEndpoint(activeTab), {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const filename =
+        parseFilename(response.headers?.['content-disposition']) || getDefaultFilename(activeTab);
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      message.success('导出成功');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '导出失败'));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // 毛利分析列
   const profitColumns = [
@@ -304,9 +353,26 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <Title level={4}>📊 报表看板</Title>
+      <div className="flex items-center justify-between">
+        <Title level={4} className="!mb-0">📊 报表看板</Title>
+        <Space>
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            loading={exporting}
+            onClick={handleExport}
+          >
+            导出当前报表
+          </Button>
+        </Space>
+      </div>
 
-      <Tabs items={tabItems} className="mt-4" />
+      <Tabs
+        items={tabItems}
+        className="mt-4"
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key)}
+      />
     </div>
   );
 }

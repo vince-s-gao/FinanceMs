@@ -176,6 +176,25 @@ describe('FeishuService', () => {
     await expect((service as any).getUserAccessToken('bad-code')).rejects.toThrow(UnauthorizedException);
   });
 
+  it('should return user access token data on success', async () => {
+    jest.spyOn(service as any, 'getAppAccessToken').mockResolvedValueOnce('app-token-1');
+    jest.spyOn(globalThis, 'fetch' as any).mockResolvedValueOnce({
+      json: async () => ({
+        code: 0,
+        data: {
+          access_token: 'user-token',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          refresh_token: 'refresh-token',
+          refresh_expires_in: 86400,
+        },
+      }),
+    } as any);
+
+    const tokenData = await (service as any).getUserAccessToken('good-code');
+    expect(tokenData.access_token).toBe('user-token');
+  });
+
   it('should throw when getFeishuUserInfo response has non-zero code', async () => {
     jest.spyOn(globalThis, 'fetch' as any).mockResolvedValueOnce({
       json: async () => ({
@@ -198,6 +217,29 @@ describe('FeishuService', () => {
     } as any);
 
     await expect((service as any).getFeishuUserInfo('bad-token')).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('should return user info when getFeishuUserInfo succeeds', async () => {
+    jest.spyOn(globalThis, 'fetch' as any).mockResolvedValueOnce({
+      json: async () => ({
+        code: 0,
+        data: {
+          user: {
+            open_id: 'open-4',
+            user_id: 'user-4',
+            union_id: 'union-4',
+            name: '赵六',
+            email: 'zhao@example.com',
+            mobile: '13800001234',
+            avatar_url: 'avatar-4',
+            tenant_key: 'tenant-1',
+          },
+        },
+      }),
+    } as any);
+
+    const user = await (service as any).getFeishuUserInfo('good-token');
+    expect(user.open_id).toBe('open-4');
   });
 
   it('should create user on first login and return jwt payload', async () => {

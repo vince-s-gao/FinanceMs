@@ -24,6 +24,7 @@ import { PaymentRequestsModule } from './modules/payment-requests/payment-reques
 import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { CsrfMiddleware } from './common/middleware/csrf.middleware';
     PaymentRequestsModule,  // 付款申请模块
     BankAccountsModule,     // 银行账户模块
     AuditModule,            // 审计日志模块
+    NotificationsModule,    // 消息通知模块
   ],
 })
 export class AppModule implements NestModule {

@@ -253,6 +253,23 @@ export interface StandardErrorPayload {
   details?: unknown;
 }
 
+// ==================== 消息通知 ====================
+
+export type NotificationType = 'SYSTEM' | 'APPROVAL' | 'PAYMENT' | 'ALERT';
+
+export interface NotificationItem {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  content: string;
+  link?: string | null;
+  metadata?: unknown;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+}
+
 // ==================== 报表相关类型 ====================
 
 /** 应收账款总览 */
