@@ -11,6 +11,7 @@ import { ExpensesService } from './expenses.service';
 describe('ExpensesService', () => {
   let service: ExpensesService;
   let prisma: any;
+  let budgetsService: any;
 
   beforeEach(() => {
     prisma = {
@@ -40,7 +41,11 @@ describe('ExpensesService', () => {
       $transaction: jest.fn(),
     };
 
-    service = new ExpensesService(prisma, {} as any);
+    budgetsService = {
+      updateUsedAmount: jest.fn().mockResolvedValue(undefined),
+    };
+
+    service = new ExpensesService(prisma, {} as any, budgetsService);
   });
 
   it('should fallback to createdAt when sortBy is invalid', async () => {
@@ -494,6 +499,7 @@ describe('ExpensesService', () => {
     prisma.expense.findUnique.mockResolvedValueOnce({
       id: 'e1',
       status: 'APPROVED',
+      department: 'FIN',
       projectId: 'p1',
       contractId: 'c1',
       details: [
@@ -516,6 +522,23 @@ describe('ExpensesService', () => {
     const result = await service.pay('e1');
 
     expect(tx.cost.create).toHaveBeenCalledTimes(2);
+    expect(budgetsService.updateUsedAmount).toHaveBeenCalledTimes(2);
+    expect(budgetsService.updateUsedAmount).toHaveBeenNthCalledWith(
+      1,
+      'FIN',
+      'TRAVEL',
+      100,
+      new Date('2026-03-01'),
+      tx,
+    );
+    expect(budgetsService.updateUsedAmount).toHaveBeenNthCalledWith(
+      2,
+      'FIN',
+      'ACCOMMODATION',
+      200,
+      new Date('2026-03-02'),
+      tx,
+    );
     expect(result).toEqual({ id: 'e1', status: 'PAID' });
   });
 

@@ -7,6 +7,7 @@ import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
 import { ApproveExpenseDto } from './dto/approve-expense.dto';
+import { BudgetsService } from '../budgets/budgets.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { parseDateRangeEnd, parseDateRangeStart, resolveSortField } from '../../common/utils/query.utils';
@@ -55,6 +56,7 @@ export class ExpensesService {
   constructor(
     private prisma: PrismaService,
     private costsService: CostsService,
+    private budgetsService: BudgetsService,
   ) {}
 
   /**
@@ -479,6 +481,14 @@ export class ExpensesService {
             description: detail.description,
           },
         });
+
+        await this.budgetsService.updateUsedAmount(
+          expense.department,
+          detail.feeType,
+          Number(detail.amount),
+          detail.occurDate,
+          tx,
+        );
       }
 
       return tx.expense.findUnique({

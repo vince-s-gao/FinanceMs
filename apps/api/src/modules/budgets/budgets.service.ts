@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 import { QueryBudgetDto } from './dto/query-budget.dto';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 // 预算状态常量
@@ -272,12 +273,14 @@ export class BudgetsService {
     feeType: string,
     amount: number,
     date: Date,
+    tx?: Prisma.TransactionClient,
   ) {
+    const db = tx ?? this.prisma;
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
 
     // 先查找月度预算
-    let budget = await this.prisma.budget.findFirst({
+    let budget = await db.budget.findFirst({
       where: {
         year,
         month,
@@ -289,7 +292,7 @@ export class BudgetsService {
 
     // 如果没有月度预算，查找年度预算
     if (!budget) {
-      budget = await this.prisma.budget.findFirst({
+      budget = await db.budget.findFirst({
         where: {
           year,
           month: null,
@@ -301,7 +304,7 @@ export class BudgetsService {
     }
 
     if (budget) {
-      await this.prisma.budget.update({
+      await db.budget.update({
         where: { id: budget.id },
         data: {
           usedAmount: {

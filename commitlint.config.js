@@ -1,4 +1,4 @@
-# InfFinanceMs - Commitlint 配置
+// InfFinanceMs - Commitlint 配置
 
 module.exports = {
   extends: ['@commitlint/config-conventional'],
