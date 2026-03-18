@@ -228,17 +228,19 @@ export default function ContractsPage() {
       if (filters.startDate) params.startDate = filters.startDate;
       if (filters.endDate) params.endDate = filters.endDate;
 
-      const response = await apiClient.get('/contracts/export/csv', {
+      const response = await apiClient.get('/contracts/export/excel', {
         params,
         responseType: 'blob',
       });
 
       const now = dayjs().format('YYYYMMDD');
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
       const link = document.createElement('a');
       const url = window.URL.createObjectURL(blob);
       link.href = url;
-      link.download = `contracts-${now}.csv`;
+      link.download = `contracts-${now}.xlsx`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -249,20 +251,25 @@ export default function ContractsPage() {
     }
   };
 
-  const handleDownloadImportTemplate = () => {
-    const csv = [
-      '合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
-      '示例合同A,北京科技有限公司,InfFinanceMs,服务合同,100000,2026-03-18,2026-12-31',
-    ].join('\n');
-    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'contracts-import-template.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+  const handleDownloadImportTemplate = async () => {
+    try {
+      const response = await apiClient.get('/contracts/import/template/excel', {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'contracts-import-template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      message.error(error?.message || '下载导入模板失败');
+    }
   };
 
   const handleDownloadImportErrorReport = () => {
@@ -327,28 +334,8 @@ export default function ContractsPage() {
     }
   };
 
-  const handleDownloadHistoryErrorReport = async (record: ImportHistoryItem) => {
-    try {
-      const response = await apiClient.get(`/contracts/import/history/${record.id}/errors/csv`, {
-        responseType: 'blob',
-      });
-      const csvBlob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
-      const url = window.URL.createObjectURL(csvBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `contracts-import-errors-${dayjs(record.createdAt).format('YYYYMMDDHHmmss')}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      message.success('错误报告下载成功');
-    } catch (error: any) {
-      message.error(error?.message || '下载错误报告失败');
-    }
-  };
-
   const uploadProps: UploadProps = {
-    accept: '.csv',
+    accept: '.csv,.xlsx,.xls',
     showUploadList: false,
     customRequest: async ({ file, onSuccess, onError }) => {
       try {
@@ -427,6 +414,28 @@ export default function ContractsPage() {
       message.error(error?.message || '批量导入失败');
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleDownloadHistoryErrorReport = async (record: ImportHistoryItem) => {
+    try {
+      const response = await apiClient.get(`/contracts/import/history/${record.id}/errors/excel`, {
+        responseType: 'blob',
+      });
+      const xlsxBlob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(xlsxBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `contracts-import-errors-${dayjs(record.createdAt).format('YYYYMMDDHHmmss')}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      message.success('错误报告下载成功');
+    } catch (error: any) {
+      message.error(error?.message || '下载错误报告失败');
     }
   };
 
@@ -544,11 +553,11 @@ export default function ContractsPage() {
               重置
             </Button>
             <Upload {...uploadProps}>
-              <Button icon={<UploadOutlined />}>批量上传</Button>
+              <Button icon={<UploadOutlined />}>批量上传（CSV/Excel）</Button>
             </Upload>
             <Button onClick={() => setImportHistoryOpen(true)}>导入历史</Button>
-            <Button onClick={handleDownloadImportTemplate}>下载导入模板</Button>
-            <Button onClick={handleExport}>导出合同</Button>
+            <Button onClick={handleDownloadImportTemplate}>下载Excel模板</Button>
+            <Button onClick={handleExport}>导出合同（Excel）</Button>
             <Button onClick={() => router.push('/settings/dictionaries?type=CONTRACT_TYPE')}>
               合同类型管理
             </Button>

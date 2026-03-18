@@ -55,6 +55,14 @@ export class ContractsController {
     return `${prefix}-${y}${m}${d}.csv`;
   }
 
+  private buildExcelFileName(prefix: string) {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${prefix}-${y}${m}${d}.xlsx`;
+  }
+
   private sendCsv(res: Response, filename: string, csvContent: string) {
     const encodedFilename = encodeURIComponent(filename);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -63,6 +71,24 @@ export class ContractsController {
       `attachment; filename="${filename}"; filename*=UTF-8''${encodedFilename}`,
     );
     res.send(`\uFEFF${csvContent}`);
+  }
+
+  private sendExcel(res: Response, filename: string, buffer: Buffer) {
+    const encodedFilename = encodeURIComponent(filename);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodedFilename}`,
+    );
+    res.send(buffer);
+  }
+
+  private isSupportedImportFile(fileName: string): boolean {
+    const lower = fileName.toLowerCase();
+    return lower.endsWith('.csv') || lower.endsWith('.xlsx') || lower.endsWith('.xls');
   }
 
   @Get()
@@ -78,6 +104,14 @@ export class ContractsController {
   async exportCsv(@Query() query: QueryContractDto, @Res() res: Response) {
     const csv = await this.contractsService.exportCsv(query);
     this.sendCsv(res, this.buildFileName('contracts'), csv);
+  }
+
+  @Get('export/excel')
+  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @ApiOperation({ summary: '导出合同列表（Excel）' })
+  async exportExcel(@Query() query: QueryContractDto, @Res() res: Response) {
+    const buffer = await this.contractsService.exportExcel(query);
+    this.sendExcel(res, this.buildExcelFileName('contracts'), buffer);
   }
 
   @Post()
@@ -101,18 +135,17 @@ export class ContractsController {
       required: ['file'],
     },
   })
-  @ApiOperation({ summary: '批量导入合同（CSV）' })
+  @ApiOperation({ summary: '批量导入合同（CSV/Excel）' })
   async importCsv(
     @UploadedFile() file?: Express.Multer.File,
     @ReqBody('allowPartial') allowPartialRaw?: string,
     @CurrentUser() currentUser?: any,
   ) {
     if (!file) {
-      throw new BadRequestException('请上传 CSV 文件');
+      throw new BadRequestException('请上传导入文件');
     }
-    const filename = file.originalname.toLowerCase();
-    if (!filename.endsWith('.csv')) {
-      throw new BadRequestException('仅支持 CSV 文件');
+    if (!this.isSupportedImportFile(file.originalname)) {
+      throw new BadRequestException('仅支持 CSV/Excel 文件（.csv/.xlsx/.xls）');
     }
     const allowPartial =
       allowPartialRaw === 'true' || allowPartialRaw === '1' || allowPartialRaw === 'yes';
@@ -136,16 +169,23 @@ export class ContractsController {
       required: ['file'],
     },
   })
-  @ApiOperation({ summary: '预校验批量导入合同（CSV）' })
+  @ApiOperation({ summary: '预校验批量导入合同（CSV/Excel）' })
   async previewImportCsv(@UploadedFile() file?: Express.Multer.File) {
     if (!file) {
-      throw new BadRequestException('请上传 CSV 文件');
+      throw new BadRequestException('请上传导入文件');
     }
-    const filename = file.originalname.toLowerCase();
-    if (!filename.endsWith('.csv')) {
-      throw new BadRequestException('仅支持 CSV 文件');
+    if (!this.isSupportedImportFile(file.originalname)) {
+      throw new BadRequestException('仅支持 CSV/Excel 文件（.csv/.xlsx/.xls）');
     }
-    return this.contractsService.previewImportCsv(file.buffer);
+    return this.contractsService.previewImportCsv(file.buffer, file.originalname);
+  }
+
+  @Get('import/template/excel')
+  @Roles(Role.FINANCE, Role.ADMIN)
+  @ApiOperation({ summary: '下载合同导入模板（Excel）' })
+  async downloadImportTemplateExcel(@Res() res: Response) {
+    const buffer = this.contractsService.getImportTemplateExcel();
+    this.sendExcel(res, 'contracts-import-template.xlsx', buffer);
   }
 
   @Get('import/history')
@@ -173,6 +213,21 @@ export class ContractsController {
       this.getScopedOperatorId(currentUser),
     );
     this.sendCsv(res, payload.fileName, payload.csv);
+  }
+
+  @Get('import/history/:id/errors/excel')
+  @Roles(Role.FINANCE, Role.ADMIN)
+  @ApiOperation({ summary: '下载导入错误报告（Excel）' })
+  async downloadImportErrorsExcel(
+    @Param('id') id: string,
+    @Res() res: Response,
+    @CurrentUser() currentUser?: any,
+  ) {
+    const payload = await this.contractsService.exportImportErrorExcel(
+      id,
+      this.getScopedOperatorId(currentUser),
+    );
+    this.sendExcel(res, payload.fileName, payload.buffer);
   }
 
   @Delete('import/history')

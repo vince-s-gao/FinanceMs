@@ -9,6 +9,7 @@ import { ChangeStatusDto } from './dto/change-status.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { parseDateRangeEnd, parseDateRangeStart, resolveSortField } from '../../common/utils/query.utils';
+import { read as readWorkbook, utils as xlsxUtils, write as writeWorkbook } from 'xlsx';
 
 // 合同状态常量
 const ContractStatus = {
@@ -49,6 +50,13 @@ function toCsv(headers: string[], rows: unknown[][]): string {
   const head = headers.map((item) => formatCsvCell(item)).join(',');
   const body = rows.map((row) => row.map((item) => formatCsvCell(item)).join(','));
   return [head, ...body].join('\n');
+}
+
+function toXlsxBuffer(headers: string[], rows: unknown[][]): Buffer {
+  const wb = xlsxUtils.book_new();
+  const ws = xlsxUtils.aoa_to_sheet([headers, ...rows]);
+  xlsxUtils.book_append_sheet(wb, ws, 'Sheet1');
+  return writeWorkbook(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 }
 
 function formatDateOnly(value?: Date | null): string {
@@ -179,6 +187,13 @@ const IMPORT_HEADER_ALIASES = {
 
 function normalizeHeader(value: string): string {
   return normalizeText(value).toLowerCase().replace(/[\s_\-]/g, '');
+}
+
+function getFileExtension(fileName?: string): string {
+  if (!fileName) return '';
+  const idx = fileName.lastIndexOf('.');
+  if (idx < 0) return '';
+  return fileName.slice(idx).toLowerCase();
 }
 
 @Injectable()
@@ -402,22 +417,100 @@ export class ContractsService {
     return toCsv(headers, rows);
   }
 
-  private async prepareImportRows(fileBuffer: Buffer): Promise<{
+  /**
+   * 导出合同列表 Excel
+   */
+  async exportExcel(query: QueryContractDto): Promise<Buffer> {
+    const data = await this.findAll({
+      ...query,
+      page: 1,
+      pageSize: 10000,
+      sortBy: query.sortBy || 'signDate',
+      sortOrder: query.sortOrder || 'desc',
+    });
+
+    const headers = [
+      '合同编号',
+      '签约年份',
+      '合同名称',
+      '客户名称',
+      '公司签约主体',
+      '合同类型',
+      '合同金额',
+      '签署日期',
+      '结束日期',
+      '状态',
+    ];
+
+    const rows = data.items.map((item: any) => {
+      const signDate = item.signDate instanceof Date ? item.signDate : new Date(item.signDate);
+      const endDate = item.endDate instanceof Date ? item.endDate : item.endDate ? new Date(item.endDate) : null;
+      return [
+        item.contractNo,
+        Number.isNaN(signDate.getTime()) ? '' : signDate.getFullYear(),
+        item.name,
+        item.customer?.name || '',
+        item.signingEntity || '',
+        item.contractType || '',
+        item.amountWithTax?.toString?.() || item.amountWithTax || '0',
+        formatDateOnly(signDate),
+        formatDateOnly(endDate),
+        CONTRACT_STATUS_LABELS[item.status] || item.status,
+      ];
+    });
+
+    return toXlsxBuffer(headers, rows);
+  }
+
+  /**
+   * 下载合同导入模板（Excel）
+   */
+  getImportTemplateExcel(): Buffer {
+    const headers = ['合同名称', '客户名称', '公司签约主体', '合同类型', '合同金额', '签署日期', '结束日期'];
+    const rows = [['示例合同A', '北京科技有限公司', 'InfFinanceMs', '服务合同', 100000, '2026-03-18', '2026-12-31']];
+    return toXlsxBuffer(headers, rows);
+  }
+
+  private parseImportRows(fileBuffer: Buffer, fileName?: string): string[][] {
+    const extension = getFileExtension(fileName);
+
+    if (extension === '.xlsx' || extension === '.xls') {
+      const workbook = readWorkbook(fileBuffer, { type: 'buffer' });
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) {
+        throw new BadRequestException('Excel 内容为空');
+      }
+      const sheet = workbook.Sheets[firstSheetName];
+      const matrix = xlsxUtils.sheet_to_json(sheet, {
+        header: 1,
+        raw: false,
+        defval: '',
+      }) as unknown[][];
+      return matrix
+        .map((row) => row.map((cell) => normalizeText(String(cell ?? ''))))
+        .filter((row) => row.some((cell) => cell.length > 0));
+    }
+
+    const content = fileBuffer.toString('utf-8');
+    return content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => parseCsvLine(line));
+  }
+
+  private async prepareImportRows(fileBuffer: Buffer, fileName?: string): Promise<{
     total: number;
     validRows: PreparedImportRow[];
     errors: Array<{ row: number; message: string }>;
   }> {
-    const content = fileBuffer.toString('utf-8');
-    const lines = content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+    const rows = this.parseImportRows(fileBuffer, fileName);
 
-    if (lines.length < 2) {
-      throw new BadRequestException('CSV 内容为空或缺少数据行');
+    if (rows.length < 2) {
+      throw new BadRequestException('导入内容为空或缺少数据行');
     }
 
-    const headers = parseCsvLine(lines[0]);
+    const headers = rows[0];
     const indexByHeader = headers.reduce<Record<string, number>>((acc, header, index) => {
       acc[normalizeHeader(header)] = index;
       return acc;
@@ -470,9 +563,9 @@ export class ContractsService {
     const errors: Array<{ row: number; message: string }> = [];
     const validRows: PreparedImportRow[] = [];
 
-    for (let i = 1; i < lines.length; i += 1) {
+    for (let i = 1; i < rows.length; i += 1) {
       const rowNumber = i + 1;
-      const cells = parseCsvLine(lines[i]);
+      const cells = rows[i];
       const getByIndex = (idx?: number) => normalizeText(idx === undefined ? '' : cells[idx] || '');
 
       const name = getByIndex(nameIdx);
@@ -532,14 +625,14 @@ export class ContractsService {
     }
 
     return {
-      total: lines.length - 1,
+      total: rows.length - 1,
       validRows,
       errors,
     };
   }
 
-  async previewImportCsv(fileBuffer: Buffer): Promise<ImportPreviewResult> {
-    const prepared = await this.prepareImportRows(fileBuffer);
+  async previewImportCsv(fileBuffer: Buffer, fileName?: string): Promise<ImportPreviewResult> {
+    const prepared = await this.prepareImportRows(fileBuffer, fileName);
     return {
       total: prepared.total,
       valid: prepared.validRows.length,
@@ -592,7 +685,7 @@ export class ContractsService {
    * 批量导入合同（CSV）
    */
   async importCsv(fileBuffer: Buffer, options?: ImportCsvOptions): Promise<ImportContractResult> {
-    const prepared = await this.prepareImportRows(fileBuffer);
+    const prepared = await this.prepareImportRows(fileBuffer, options?.fileName);
     const allowPartial = !!options?.allowPartial;
     const fileName = options?.fileName || 'contracts-import.csv';
     const operatorId = options?.operatorId;
@@ -703,6 +796,33 @@ export class ContractsService {
     return {
       fileName: `contracts-import-errors-${id}.csv`,
       csv: toCsv(
+        ['行号', '错误信息'],
+        errors.map((item) => [item.row, item.message]),
+      ),
+    };
+  }
+
+  async exportImportErrorExcel(id: string, operatorId?: string) {
+    const log = await this.prisma.contractImportLog.findFirst({
+      where: operatorId ? { id, operatorId } : { id },
+      select: {
+        id: true,
+        errors: true,
+      },
+    });
+
+    if (!log) {
+      throw new NotFoundException('导入记录不存在');
+    }
+
+    const errors = this.toImportErrors(log.errors);
+    if (!errors.length) {
+      throw new BadRequestException('该导入记录没有错误数据');
+    }
+
+    return {
+      fileName: `contracts-import-errors-${id}.xlsx`,
+      buffer: toXlsxBuffer(
         ['行号', '错误信息'],
         errors.map((item) => [item.row, item.message]),
       ),

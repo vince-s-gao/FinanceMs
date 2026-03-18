@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { ContractsService } from './contracts.service';
+import { read as readWorkbook, utils as xlsxUtils, write as writeWorkbook } from 'xlsx';
 
 describe('ContractsService', () => {
   let service: ContractsService;
@@ -560,6 +561,41 @@ describe('ContractsService', () => {
     expect(csv).toContain('执行中');
   });
 
+  it('should export contracts excel with required headers', async () => {
+    jest.spyOn(service, 'findAll').mockResolvedValueOnce({
+      items: [
+        {
+          contractNo: 'HT202603-0001',
+          signDate: new Date('2026-03-18'),
+          name: '测试合同',
+          customer: { name: '测试客户' },
+          signingEntity: 'InfFinanceMs',
+          contractType: 'SERVICE',
+          amountWithTax: new Decimal(1000),
+          endDate: new Date('2026-12-31'),
+          status: 'EXECUTING',
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 10000,
+      totalPages: 1,
+    } as any);
+
+    const buffer = await service.exportExcel({ keyword: '测试' } as any);
+    const wb = readWorkbook(buffer, { type: 'buffer' });
+    const rows = xlsxUtils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
+      header: 1,
+      raw: false,
+    }) as any[][];
+
+    expect(rows[0]).toContain('合同编号');
+    expect(rows[0]).toContain('签约年份');
+    expect(rows[1]).toContain('测试合同');
+    expect(rows[1]).toContain('InfFinanceMs');
+    expect(rows[1]).toContain('执行中');
+  });
+
   it('should import contracts from csv and return summary', async () => {
     prisma.dictionary.findMany.mockResolvedValueOnce([
       { code: 'SERVICE', name: '服务合同' },
@@ -595,6 +631,35 @@ describe('ContractsService', () => {
           failed: 0,
           allowPartial: false,
         }),
+      }),
+    );
+  });
+
+  it('should import contracts from excel and return summary', async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([{ code: 'SERVICE', name: '服务合同' }]);
+    prisma.customer.findMany.mockResolvedValueOnce([{ id: 'cus-1', name: '测试客户' }]);
+    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import-xlsx' } as any);
+
+    const wb = xlsxUtils.book_new();
+    const ws = xlsxUtils.aoa_to_sheet([
+      ['合同名称', '客户名称', '公司签约主体', '合同类型', '合同金额', '签署日期', '结束日期'],
+      ['导入合同X', '测试客户', 'InfFinanceMs', '服务合同', 2000, '2026-03-20', '2026-12-31'],
+    ]);
+    xlsxUtils.book_append_sheet(wb, ws, 'Sheet1');
+    const buffer = writeWorkbook(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+    const result = await service.importCsv(buffer, { fileName: 'contracts.xlsx' });
+
+    expect(result).toEqual({
+      total: 1,
+      success: 1,
+      failed: 0,
+      errors: [],
+    });
+    expect(service.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: '导入合同X',
+        contractType: 'SERVICE',
       }),
     );
   });
