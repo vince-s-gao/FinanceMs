@@ -247,21 +247,21 @@ export default function MainLayout({ children }: MainLayoutProps) {
   }).filter(Boolean) as typeof ALL_MENU_ITEMS;
 
   return (
-    <Layout className="min-h-screen">
+    <Layout className="tech-app-bg min-h-screen">
       {/* 侧边栏 */}
       <Sider
         trigger={null}
         collapsible
         collapsed={collapsed}
-        theme="light"
-        className="shadow-md border-r border-gray-200"
+        theme="dark"
+        className="tech-sider"
         width={220}
         style={{ overflow: 'auto', height: '100vh', position: 'fixed', left: 0, top: 0 }}
       >
         {/* Logo */}
-        <div className="h-16 flex items-center justify-center border-b border-gray-200">
-          <span className="text-xl font-bold text-blue-600">
-            {collapsed ? '🏦' : '🏦 InfFinanceMs'}
+        <div className="h-16 flex items-center justify-center border-b border-cyan-300/20">
+          <span className="tech-logo text-lg font-semibold">
+            {collapsed ? 'IFM' : 'InfFinanceMs'}
           </span>
         </div>
 
@@ -271,16 +271,16 @@ export default function MainLayout({ children }: MainLayoutProps) {
           selectedKeys={[pathname]}
           items={menuItems}
           onClick={handleMenuClick}
-          className="border-none"
+          className="tech-menu border-none"
         />
       </Sider>
 
-      <Layout style={{ marginLeft: collapsed ? 80 : 220 }}>
+      <Layout style={{ marginLeft: collapsed ? 80 : 220 }} className="bg-transparent">
         {/* 顶部导航 */}
-        <Header className="bg-white px-4 flex items-center justify-between shadow-sm sticky top-0 z-10">
+        <Header className="tech-header mx-4 mt-4 px-4 flex items-center justify-between sticky top-0 z-10">
           {/* 折叠按钮 */}
           <div
-            className="cursor-pointer text-lg hover:text-blue-600 transition-colors"
+            className="cursor-pointer text-lg text-slate-700 hover:text-cyan-600 transition-colors"
             onClick={() => setCollapsed(!collapsed)}
           >
             {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -356,7 +356,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         </Header>
 
         {/* 内容区域 */}
-        <Content className="m-4 p-6 bg-white rounded-lg shadow-sm min-h-[calc(100vh-112px)]">
+        <Content className="tech-content m-4 p-6 min-h-[calc(100vh-112px)]">
           {children}
         </Content>
       </Layout>

@@ -5,7 +5,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Form, Input, Button, Card, message, Typography, Divider, Spin } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, EyeInvisibleOutlined, EyeTwoTone } from '@ant-design/icons';
 import { useAuthStore } from '@/stores/auth';
 import { api } from '@/lib/api';
 import { getErrorMessage } from '@/lib/error';
@@ -33,6 +33,7 @@ function LoginPageContent() {
   const { login, isLoading } = useAuthStore();
   const [form] = Form.useForm();
   const [feishuLoading, setFeishuLoading] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   // 处理飞书登录错误
   useEffect(() => {
@@ -72,13 +73,13 @@ function LoginPageContent() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <Card className="w-full max-w-md shadow-lg" variant="borderless">
+    <div className="auth-tech-bg min-h-screen flex items-center justify-center px-4">
+      <Card className="auth-tech-card w-full max-w-md tech-float" variant="borderless">
         <div className="text-center mb-8">
-          <Title level={2} className="!mb-2">
-            🏦 InfFinanceMs
+          <Title level={2} className="!mb-2 !text-[#0b2751]">
+            欢迎登录InfFinaceMs
           </Title>
-          <Text type="secondary">智能财务管理系统</Text>
+          <Text type="secondary">智能财务管理系统 · 安全高效的企业财务协作平台</Text>
         </div>
 
         <Form
@@ -111,6 +112,13 @@ function LoginPageContent() {
             <Input.Password
               prefix={<LockOutlined className="text-gray-400" />}
               placeholder="密码"
+              visibilityToggle={{
+                visible: passwordVisible,
+                onVisibleChange: setPasswordVisible,
+              }}
+              iconRender={(visible) =>
+                visible ? <EyeTwoTone twoToneColor="#1890ff" /> : <EyeInvisibleOutlined />
+              }
             />
           </Form.Item>
 
@@ -164,10 +172,10 @@ function LoginPageContent() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="auth-tech-bg min-h-screen flex items-center justify-center">
         <div className="text-center">
           <Spin size="large" />
-          <p className="mt-4 text-gray-500">正在加载...</p>
+          <p className="mt-4 text-[#d3e6ff]">正在加载...</p>
         </div>
       </div>
     }>

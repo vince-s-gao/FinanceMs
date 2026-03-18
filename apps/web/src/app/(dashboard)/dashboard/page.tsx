@@ -40,17 +40,17 @@ function StatCard({
 }) {
   if (loading) {
     return (
-      <Card className="card-hover">
+      <Card className="card-hover tech-stat-card">
         <Skeleton active paragraph={{ rows: 1 }} />
       </Card>
     );
   }
   
   return (
-    <Card className="card-hover">
+    <Card className="card-hover tech-stat-card">
       <div className="flex items-start justify-between">
         <div>
-          <Text type="secondary" className="text-sm">
+          <Text className="text-sm !text-[#9bc8ee]">
             {title}
           </Text>
           <div className="mt-2">
@@ -58,7 +58,7 @@ function StatCard({
               value={value}
               prefix={prefix}
               suffix={suffix}
-              valueStyle={{ color, fontSize: '24px', fontWeight: 600 }}
+              valueStyle={{ color, fontSize: '24px', fontWeight: 700 }}
             />
           </div>
           {trend && (
@@ -83,6 +83,12 @@ function StatCard({
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
+  const currentDate = new Date().toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  });
   const [receivables, setReceivables] = useState<any>(null);
   const [contractDashboard, setContractDashboard] = useState<any>(null);
   const [expenseAnalysis, setExpenseAnalysis] = useState<any>(null);
@@ -141,15 +147,24 @@ export default function DashboardPage() {
   // 员工视图
   if (user?.role === 'EMPLOYEE') {
     return (
-      <div>
-        <Title level={4}>👋 欢迎回来，{user.name}</Title>
-        <Text type="secondary">您可以在左侧菜单中提交和查看报销申请</Text>
+      <div className="space-y-4">
+        <div className="tech-dashboard-hero">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <Text className="!text-[#9cc9ff]">EMPLOYEE PORTAL</Text>
+              <Title level={4} className="!mb-1 !mt-2 !text-white">
+                欢迎回来，{user.name}
+              </Title>
+              <Text className="!text-[#d8ecff]">今天是 {currentDate}，可在左侧菜单提交和追踪报销进度。</Text>
+            </div>
+          </div>
+        </div>
 
         <Row gutter={[16, 16]} className="mt-6">
           <Col xs={24} sm={12} lg={8}>
-            <Card>
+            <Card className="tech-stat-card">
               <Statistic
-                title="待审批报销"
+                title={<span className="text-slate-200">待审批报销</span>}
                 value={0}
                 suffix="笔"
                 valueStyle={{ color: '#1890ff' }}
@@ -157,9 +172,9 @@ export default function DashboardPage() {
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={8}>
-            <Card>
+            <Card className="tech-stat-card">
               <Statistic
-                title="已批准待打款"
+                title={<span className="text-slate-200">已批准待打款</span>}
                 value={0}
                 prefix="¥"
                 valueStyle={{ color: '#52c41a' }}
@@ -167,9 +182,9 @@ export default function DashboardPage() {
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={8}>
-            <Card>
+            <Card className="tech-stat-card">
               <Statistic
-                title="本月已报销"
+                title={<span className="text-slate-200">本月已报销</span>}
                 value={0}
                 prefix="¥"
                 valueStyle={{ color: '#722ed1' }}
@@ -183,8 +198,23 @@ export default function DashboardPage() {
 
   // 财务/管理层视图
   return (
-    <div>
-      <Title level={4}>📊 工作台</Title>
+    <div className="space-y-4">
+      <div className="tech-dashboard-hero">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <Text className="!text-[#9cc9ff]">FINANCE COMMAND CENTER</Text>
+            <Title level={4} className="!mb-1 !mt-2 !text-white">
+              数据总览工作台
+            </Title>
+            <Text className="!text-[#d8ecff]">
+              实时监控合同、回款、报销与预算状态，关键风险将在此优先展示。
+            </Text>
+          </div>
+          <Tag color="cyan" className="!m-0">
+            {currentDate}
+          </Tag>
+        </div>
+      </div>
 
       {/* 核心指标 */}
       <Row gutter={[16, 16]} className="mt-4">
@@ -233,9 +263,9 @@ export default function DashboardPage() {
       {/* 第二行指标 */}
       <Row gutter={[16, 16]} className="mt-4">
         <Col xs={24} sm={12} lg={6}>
-          <Card loading={loadingMap.contracts}>
+          <Card loading={loadingMap.contracts} className="tech-stat-card">
             <Statistic
-              title="执行中合同"
+              title={<span className="text-slate-200">执行中合同</span>}
               value={contractDashboard?.executingCount || 0}
               suffix="个"
               valueStyle={{ color: '#1890ff' }}
@@ -243,9 +273,9 @@ export default function DashboardPage() {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card loading={loadingMap.contracts}>
+          <Card loading={loadingMap.contracts} className="tech-stat-card">
             <Statistic
-              title="本月新签"
+              title={<span className="text-slate-200">本月新签</span>}
               value={contractDashboard?.monthlyNewCount || 0}
               suffix="个"
               valueStyle={{ color: '#52c41a' }}
@@ -253,9 +283,9 @@ export default function DashboardPage() {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card loading={loadingMap.contracts}>
+          <Card loading={loadingMap.contracts} className="tech-stat-card">
             <Statistic
-              title="本月回款"
+              title={<span className="text-slate-200">本月回款</span>}
               value={formatAmount(contractDashboard?.monthlyPaymentAmount || 0)}
               prefix="¥"
               valueStyle={{ color: '#722ed1' }}
@@ -263,9 +293,9 @@ export default function DashboardPage() {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card loading={loadingMap.expenses}>
+          <Card loading={loadingMap.expenses} className="tech-stat-card">
             <Statistic
-              title="待审批报销"
+              title={<span className="text-slate-200">待审批报销</span>}
               value={expenseAnalysis?.pendingCount || 0}
               suffix="笔"
               valueStyle={{ color: '#faad14' }}
