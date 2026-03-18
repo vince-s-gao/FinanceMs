@@ -1,0 +1,577 @@
+// InfFinanceMs - 数据库模型定义
+// Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 用户与权限 ====================
+
+/// 用户表
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  password     String?  // 飞书登录用户可能没有密码
+  name         String
+  phone        String?
+  avatar       String?
+  role         Role     @default(EMPLOYEE)
+  departmentId String? // 所属部门ID
+  isActive     Boolean  @default(true)
+  
+  // 飞书账户关联字段
+  feishuUserId   String?  @unique // 飞书用户ID
+  feishuOpenId   String?  @unique // 飞书 Open ID
+  feishuUnionId  String?  // 飞书 Union ID
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // 关联
+  department         Department?  @relation("DepartmentMembers", fields: [departmentId], references: [id])
+  managedDepartments Department[] @relation("DepartmentManager") // 管理的部门
+  expenses           Expense[] // 提交的报销单
+  auditLogs          AuditLog[] // 操作日志
+  submittedCustomers Customer[] @relation("CustomerSubmitter") // 提交的客户
+  approvedCustomers  Customer[] @relation("CustomerApprover") // 审批的客户
+  submittedPaymentRequests PaymentRequest[] @relation("PaymentRequestApplicant") // 提交的付款申请
+  approvedPaymentRequests  PaymentRequest[] @relation("PaymentRequestApprover") // 审批的付款申请
+
+  @@map("users")
+}
+
+/// 角色枚举
+enum Role {
+  EMPLOYEE // 普通员工
+  SALES // 销售
+  FINANCE // 财务
+  MANAGER // 管理层
+  ADMIN // 管理员
+}
+
+// ==================== 客户管理 ====================
+
+/// 客户表
+model Customer {
+  id           String       @id @default(cuid())
+  code         String       @unique // 客户编号
+  name         String // 客户名称
+  type         String       // 客户类型（关联数据字典 CUSTOMER_TYPE）
+  creditCode   String? // 统一社会信用代码
+  contactName  String? // 联系人
+  contactPhone String? // 联系电话
+  contactEmail String? // 联系邮箱
+  address      String? // 地址
+  remark       String? // 备注
+  isDeleted    Boolean      @default(false)
+  
+  // 审批流字段
+  approvalStatus ApprovalStatus @default(PENDING) // 审批状态
+  submittedBy   String? // 提交人ID
+  submittedAt   DateTime? // 提交时间
+  approvedBy    String? // 审批人ID
+  approvedAt    DateTime? // 审批时间
+  approvalRemark String? // 审批备注
+  
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // 关联
+  contracts Contract[] // 关联合同
+  submitter  User?     @relation("CustomerSubmitter", fields: [submittedBy], references: [id])
+  approver   User?     @relation("CustomerApprover", fields: [approvedBy], references: [id])
+
+  @@map("customers")
+}
+
+/// 审批状态枚举
+enum ApprovalStatus {
+  PENDING // 待审批
+  APPROVED // 已通过
+  REJECTED // 已拒绝
+}
+
+// 客户类型已改为使用数据字典管理，不再使用枚举
+// 默认类型: ENTERPRISE(企业), INDIVIDUAL(个人)
+
+// ==================== 合同管理 ====================
+
+/// 合同表
+model Contract {
+  id               String         @id @default(cuid())
+  contractNo       String         @unique // 合同编号
+  name             String // 合同名称
+  customerId       String // 客户ID
+  
+  // 产品部分金额和税率
+  productAmount      Decimal?       @db.Decimal(15, 2) // 产品含税金额
+  productTaxRate     Decimal?       @db.Decimal(5, 2) // 产品税率（如13%）
+  
+  // 服务部分金额和税率
+  serviceAmount      Decimal?       @db.Decimal(15, 2) // 服务含税金额
+  serviceTaxRate     Decimal?       @db.Decimal(5, 2) // 服务税率（如6%）
+  
+  amountWithTax    Decimal        @db.Decimal(15, 2) // 含税总金额
+  amountWithoutTax Decimal        @db.Decimal(15, 2) // 不含税总金额
+  taxRate          Decimal?       @db.Decimal(5, 2) // 综合税率（兼容旧数据）
+  
+  // 合同附件（双章版扫描件）
+  attachmentUrl    String? // 附件URL
+  attachmentName   String? // 附件文件名
+  
+  signDate         DateTime // 签订日期
+  startDate        DateTime? // 开始日期
+  endDate          DateTime? // 结束日期
+  status           ContractStatus @default(DRAFT)
+  remark           String?
+  isDeleted        Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  // 关联
+  customer       Customer        @relation(fields: [customerId], references: [id])
+  paymentPlans   PaymentPlan[] // 回款计划
+  paymentRecords PaymentRecord[] // 回款记录
+  invoices       Invoice[] // 发票
+  expenses       Expense[] // 报销单
+  costs          Cost[] // 费用
+
+  @@map("contracts")
+}
+
+/// 合同状态枚举
+enum ContractStatus {
+  DRAFT // 草稿
+  EXECUTING // 执行中
+  COMPLETED // 已完成
+  TERMINATED // 已终止
+}
+
+// ==================== 回款管理 ====================
+
+/// 回款计划表
+model PaymentPlan {
+  id         String            @id @default(cuid())
+  contractId String // 合同ID
+  period     Int // 期数
+  planAmount Decimal           @db.Decimal(15, 2) // 计划金额
+  planDate   DateTime // 计划日期
+  status     PaymentPlanStatus @default(PENDING)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  // 关联
+  contract       Contract        @relation(fields: [contractId], references: [id])
+  paymentRecords PaymentRecord[] // 关联的回款记录
+
+  @@map("payment_plans")
+}
+
+/// 回款计划状态
+enum PaymentPlanStatus {
+  PENDING // 待回款
+  PARTIAL // 部分回款
+  COMPLETED // 已完成
+}
+
+/// 回款记录表
+model PaymentRecord {
+  id            String         @id @default(cuid())
+  contractId    String // 合同ID
+  planId        String? // 回款计划ID（可选）
+  amount        Decimal        @db.Decimal(15, 2) // 回款金额
+  paymentDate   DateTime // 回款日期
+  paymentMethod PaymentMethod? // 回款方式
+  remark        String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // 关联
+  contract Contract     @relation(fields: [contractId], references: [id])
+  plan     PaymentPlan? @relation(fields: [planId], references: [id])
+
+  @@map("payment_records")
+}
+
+/// 回款方式枚举
+enum PaymentMethod {
+  TRANSFER // 转账
+  CASH // 现金
+  CHECK // 支票
+}
+
+// ==================== 发票管理 ====================
+
+/// 发票表
+model Invoice {
+  id          String        @id @default(cuid())
+  contractId  String // 合同ID
+  invoiceNo   String // 发票号码
+  invoiceType InvoiceType // 发票类型
+  amount      Decimal       @db.Decimal(15, 2) // 发票金额
+  taxAmount   Decimal?      @db.Decimal(15, 2) // 税额
+  invoiceDate DateTime // 开票日期
+  status      InvoiceStatus @default(ISSUED)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // 关联
+  contract Contract @relation(fields: [contractId], references: [id])
+
+  @@map("invoices")
+}
+
+/// 发票类型枚举
+enum InvoiceType {
+  VAT_SPECIAL // 增值税专用发票
+  VAT_NORMAL // 增值税普通发票
+  RECEIPT // 收据
+}
+
+/// 发票状态枚举
+enum InvoiceStatus {
+  ISSUED // 已开具
+  VOIDED // 已作废
+}
+
+// ==================== 报销管理 ====================
+
+/// 报销单表
+model Expense {
+  id           String        @id @default(cuid())
+  expenseNo    String        @unique // 报销单号
+  applicantId  String // 申请人ID
+  department   String // 部门
+  contractId   String? // 关联合同（可选）
+  projectId    String // 关联项目（必填）
+  reason       String? // 报销事由
+  totalAmount  Decimal       @db.Decimal(15, 2) // 总金额
+  status       ExpenseStatus @default(DRAFT)
+  submitDate   DateTime? // 提交时间
+  approveDate  DateTime? // 审批时间
+  paymentDate  DateTime? // 打款时间
+  rejectReason String? // 驳回原因
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // 关联
+  applicant User            @relation(fields: [applicantId], references: [id])
+  contract  Contract?       @relation(fields: [contractId], references: [id])
+  project   Project         @relation(fields: [projectId], references: [id]) // 关联项目
+  details   ExpenseDetail[] // 报销明细
+  costs     Cost[] // 生成的费用
+
+  @@map("expenses")
+}
+
+// 报销类型已移除，费用类型由明细行的 feeType 字段决定
+
+/// 报销状态枚举
+enum ExpenseStatus {
+  DRAFT // 草稿
+  PENDING // 审批中
+  APPROVED // 已批准
+  REJECTED // 已驳回
+  PAID // 已打款
+}
+
+/// 报销明细表
+model ExpenseDetail {
+  id          String   @id @default(cuid())
+  expenseId   String // 报销单ID
+  feeType     FeeType // 费用类型
+  occurDate   DateTime // 发生日期
+  amount      Decimal  @db.Decimal(15, 2) // 金额
+  hasInvoice  Boolean  @default(false) // 是否有发票
+  invoiceType String? // 发票类型
+  invoiceNo   String? // 发票号码
+  description String? // 说明
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@map("expense_details")
+}
+
+// ==================== 费用管理 ====================
+
+/// 费用表
+model Cost {
+  id          String     @id @default(cuid())
+  feeType     FeeType // 费用类型
+  amount      Decimal    @db.Decimal(15, 2) // 金额
+  occurDate   DateTime // 发生日期
+  source      CostSource // 来源
+  expenseId   String? // 关联报销单
+  projectId   String // 关联项目（必填）
+  contractId  String? // 关联合同
+  description String? // 说明
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // 关联
+  expense  Expense?  @relation(fields: [expenseId], references: [id])
+  project  Project   @relation(fields: [projectId], references: [id])
+  contract Contract? @relation(fields: [contractId], references: [id])
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([feeType])
+  @@index([source])
+  @@index([occurDate])
+  @@index([createdAt])
+  @@index([projectId, feeType, source, occurDate])
+  @@map("costs")
+}
+
+/// 费用类型枚举
+enum FeeType {
+  TRAVEL // 差旅费
+  TRANSPORT // 交通费
+  ACCOMMODATION // 住宿费
+  MEAL // 餐饮费
+  OFFICE // 办公费
+  COMMUNICATION // 通讯费
+  OTHER // 其他
+}
+
+/// 费用来源枚举
+enum CostSource {
+  DIRECT // 直接录入
+  REIMBURSEMENT // 报销生成
+}
+
+// ==================== 部门管理 ====================
+
+/// 部门表
+model Department {
+  id          String   @id @default(cuid())
+  code        String   @unique // 部门编号
+  name        String // 部门名称
+  parentId    String? // 上级部门ID
+  managerId   String? // 部门负责人ID
+  sortOrder   Int      @default(0) // 排序
+  isActive    Boolean  @default(true) // 是否启用
+  remark      String? // 备注
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 自关联
+  parent   Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
+  children Department[] @relation("DepartmentTree")
+
+  // 部门成员和负责人
+  members User[] @relation("DepartmentMembers") // 部门成员
+  manager User?  @relation("DepartmentManager", fields: [managerId], references: [id])
+
+  @@map("departments")
+}
+
+// ==================== 预算管理 ====================
+
+/// 预算表
+model Budget {
+  id          String       @id @default(cuid())
+  year        Int // 预算年度
+  month       Int? // 预算月份（可选，为空表示年度预算）
+  department  String // 部门
+  feeType     FeeType // 费用类型
+  budgetAmount Decimal     @db.Decimal(15, 2) // 预算金额
+  usedAmount  Decimal      @db.Decimal(15, 2) @default(0) // 已使用金额
+  status      BudgetStatus @default(ACTIVE)
+  remark      String? // 备注
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([year, month, department, feeType]) // 同一部门同一时间段同一费用类型唯一
+  @@map("budgets")
+}
+
+/// 预算状态枚举
+enum BudgetStatus {
+  ACTIVE // 生效中
+  FROZEN // 已冻结
+  CLOSED // 已关闭
+}
+
+// ==================== 审计日志 ====================
+
+/// 审计日志表
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String // 操作人ID
+  action     String // 操作类型
+  entityType String // 实体类型
+  entityId   String // 实体ID
+  oldValue   Json? // 旧值
+  newValue   Json? // 新值
+  ipAddress  String? // IP地址
+  userAgent  String? // 用户代理
+  createdAt  DateTime @default(now())
+
+  // 关联
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+// ==================== 权限管理 ====================
+
+/// 角色权限配置表
+model RolePermission {
+  id         String   @id @default(cuid())
+  role       Role // 角色
+  permType   String // 权限类型: menu/function
+  permKey    String // 权限标识
+  isEnabled  Boolean  @default(true) // 是否启用
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([role, permType, permKey])
+  @@map("role_permissions")
+}
+
+// ==================== 项目管理 ====================
+
+/// 项目表
+model Project {
+  id          String   @id @default(cuid())
+  code        String   @unique // 项目编号
+  name        String // 项目名称
+  description String? // 项目描述
+  status      ProjectStatus @default(ACTIVE) // 项目状态
+  startDate   DateTime? // 开始日期
+  endDate     DateTime? // 结束日期
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  expenses        Expense[] // 关联的报销单
+  costs           Cost[] // 关联的费用
+  paymentRequests PaymentRequest[] // 关联的付款申请
+
+  @@map("projects")
+}
+
+/// 项目状态枚举
+enum ProjectStatus {
+  ACTIVE // 进行中
+  COMPLETED // 已完成
+  SUSPENDED // 已暂停
+  CANCELLED // 已取消
+}
+
+// ==================== 付款申请管理 ====================
+
+/// 银行账户表（收款方账户）
+model BankAccount {
+  id            String   @id @default(cuid())
+  accountType   String   @default("PERSONAL") // 账户类型: PERSONAL(个人), CORPORATE(对公)
+  accountName   String   // 户名（收款人姓名/公司名称）
+  accountNo     String   @unique // 账号
+  bankCode      String?  // 银行代码
+  bankName      String   // 开户银行
+  region        Json?    // 银行所在地区 [省, 市]
+  bankBranch    String?  // 支行名称
+  currency      String   @default("CNY") // 币种
+  isDefault     Boolean  @default(false) // 是否默认账户
+  isEnabled     Boolean  @default(true) // 是否启用
+  remark        String?  // 备注
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // 关联
+  paymentRequests PaymentRequest[] // 关联的付款申请
+
+  @@map("bank_accounts")
+}
+
+/// 付款申请表
+model PaymentRequest {
+  id              String                 @id @default(cuid())
+  requestNo       String                 @unique // 申请单号
+  projectId       String                 // 关联项目ID
+  reason          String                 // 付款事由
+  amount          Decimal                @db.Decimal(15, 2) // 付款金额
+  currency        String                 @default("CNY") // 币种
+  paymentMethod   PaymentRequestMethod   // 付款方式
+  paymentDate     DateTime               // 付款日期
+  bankAccountId   String                 // 银行账户ID
+  
+  // 收款方信息
+  payeeName       String?                // 收款方名称
+  payeeAccount    String?                // 收款方账号
+  payeeBank       String?                // 收款方开户行
+  
+  // 附件
+  attachments     Json?                  // 附件列表 [{name, url, size}]
+  
+  // 审批流程
+  applicantId     String                 // 申请人ID
+  status          PaymentRequestStatus   @default(DRAFT) // 申请状态
+  submitDate      DateTime?              // 提交时间
+  approvedBy      String?                // 审批人ID
+  approvedAt      DateTime?              // 审批时间
+  approvalRemark  String?                // 审批备注
+  
+  remark          String?                // 备注
+  isDeleted       Boolean                @default(false)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  // 关联
+  project         Project                @relation(fields: [projectId], references: [id])
+  bankAccount     BankAccount            @relation(fields: [bankAccountId], references: [id])
+  applicant       User                   @relation("PaymentRequestApplicant", fields: [applicantId], references: [id])
+  approver        User?                  @relation("PaymentRequestApprover", fields: [approvedBy], references: [id])
+
+  @@map("payment_requests")
+}
+
+/// 付款申请方式枚举
+enum PaymentRequestMethod {
+  TRANSFER    // 银行转账
+  CASH        // 现金
+  CHECK       // 支票
+  DRAFT       // 汇票
+  OTHER       // 其他
+}
+
+/// 付款申请状态枚举
+enum PaymentRequestStatus {
+  DRAFT       // 草稿
+  PENDING     // 待审批
+  APPROVED    // 已通过
+  REJECTED    // 已拒绝
+  PAID        // 已付款
+  CANCELLED   // 已取消
+}
+
+// ==================== 系统配置/数据字典 ====================
+
+/// 数据字典表
+model Dictionary {
+  id          String   @id @default(cuid())
+  type        String   // 字典类型，如: CUSTOMER_TYPE, PAYMENT_METHOD 等
+  code        String   // 字典编码
+  name        String   // 字典名称/显示值
+  value       String?  // 字典值（可选，默认使用code）
+  color       String?  // 显示颜色（用于标签等）
+  sortOrder   Int      @default(0) // 排序
+  isDefault   Boolean  @default(false) // 是否默认值
+  isEnabled   Boolean  @default(true) // 是否启用
+  remark      String?  // 备注
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([type, code]) // 同一类型下编码唯一
+  @@map("dictionaries")
+}

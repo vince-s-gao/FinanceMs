@@ -1,0 +1,312 @@
+'use client';
+
+// InfFinanceMs - 报表看板页面
+
+import { useEffect, useState } from 'react';
+import { Row, Col, Card, Table, Statistic, Typography, Spin, message, Tabs } from 'antd';
+import {
+  DollarOutlined,
+  TeamOutlined,
+  FileTextOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
+import { api } from '@/lib/api';
+import { formatAmount } from '@/lib/constants';
+
+const { Title, Text } = Typography;
+
+export default function ReportsPage() {
+  const [loading, setLoading] = useState(true);
+  const [receivables, setReceivables] = useState<any>(null);
+  const [customerReport, setCustomerReport] = useState<any[]>([]);
+  const [profitAnalysis, setProfitAnalysis] = useState<any[]>([]);
+
+  // 加载数据
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [receivablesRes, customerRes, profitRes] = await Promise.all([
+          api.get('/reports/receivables'),
+          api.get('/reports/customers'),
+          api.get('/reports/contracts/profit'),
+        ]);
+        setReceivables(receivablesRes);
+        setCustomerReport(customerRes as any[]);
+        setProfitAnalysis(profitRes as any[]);
+      } catch (error: any) {
+        message.error(error.message || '加载数据失败');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  // 客户报表列
+  const customerColumns = [
+    {
+      title: '客户名称',
+      dataIndex: 'customerName',
+      key: 'customerName',
+      ellipsis: true,
+    },
+    {
+      title: '合同数',
+      dataIndex: 'contractCount',
+      key: 'contractCount',
+      width: 80,
+    },
+    {
+      title: '合同总额',
+      dataIndex: 'totalAmount',
+      key: 'totalAmount',
+      width: 130,
+      render: (v: number) => `¥${formatAmount(v)}`,
+    },
+    {
+      title: '已收款',
+      dataIndex: 'receivedAmount',
+      key: 'receivedAmount',
+      width: 130,
+      render: (v: number) => (
+        <Text type="success">¥{formatAmount(v)}</Text>
+      ),
+    },
+    {
+      title: '应收款',
+      dataIndex: 'receivableAmount',
+      key: 'receivableAmount',
+      width: 130,
+      render: (v: number) => (
+        <Text type={v > 0 ? 'warning' : 'secondary'}>¥{formatAmount(v)}</Text>
+      ),
+    },
+    {
+      title: '90天+逾期',
+      dataIndex: 'overdueOver90',
+      key: 'overdueOver90',
+      width: 130,
+      render: (v: number) => (
+        <Text type={v > 0 ? 'danger' : 'secondary'}>¥{formatAmount(v)}</Text>
+      ),
+    },
+  ];
+
+  // 毛利分析列
+  const profitColumns = [
+    {
+      title: '合同编号',
+      dataIndex: 'contractNo',
+      key: 'contractNo',
+      width: 140,
+    },
+    {
+      title: '合同名称',
+      dataIndex: 'contractName',
+      key: 'contractName',
+      ellipsis: true,
+    },
+    {
+      title: '客户',
+      dataIndex: 'customerName',
+      key: 'customerName',
+      width: 150,
+      ellipsis: true,
+    },
+    {
+      title: '合同金额',
+      dataIndex: 'contractAmount',
+      key: 'contractAmount',
+      width: 120,
+      render: (v: number) => `¥${formatAmount(v)}`,
+    },
+    {
+      title: '已回款',
+      dataIndex: 'totalReceived',
+      key: 'totalReceived',
+      width: 120,
+      render: (v: number) => `¥${formatAmount(v)}`,
+    },
+    {
+      title: '总成本',
+      dataIndex: 'totalCost',
+      key: 'totalCost',
+      width: 120,
+      render: (v: number) => `¥${formatAmount(v)}`,
+    },
+    {
+      title: '毛利',
+      dataIndex: 'profit',
+      key: 'profit',
+      width: 120,
+      render: (v: number, record: any) => (
+        <Text type={record.isLoss ? 'danger' : 'success'}>
+          ¥{formatAmount(v)}
+        </Text>
+      ),
+    },
+    {
+      title: '毛利率',
+      dataIndex: 'profitRate',
+      key: 'profitRate',
+      width: 100,
+      render: (v: number, record: any) => (
+        <Text type={record.isLoss ? 'danger' : 'success'}>{v}%</Text>
+      ),
+    },
+  ];
+
+  const tabItems = [
+    {
+      key: 'receivables',
+      label: '应收账款',
+      children: (
+        <div>
+          {/* 汇总卡片 */}
+          <Row gutter={[16, 16]} className="mb-6">
+            <Col xs={24} sm={12} lg={6}>
+              <Card>
+                <Statistic
+                  title="合同总额"
+                  value={receivables?.totalContractAmount || 0}
+                  prefix="¥"
+                  precision={2}
+                  valueStyle={{ color: '#1890ff' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card>
+                <Statistic
+                  title="已回款"
+                  value={receivables?.totalReceived || 0}
+                  prefix="¥"
+                  precision={2}
+                  valueStyle={{ color: '#52c41a' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card>
+                <Statistic
+                  title="应收余额"
+                  value={receivables?.totalReceivable || 0}
+                  prefix="¥"
+                  precision={2}
+                  valueStyle={{ color: '#faad14' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card>
+                <Statistic
+                  title="90天+逾期"
+                  value={receivables?.agingDistribution?.daysOver90 || 0}
+                  prefix="¥"
+                  precision={2}
+                  valueStyle={{ color: '#ff4d4f' }}
+                />
+              </Card>
+            </Col>
+          </Row>
+
+          {/* 账龄分布 */}
+          <Card title="账龄分布">
+            <Row gutter={[16, 16]}>
+              <Col xs={24} sm={12} lg={6}>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <Text type="secondary">正常</Text>
+                  <div className="text-2xl font-bold text-green-500 mt-2">
+                    ¥{formatAmount(receivables?.agingDistribution?.normal || 0)}
+                  </div>
+                </div>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <Text type="secondary">0-30天</Text>
+                  <div className="text-2xl font-bold text-blue-500 mt-2">
+                    ¥{formatAmount(receivables?.agingDistribution?.days0to30 || 0)}
+                  </div>
+                </div>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <div className="text-center p-4 bg-orange-50 rounded-lg">
+                  <Text type="secondary">31-90天</Text>
+                  <div className="text-2xl font-bold text-orange-500 mt-2">
+                    ¥{formatAmount(receivables?.agingDistribution?.days31to90 || 0)}
+                  </div>
+                </div>
+              </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <div className="text-center p-4 bg-red-50 rounded-lg">
+                  <Text type="secondary">90天以上</Text>
+                  <div className="text-2xl font-bold text-red-500 mt-2">
+                    ¥{formatAmount(receivables?.agingDistribution?.daysOver90 || 0)}
+                  </div>
+                </div>
+              </Col>
+            </Row>
+          </Card>
+        </div>
+      ),
+    },
+    {
+      key: 'customers',
+      label: '客户维度',
+      children: (
+        <Table
+          columns={customerColumns}
+          dataSource={customerReport}
+          rowKey="customerId"
+          pagination={{ pageSize: 10 }}
+          scroll={{ x: 800 }}
+        />
+      ),
+    },
+    {
+      key: 'profit',
+      label: '合同毛利',
+      children: (
+        <div>
+          {/* 亏损预警 */}
+          {profitAnalysis.some((c) => c.isLoss) && (
+            <Card className="mb-4 bg-red-50 border-red-200">
+              <div className="flex items-center">
+                <WarningOutlined className="text-red-500 text-xl mr-2" />
+                <Text type="danger">
+                  存在 {profitAnalysis.filter((c) => c.isLoss).length} 个亏损合同，请关注！
+                </Text>
+              </div>
+            </Card>
+          )}
+
+          <Table
+            columns={profitColumns}
+            dataSource={profitAnalysis}
+            rowKey="contractId"
+            pagination={{ pageSize: 10 }}
+            scroll={{ x: 1000 }}
+            rowClassName={(record) => (record.isLoss ? 'bg-red-50' : '')}
+          />
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div>
+      <Title level={4}>📊 报表看板</Title>
+
+      <Tabs items={tabItems} className="mt-4" />
+    </div>
+  );
+}

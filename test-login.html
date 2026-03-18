@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试登录</title>
+</head>
+<body>
+    <h1>测试登录功能</h1>
+    <div id="result"></div>
+
+    <script>
+        async function testLogin() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@inffinancems.com',
+                        password: 'Admin@123'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <h2>✅ 登录成功！</h2>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                        <p>Access Token: ${data.accessToken.substring(0, 50)}...</p>
+                    `;
+                    
+                    // 保存token到localStorage
+                    localStorage.setItem('accessToken', data.accessToken);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    
+                    // 测试访问受保护的API
+                    testProtectedAPI(data.accessToken);
+                } else {
+                    resultDiv.innerHTML = `
+                        <h2>❌ 登录失败</h2>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h2>❌ 请求错误</h2>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
+
+        async function testProtectedAPI(token) {
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/me', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    }
+                });
+
+                const data = await response.json();
+                
+                const resultDiv = document.getElementById('result');
+                resultDiv.innerHTML += `
+                    <h2>✅ 受保护API访问成功！</h2>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                const resultDiv = document.getElementById('result');
+                resultDiv.innerHTML += `
+                    <h2>❌ 受保护API访问失败</h2>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
+
+        // 页面加载后自动测试
+        window.onload = testLogin;
+    </script>
+</body>
+</html>
