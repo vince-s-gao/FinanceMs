@@ -150,6 +150,14 @@ interface Attachment {
   size?: number;
 }
 
+interface PurchaseContract {
+  id: string;
+  contractNo: string;
+  name: string;
+  contractType?: string;
+  customer?: { id: string; name: string; code?: string };
+}
+
 export default function EditPaymentRequestPage() {
   const params = useParams();
   const router = useRouter();
@@ -158,6 +166,7 @@ export default function EditPaymentRequestPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [purchaseContracts, setPurchaseContracts] = useState<PurchaseContract[]>([]);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [addAccountModalVisible, setAddAccountModalVisible] = useState(false);
@@ -292,9 +301,10 @@ export default function EditPaymentRequestPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [request, accounts] = await Promise.all([
+        const [request, accounts, contracts] = await Promise.all([
           api.get<any>(`/payment-requests/${params.id}`),
           api.get<BankAccount[]>('/bank-accounts'),
+          api.get<PurchaseContract[]>('/payment-requests/purchase-contract-options'),
         ]);
 
         // 检查状态是否允许编辑
@@ -305,9 +315,11 @@ export default function EditPaymentRequestPage() {
         }
 
         setBankAccounts(accounts);
+        setPurchaseContracts(contracts || []);
 
         // 设置表单值（收款方信息已整合到银行账户中）
         form.setFieldsValue({
+          contractId: request.contractId,
           reason: request.reason,
           amount: Number(request.amount),
           currency: request.currency,
@@ -391,6 +403,7 @@ export default function EditPaymentRequestPage() {
 
       // 收款方信息已整合到银行账户中，通过 bankAccountId 关联
       const payload = {
+        contractId: values.contractId,
         reason: values.reason,
         amount: values.amount,
         currency: values.currency,
@@ -441,6 +454,25 @@ export default function EditPaymentRequestPage() {
         {/* 申请详情 */}
         <Card title="申请详情">
           <Row gutter={24}>
+            <Col span={24}>
+              <Form.Item
+                name="contractId"
+                label="关联合同（采购）"
+                rules={[{ required: true, message: '请选择采购合同' }]}
+                extra="付款申请仅支持关联采购合同"
+              >
+                <Select
+                  placeholder="请选择采购合同"
+                  showSearch
+                  optionFilterProp="label"
+                  options={purchaseContracts.map((contract) => ({
+                    value: contract.id,
+                    label: `${contract.contractNo} - ${contract.name}（${contract.customer?.name || '未命名主体'}）`,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+
             <Col span={24}>
               <Form.Item
                 name="reason"

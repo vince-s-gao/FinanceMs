@@ -136,6 +136,14 @@ interface Project {
   name: string;
 }
 
+interface PurchaseContract {
+  id: string;
+  contractNo: string;
+  name: string;
+  contractType?: string;
+  customer?: { id: string; name: string; code?: string };
+}
+
 // 银行账户/收款方信息接口（合并后的结构）
 interface BankAccount {
   id: string;
@@ -163,6 +171,7 @@ export default function NewPaymentRequestPage() {
   const [addAccountForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [purchaseContracts, setPurchaseContracts] = useState<PurchaseContract[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -177,6 +186,17 @@ export default function NewPaymentRequestPage() {
       setProjects(res.items || res || []);
     } catch (error) {
       console.error('加载项目列表失败', error);
+    }
+  };
+
+  // 加载采购合同列表
+  const loadPurchaseContracts = async () => {
+    try {
+      const contracts = await api.get<PurchaseContract[]>('/payment-requests/purchase-contract-options');
+      setPurchaseContracts(contracts || []);
+    } catch (error) {
+      console.error('加载采购合同失败', error);
+      message.error({ key: 'payment-contract-options-load', content: '加载采购合同失败' });
     }
   };
 
@@ -197,6 +217,7 @@ export default function NewPaymentRequestPage() {
 
   useEffect(() => {
     loadProjects();
+    loadPurchaseContracts();
     loadBankAccounts();
   }, [form]);
 
@@ -369,6 +390,7 @@ export default function NewPaymentRequestPage() {
       // 收款方信息已整合到银行账户中，通过 bankAccountId 关联
       const payload = {
         projectId: values.projectId,
+        contractId: values.contractId,
         reason: values.reason,
         amount: values.amount,
         currency: values.currency || 'CNY',
@@ -445,6 +467,25 @@ export default function NewPaymentRequestPage() {
                     </Select.Option>
                   ))}
                 </Select>
+              </Form.Item>
+            </Col>
+
+            <Col span={24}>
+              <Form.Item
+                name="contractId"
+                label="关联合同（采购）"
+                rules={[{ required: true, message: '请选择采购合同' }]}
+                extra="付款申请仅支持关联采购合同"
+              >
+                <Select
+                  placeholder="请选择采购合同"
+                  showSearch
+                  optionFilterProp="label"
+                  options={purchaseContracts.map((contract) => ({
+                    value: contract.id,
+                    label: `${contract.contractNo} - ${contract.name}（${contract.customer?.name || '未命名主体'}）`,
+                  }))}
+                />
               </Form.Item>
             </Col>
 

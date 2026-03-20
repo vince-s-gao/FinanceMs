@@ -53,6 +53,7 @@ const paymentMethodMap: Record<string, string> = {
 interface PaymentRequest {
   id: string;
   requestNo: string;
+  contractId?: string;
   reason: string;
   amount: number;
   currency: string;
@@ -62,6 +63,8 @@ interface PaymentRequest {
   // 收款方信息已整合到 bankAccount 中
   attachments?: { name: string; url: string; size?: number }[];
   remark?: string;
+  contract?: { id: string; contractNo: string; name: string; contractType?: string };
+  project?: { id: string; code: string; name: string };
   applicant: { id: string; name: string; email: string; phone?: string };
   // bankAccount 包含收款方完整信息
   bankAccount: {
@@ -247,6 +250,19 @@ export default function PaymentRequestDetailPage() {
       {/* 基本信息 */}
       <Card title="申请详情">
         <Descriptions column={3}>
+          <Descriptions.Item label="采购合同" span={3}>
+            {data.contract ? (
+              <div>
+                <div>{data.contract.contractNo}</div>
+                <Text type="secondary">{data.contract.name}</Text>
+              </div>
+            ) : (
+              '-'
+            )}
+          </Descriptions.Item>
+          <Descriptions.Item label="关联项目" span={3}>
+            {data.project ? `${data.project.code} - ${data.project.name}` : '-'}
+          </Descriptions.Item>
           <Descriptions.Item label="付款事由">{data.reason}</Descriptions.Item>
           <Descriptions.Item label="付款金额">
             <Text strong style={{ fontSize: 16 }}>

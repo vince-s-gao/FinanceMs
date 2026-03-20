@@ -26,6 +26,7 @@ import {
   PlusOutlined,
   SearchOutlined,
   StopOutlined,
+  DeleteOutlined,
   UploadOutlined,
   LinkOutlined,
   FileSearchOutlined,
@@ -439,6 +440,26 @@ export default function InvoicesPage() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    try {
+      await api.delete(`/invoices/${id}`);
+      message.success('删除成功');
+      fetchInvoices();
+    } catch (error: any) {
+      message.error(error.message || '删除失败');
+    }
+  };
+
+  const getTaxRateDisplay = (amount?: number, taxAmount?: number) => {
+    if (amount === null || amount === undefined || amount <= 0) return '-';
+    if (taxAmount === null || taxAmount === undefined || taxAmount < 0) return '-';
+    const baseWithoutTax = amount - taxAmount;
+    if (baseWithoutTax <= 0) return '-';
+    const rate = (taxAmount / baseWithoutTax) * 100;
+    if (!Number.isFinite(rate)) return '-';
+    return `${rate.toFixed(2)}%`;
+  };
+
   // 表格列定义
   const columns = [
     {
@@ -522,6 +543,12 @@ export default function InvoicesPage() {
       render: (v: number) => (v ? `¥${formatAmount(v)}` : '-'),
     },
     {
+      title: '税率',
+      key: 'taxRate',
+      width: 90,
+      render: (_: any, record: Invoice) => getTaxRateDisplay(record.amount, record.taxAmount),
+    },
+    {
       title: '开票日期',
       dataIndex: 'invoiceDate',
       key: 'invoiceDate',
@@ -542,21 +569,34 @@ export default function InvoicesPage() {
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 170,
       render: (_: any, record: Invoice) => (
-        record.status === 'ISSUED' && (
-      <Popconfirm
-        title="确定作废该发票吗？"
-        description="作废后该发票将无法恢复"
-        onConfirm={() => handleVoid(record.id)}
-        okText="确定"
-        cancelText="取消"
-      >
-        <Button type="link" size="small" danger icon={<StopOutlined />}>
-          作废
-        </Button>
-      </Popconfirm>
-        )
+        <Space size="small">
+          {record.status === 'ISSUED' ? (
+            <Popconfirm
+              title="确定作废该发票吗？"
+              description="作废后该发票将无法恢复"
+              onConfirm={() => handleVoid(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<StopOutlined />}>
+                作废
+              </Button>
+            </Popconfirm>
+          ) : null}
+          <Popconfirm
+            title="确定删除该发票吗？"
+            description="删除后数据将无法恢复"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -629,7 +669,7 @@ export default function InvoicesPage() {
             setPageSize(ps);
           },
         }}
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1320 }}
       />
 
       {/* 新增弹窗 */}

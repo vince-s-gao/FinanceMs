@@ -50,7 +50,15 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.getStatistics();
   }
 
-  @Get(':id')
+  @Get('purchase-contract-options')
+  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @ApiOperation({ summary: '获取采购合同选项（用于付款申请关联）' })
+  @ApiResponse({ status: 200, description: '获取成功' })
+  getPurchaseContractOptions(@Query('keyword') keyword?: string) {
+    return this.paymentRequestsService.getPurchaseContractOptions(keyword);
+  }
+
+  @Get(':id([a-z0-9]{10,})')
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: '获取付款申请详情' })
   @ApiResponse({ status: 200, description: '获取成功' })
@@ -59,7 +67,7 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.findOne(id);
   }
 
-  @Put(':id')
+  @Put(':id([a-z0-9]{10,})')
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: '更新付款申请' })
   @ApiResponse({ status: 200, description: '更新成功' })
@@ -68,7 +76,7 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.update(id, updateDto);
   }
 
-  @Post(':id/submit')
+  @Post(':id([a-z0-9]{10,})/submit')
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: '提交付款申请' })
   @ApiResponse({ status: 200, description: '提交成功' })
@@ -77,7 +85,7 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.submit(id);
   }
 
-  @Post(':id/approve')
+  @Post(':id([a-z0-9]{10,})/approve')
   @Roles(Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: '审批付款申请' })
   @ApiResponse({ status: 200, description: '审批成功' })
@@ -90,7 +98,7 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.approve(id, approveDto, user.id);
   }
 
-  @Post(':id/confirm-payment')
+  @Post(':id([a-z0-9]{10,})/confirm-payment')
   @Roles(Role.FINANCE, Role.ADMIN)
   @ApiOperation({ summary: '确认付款' })
   @ApiResponse({ status: 200, description: '确认成功' })
@@ -99,7 +107,7 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.confirmPayment(id, dto.remark);
   }
 
-  @Post(':id/cancel')
+  @Post(':id([a-z0-9]{10,})/cancel')
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: '取消付款申请' })
   @ApiResponse({ status: 200, description: '取消成功' })
@@ -108,7 +116,7 @@ export class PaymentRequestsController {
     return this.paymentRequestsService.cancel(id);
   }
 
-  @Delete(':id')
+  @Delete(':id([a-z0-9]{10,})')
   @Roles(Role.FINANCE, Role.ADMIN)
   @ApiOperation({ summary: '删除付款申请' })
   @ApiResponse({ status: 200, description: '删除成功' })

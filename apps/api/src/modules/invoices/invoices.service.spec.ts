@@ -348,6 +348,36 @@ describe('InvoicesService', () => {
     expect(parsed.candidate.invoiceDate).toBe('2026-01-27');
   });
 
+  it('should not parse long invoice number as amount for attachment pdf', async () => {
+    const file = {
+      originalname: 'dzfp_26112000000065517391_国耀融汇融资租赁有限公司_20260106161428.pdf',
+      buffer: Buffer.from('fake-pdf'),
+      mimetype: 'application/pdf',
+      size: 4096,
+    } as Express.Multer.File;
+
+    jest.spyOn(service as any, 'extractAttachmentText').mockResolvedValue(
+      [
+        '电子发票（增值税专用发票） 发票号码：',
+        '开票日期：',
+        '价税合计（大写） （小写）',
+        '开票人：',
+        '26112000000065517391',
+        '2026年01月06日',
+        '¥3537.74  ¥212.26',
+        '叁仟柒佰伍拾圆整  ¥3750.00',
+        '6% 3537.74 212.26',
+      ].join('\n'),
+    );
+
+    const parsed = await (service as any).parseAttachmentFile(file, 1, 'contract-1');
+    expect(parsed.error).toBeUndefined();
+    expect(parsed.candidate.invoiceNo).toBe('26112000000065517391');
+    expect(parsed.candidate.amount).toBe(3750);
+    expect(parsed.candidate.taxAmount).toBe(212.26);
+    expect(parsed.candidate.invoiceDate).toBe('2026-01-06');
+  });
+
   it('should import parsed invoice files and save attachment', async () => {
     prisma.contract.findFirst.mockResolvedValue({ id: 'contract-1', isDeleted: false });
     uploadService.saveFile.mockResolvedValue({

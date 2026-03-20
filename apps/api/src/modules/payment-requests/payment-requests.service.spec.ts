@@ -29,6 +29,14 @@ describe('PaymentRequestsService', () => {
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: 'proj-1', isDeleted: false }),
       },
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'contract-1',
+          contractNo: 'HT-001',
+          name: '采购合同A',
+          contractType: 'PURCHASE',
+        }),
+      },
       user: {
         findMany: jest.fn().mockResolvedValue([]),
       },
@@ -69,6 +77,9 @@ describe('PaymentRequestsService', () => {
       include: {
         project: {
           select: { id: true, code: true, name: true },
+        },
+        contract: {
+          select: { id: true, contractNo: true, name: true, contractType: true },
         },
         bankAccount: true,
         applicant: {
@@ -112,13 +123,65 @@ describe('PaymentRequestsService', () => {
 
   it('should reject create when bank account does not exist', async () => {
     prisma.project.findFirst.mockResolvedValueOnce({ id: 'proj-1' });
+    prisma.contract.findFirst.mockResolvedValueOnce({
+      id: 'contract-1',
+      contractNo: 'HT-001',
+      name: '采购合同A',
+      contractType: 'PURCHASE',
+    });
     prisma.bankAccount.findUnique.mockResolvedValueOnce(null);
 
     await expect(
       service.create(
         {
           projectId: 'proj-1',
+          contractId: 'contract-1',
           bankAccountId: 'missing-bank',
+          reason: '付款',
+          amount: 100,
+          paymentMethod: 'TRANSFER',
+          paymentDate: '2026-03-01',
+        } as any,
+        'u1',
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should reject create when contract does not exist', async () => {
+    prisma.project.findFirst.mockResolvedValueOnce({ id: 'proj-1' });
+    prisma.contract.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      service.create(
+        {
+          projectId: 'proj-1',
+          contractId: 'missing-contract',
+          bankAccountId: 'bank-1',
+          reason: '付款',
+          amount: 100,
+          paymentMethod: 'TRANSFER',
+          paymentDate: '2026-03-01',
+        } as any,
+        'u1',
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should reject create when contract is not purchase type', async () => {
+    prisma.project.findFirst.mockResolvedValueOnce({ id: 'proj-1' });
+    prisma.contract.findFirst.mockResolvedValueOnce({
+      id: 'contract-sales',
+      contractNo: 'HT-S-001',
+      name: '销售合同A',
+      contractType: 'SALES',
+    });
+
+    await expect(
+      service.create(
+        {
+          projectId: 'proj-1',
+          contractId: 'contract-sales',
+          bankAccountId: 'bank-1',
           reason: '付款',
           amount: 100,
           paymentMethod: 'TRANSFER',
@@ -138,6 +201,7 @@ describe('PaymentRequestsService', () => {
     await service.create(
       {
         projectId: 'proj-1',
+        contractId: 'contract-1',
         bankAccountId: 'bank-1',
         reason: '付款',
         amount: 100,
@@ -154,6 +218,7 @@ describe('PaymentRequestsService', () => {
           requestNo: expect.stringMatching(/^FK\d{12}$/),
           status: 'DRAFT',
           project: { connect: { id: 'proj-1' } },
+          contract: { connect: { id: 'contract-1' } },
           bankAccount: { connect: { id: 'bank-1' } },
           applicant: { connect: { id: 'u1' } },
         }),
@@ -170,6 +235,7 @@ describe('PaymentRequestsService', () => {
     await service.create(
       {
         projectId: 'proj-1',
+        contractId: 'contract-1',
         bankAccountId: 'bank-1',
         reason: '默认币种测试',
         amount: 200,
@@ -200,6 +266,7 @@ describe('PaymentRequestsService', () => {
     await service.create(
       {
         projectId: 'proj-1',
+        contractId: 'contract-1',
         bankAccountId: 'bank-1',
         reason: '重试测试',
         amount: 300,
@@ -227,6 +294,7 @@ describe('PaymentRequestsService', () => {
       service.create(
         {
           projectId: 'proj-1',
+          contractId: 'contract-1',
           bankAccountId: 'bank-1',
           reason: '重试失败测试',
           amount: 300,
@@ -284,6 +352,20 @@ describe('PaymentRequestsService', () => {
 
     const updateArg = prisma.paymentRequest.update.mock.calls[0][0];
     expect(updateArg.data.project).toEqual({ connect: { id: 'proj-2' } });
+  });
+
+  it('should connect contract when contractId is provided in update', async () => {
+    prisma.contract.findFirst.mockResolvedValueOnce({
+      id: 'contract-2',
+      contractNo: 'HT-P-002',
+      name: '采购合同B',
+      contractType: 'PURCHASE',
+    });
+
+    await service.update('pr-1', { contractId: 'contract-2' } as any);
+
+    const updateArg = prisma.paymentRequest.update.mock.calls[0][0];
+    expect(updateArg.data.contract).toEqual({ connect: { id: 'contract-2' } });
   });
 
   it('should include paymentDate, bankAccount and attachments when update dto provides them', async () => {
@@ -576,7 +658,8 @@ describe('PaymentRequestsService', () => {
       .mockResolvedValueOnce(3);
     prisma.paymentRequest.aggregate
       .mockResolvedValueOnce({ _sum: { amount: 1000 } })
-      .mockResolvedValueOnce({ _sum: { amount: null } });
+      .mockResolvedValueOnce({ _sum: { amount: null } })
+      .mockResolvedValueOnce({ _sum: { amount: 250 } });
 
     const result = await service.getStatistics();
 
@@ -589,6 +672,7 @@ describe('PaymentRequestsService', () => {
       paidCount: 3,
       totalAmount: 1000,
       paidAmount: 0,
+      payableAmount: 250,
     });
   });
 
@@ -602,11 +686,13 @@ describe('PaymentRequestsService', () => {
       .mockResolvedValueOnce(0);
     prisma.paymentRequest.aggregate
       .mockResolvedValueOnce({ _sum: { amount: null } })
-      .mockResolvedValueOnce({ _sum: { amount: 500 } });
+      .mockResolvedValueOnce({ _sum: { amount: 500 } })
+      .mockResolvedValueOnce({ _sum: { amount: null } });
 
     const result = await service.getStatistics();
     expect(result.totalAmount).toBe(0);
     expect(result.paidAmount).toBe(500);
+    expect(result.payableAmount).toBe(0);
   });
 
   it('should build all optional filters in findAll', async () => {
@@ -616,6 +702,7 @@ describe('PaymentRequestsService', () => {
       paymentMethod: 'TRANSFER',
       status: 'PENDING',
       projectId: 'proj-1',
+      contractId: 'contract-1',
       bankAccountId: 'bank-1',
       applicantId: 'u1',
       paymentDateStart: '2026-03-01',
@@ -630,6 +717,7 @@ describe('PaymentRequestsService', () => {
     expect(where.paymentMethod).toBe('TRANSFER');
     expect(where.status).toBe('PENDING');
     expect(where.projectId).toBe('proj-1');
+    expect(where.contractId).toBe('contract-1');
     expect(where.bankAccountId).toBe('bank-1');
     expect(where.applicantId).toBe('u1');
     expect(where.paymentDate.gte).toBeInstanceOf(Date);

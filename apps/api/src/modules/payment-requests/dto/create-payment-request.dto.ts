@@ -46,6 +46,11 @@ export class CreatePaymentRequestDto {
   @IsNotEmpty({ message: '请选择关联项目' })
   projectId: string;
 
+  @ApiProperty({ description: '关联合同ID（仅支持采购合同）' })
+  @IsString()
+  @IsNotEmpty({ message: '请选择采购合同' })
+  contractId: string;
+
   @ApiProperty({ description: '付款事由' })
   @IsString()
   @IsNotEmpty({ message: '付款事由不能为空' })

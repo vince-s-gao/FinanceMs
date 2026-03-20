@@ -16,6 +16,34 @@ export class PaymentRequestsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  private isPurchaseContractType(contractType?: string | null): boolean {
+    const raw = (contractType || '').trim();
+    const normalized = raw.toUpperCase();
+    return normalized.includes('PURCHASE') || raw.includes('采购');
+  }
+
+  private async validatePurchaseContract(contractId: string) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, isDeleted: false },
+      select: {
+        id: true,
+        contractNo: true,
+        name: true,
+        contractType: true,
+      },
+    });
+
+    if (!contract) {
+      throw new BadRequestException('关联合同不存在');
+    }
+
+    if (!this.isPurchaseContractType(contract.contractType)) {
+      throw new BadRequestException('付款申请仅支持关联采购合同');
+    }
+
+    return contract;
+  }
+
   private async notifyApproversForSubmit(request: any) {
     const approvers = await this.prisma.user.findMany({
       where: {
@@ -103,6 +131,7 @@ export class PaymentRequestsService {
     if (!project) {
       throw new BadRequestException('关联项目不存在');
     }
+    await this.validatePurchaseContract(createDto.contractId);
 
     // 验证银行账户是否存在
     const bankAccount = await this.prisma.bankAccount.findUnique({
@@ -124,6 +153,7 @@ export class PaymentRequestsService {
             paymentMethod: createDto.paymentMethod,
             paymentDate: new Date(createDto.paymentDate),
             project: { connect: { id: createDto.projectId } },
+            contract: { connect: { id: createDto.contractId } },
             bankAccount: { connect: { id: createDto.bankAccountId } },
             payeeName: createDto.payeeName,
             payeeAccount: createDto.payeeAccount,
@@ -136,6 +166,9 @@ export class PaymentRequestsService {
           include: {
             project: {
               select: { id: true, code: true, name: true },
+            },
+            contract: {
+              select: { id: true, contractNo: true, name: true, contractType: true },
             },
             bankAccount: true,
             applicant: {
@@ -164,6 +197,7 @@ export class PaymentRequestsService {
       paymentMethod,
       status,
       projectId,
+      contractId,
       bankAccountId,
       applicantId,
       paymentDateStart,
@@ -191,6 +225,9 @@ export class PaymentRequestsService {
     if (projectId) {
       where.projectId = projectId;
     }
+    if (contractId) {
+      where.contractId = contractId;
+    }
     if (bankAccountId) {
       where.bankAccountId = bankAccountId;
     }
@@ -214,6 +251,9 @@ export class PaymentRequestsService {
         include: {
           project: {
             select: { id: true, code: true, name: true },
+          },
+          contract: {
+            select: { id: true, contractNo: true, name: true, contractType: true },
           },
           bankAccount: true,
           applicant: {
@@ -247,6 +287,9 @@ export class PaymentRequestsService {
       include: {
         project: {
           select: { id: true, code: true, name: true },
+        },
+        contract: {
+          select: { id: true, contractNo: true, name: true, contractType: true },
         },
         bankAccount: true,
         applicant: {
@@ -293,6 +336,9 @@ export class PaymentRequestsService {
         throw new BadRequestException('关联项目不存在');
       }
     }
+    if (updateDto.contractId) {
+      await this.validatePurchaseContract(updateDto.contractId);
+    }
 
     // 构建更新数据
     const updateData: any = {
@@ -316,6 +362,9 @@ export class PaymentRequestsService {
     if (updateDto.projectId) {
       updateData.project = { connect: { id: updateDto.projectId } };
     }
+    if (updateDto.contractId) {
+      updateData.contract = { connect: { id: updateDto.contractId } };
+    }
 
     if (updateDto.attachments) {
       updateData.attachments = JSON.parse(JSON.stringify(updateDto.attachments));
@@ -332,6 +381,12 @@ export class PaymentRequestsService {
       where: { id },
       data: updateData,
       include: {
+        project: {
+          select: { id: true, code: true, name: true },
+        },
+        contract: {
+          select: { id: true, contractNo: true, name: true, contractType: true },
+        },
         bankAccount: true,
         applicant: {
           select: { id: true, name: true, email: true },
@@ -528,5 +583,40 @@ export class PaymentRequestsService {
       paidAmount: paidAmount._sum.amount || 0,
       payableAmount: payableAmount._sum.amount || 0,
     };
+  }
+
+  async getPurchaseContractOptions(keyword?: string) {
+    const where: Prisma.ContractWhereInput = {
+      isDeleted: false,
+    };
+
+    if (keyword) {
+      where.OR = [
+        { contractNo: { contains: keyword, mode: 'insensitive' } },
+        { name: { contains: keyword, mode: 'insensitive' } },
+        { customer: { name: { contains: keyword, mode: 'insensitive' } } },
+      ];
+    }
+
+    const contracts = await this.prisma.contract.findMany({
+      where,
+      select: {
+        id: true,
+        contractNo: true,
+        name: true,
+        contractType: true,
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+    });
+
+    return contracts.filter((contract) => this.isPurchaseContractType(contract.contractType));
   }
 }

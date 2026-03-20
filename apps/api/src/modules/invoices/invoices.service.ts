@@ -5,6 +5,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { QueryInvoiceDto } from './dto/query-invoice.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import * as fs from 'fs';
+import * as path from 'path';
 import { parseDateRangeEnd, parseDateRangeStart, resolveSortField } from '../../common/utils/query.utils';
 import {
   getFileExtension,
@@ -34,6 +36,7 @@ const ALLOWED_INVOICE_SORT_FIELDS = [
 const INVOICE_TYPE_VALUES = ['VAT_SPECIAL', 'VAT_NORMAL', 'RECEIPT'] as const;
 type InvoiceTypeValue = (typeof INVOICE_TYPE_VALUES)[number];
 type InvoiceDirectionValue = 'INBOUND' | 'OUTBOUND';
+const MAX_REASONABLE_INVOICE_AMOUNT = 1_000_000_000; // 10亿，超过该值通常为误识别（如发票号码串）
 
 const IMPORT_HEADER_ALIASES = {
   contractId: ['合同ID', '合同id', 'contractId', 'contract_id'],
@@ -167,12 +170,71 @@ export class InvoicesService {
       : baseName;
   }
 
+  private resolveAttachmentMimeType(fileName: string): string {
+    const ext = path.extname(fileName).toLowerCase();
+    const mimeByExt: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
+    return mimeByExt[ext] || 'application/octet-stream';
+  }
+
+  async getAttachmentDownloadPayload(id: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id },
+      select: {
+        invoiceNo: true,
+        attachmentUrl: true,
+        attachmentName: true,
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('发票不存在');
+    }
+
+    if (!invoice.attachmentUrl) {
+      throw new BadRequestException('该发票暂无附件');
+    }
+
+    const fullPath = this.uploadService.getFilePath(invoice.attachmentUrl);
+    if (!fs.existsSync(fullPath)) {
+      throw new NotFoundException('附件不存在或已被删除');
+    }
+
+    const filenameRaw =
+      invoice.attachmentName?.trim()
+      || path.basename(fullPath)
+      || `${invoice.invoiceNo}-附件`;
+    const filename = this.normalizeOriginalFileName(filenameRaw) || filenameRaw;
+
+    return {
+      filename,
+      mimeType: this.resolveAttachmentMimeType(filename),
+      buffer: fs.readFileSync(fullPath),
+    };
+  }
+
   private parseNumber(raw: string): number | null {
-    const value = normalizeText(raw || '').replace(/[,\s]/g, '');
+    const value = normalizeText(raw || '').replace(/[,\s，]/g, '');
     if (!value) return null;
     const num = Number(value.replace(/[¥￥元]/g, ''));
     if (!Number.isFinite(num)) return null;
     return num;
+  }
+
+  private toReasonableAmount(raw: string): number | null {
+    const parsed = this.parseNumber(raw);
+    if (parsed === null) return null;
+    if (parsed < 0.01 || parsed > MAX_REASONABLE_INVOICE_AMOUNT) return null;
+    return parsed;
   }
 
   private normalizeDate(value: string): string | null {
@@ -262,21 +324,19 @@ export class InvoicesService {
     const candidates: number[] = [];
 
     const normalizedText = normalizeText(text || '');
-    const compactText = normalizedText.replace(/\s+/g, '');
 
     const keywordPatterns = [
-      /(?:价税合计(?:小写)?|合计金额|发票金额|金额合计|小写)\D{0,8}([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi,
-      /(?:金额|AMOUNT)\s*[:：]?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi,
+      /(?:价税合计(?:（?小写）?)?|小写)\s*[:：]?\s*(?:¥|￥)\s*([0-9]{1,3}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2})|[0-9]+(?:\.[0-9]{1,2}))/gi,
+      /(?:合计金额|发票金额|金额合计)\s*[:：]?\s*[¥￥]?\s*([0-9]{1,3}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2})|[0-9]+(?:\.[0-9]{1,2}))/gi,
+      /(?:金额|AMOUNT)\s*[:：]?\s*[¥￥]?\s*([0-9]{1,3}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2})|[0-9]+(?:\.[0-9]{1,2}))/gi,
     ];
 
-    for (const source of [compactText, normalizedText]) {
-      for (const pattern of keywordPatterns) {
-        let match: RegExpExecArray | null = pattern.exec(source);
-        while (match) {
-          const parsed = this.parseNumber(match[1]);
-          if (parsed !== null) candidates.push(parsed);
-          match = pattern.exec(source);
-        }
+    for (const pattern of keywordPatterns) {
+      let match: RegExpExecArray | null = pattern.exec(normalizedText);
+      while (match) {
+        const parsed = this.toReasonableAmount(match[1]);
+        if (parsed !== null) candidates.push(parsed);
+        match = pattern.exec(normalizedText);
       }
     }
 
@@ -284,14 +344,12 @@ export class InvoicesService {
       return Math.max(...candidates);
     }
 
-    const currencyPattern = /(?:¥|￥)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g;
-    for (const source of [compactText, normalizedText]) {
-      let match: RegExpExecArray | null = currencyPattern.exec(source);
-      while (match) {
-        const parsed = this.parseNumber(match[1]);
-        if (parsed !== null) candidates.push(parsed);
-        match = currencyPattern.exec(source);
-      }
+    const currencyPattern = /(?:¥|￥)\s*([0-9]{1,3}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2})|[0-9]+(?:\.[0-9]{1,2}))/g;
+    let match: RegExpExecArray | null = currencyPattern.exec(normalizedText);
+    while (match) {
+      const parsed = this.toReasonableAmount(match[1]);
+      if (parsed !== null) candidates.push(parsed);
+      match = currencyPattern.exec(normalizedText);
     }
 
     if (candidates.length > 0) {
@@ -301,8 +359,8 @@ export class InvoicesService {
     // OCR / PDF 文本布局异常时，金额关键词与数值可能被打散；此时回退到“小数金额集合取最大值”。
     const decimalTokens = normalizedText.match(/\b([0-9]{1,12}\.[0-9]{1,2})\b/g) || [];
     const decimalCandidates = decimalTokens
-      .map((token) => this.parseNumber(token))
-      .filter((num): num is number => num !== null && num >= 0.01 && num <= 100000000);
+      .map((token) => this.toReasonableAmount(token))
+      .filter((num): num is number => num !== null);
     if (decimalCandidates.length > 0) {
       return Math.max(...decimalCandidates);
     }
@@ -348,19 +406,16 @@ export class InvoicesService {
 
   private extractTaxAmount(text: string): number | null {
     const normalizedText = normalizeText(text || '');
-    const compactText = normalizedText.replace(/\s+/g, '');
     const patterns = [
-      /(?:税额|税金|TAX)\s*[:：]?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i,
-      /(?:税额|税金|TAX)\D{0,8}([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i,
+      /(?:税额|税金|TAX)\s*[:：]?\s*[¥￥]?\s*([0-9]{1,3}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2})|[0-9]+(?:\.[0-9]{1,2}))/i,
+      /(?:税额|税金|TAX)\D{0,8}([0-9]{1,3}(?:[,，][0-9]{3})*(?:\.[0-9]{1,2})|[0-9]+(?:\.[0-9]{1,2}))/i,
     ];
 
-    for (const source of [compactText, normalizedText]) {
-      for (const pattern of patterns) {
-        const hit = source.match(pattern);
-        if (!hit?.[1]) continue;
-        const parsed = this.parseNumber(hit[1]);
-        if (parsed !== null) return parsed;
-      }
+    for (const pattern of patterns) {
+      const hit = normalizedText.match(pattern);
+      if (!hit?.[1]) continue;
+      const parsed = this.toReasonableAmount(hit[1]);
+      if (parsed !== null) return parsed;
     }
     return null;
   }
@@ -482,18 +537,20 @@ export class InvoicesService {
     const normalizedFileName = this.normalizeOriginalFileName(file.originalname);
     const baseName = normalizeText(normalizedFileName.replace(/\.[^.]+$/, ''));
     const extractedText = await this.extractAttachmentText(file, normalizedFileName);
-    const text = normalizeText(`${baseName} ${extractedText}`.trim()).toUpperCase();
+    const contentText = normalizeText(extractedText).toUpperCase();
+    const contextText = normalizeText(`${baseName} ${extractedText}`.trim()).toUpperCase();
 
-    const invoiceNo = this.extractInvoiceNo(text);
-    const invoiceType = this.resolveInvoiceType(text) || 'VAT_NORMAL';
-    const amount = this.extractAmount(text) ?? this.extractAmountFromFileName(baseName);
-    const extractedTaxAmount = this.extractTaxAmount(text);
+    // 以正文识别优先，文件名仅兜底，避免文件名中的长数字（发票号、时间戳）污染金额识别。
+    const invoiceNo = this.extractInvoiceNo(contentText) || this.extractInvoiceNo(contextText);
+    const invoiceType = this.resolveInvoiceType(contentText) || this.resolveInvoiceType(contextText) || 'VAT_NORMAL';
+    const amount = this.extractAmount(contentText) ?? this.extractAmountFromFileName(baseName);
+    const extractedTaxAmount = this.extractTaxAmount(contentText);
     const taxAmount =
       extractedTaxAmount !== null && extractedTaxAmount > 0
         ? extractedTaxAmount
-        : this.inferTaxAmountFromAmountBreakdown(text, amount ?? 0);
-    const invoiceDate = this.extractInvoiceDate(text);
-    const contractNo = this.extractContractNo(text);
+        : this.inferTaxAmountFromAmountBreakdown(contentText, amount ?? 0);
+    const invoiceDate = this.extractInvoiceDate(contentText) || this.extractInvoiceDate(contextText);
+    const contractNo = this.extractContractNo(contentText) || this.extractContractNo(contextText);
 
     if (!invoiceNo) {
       return {
@@ -1086,6 +1143,27 @@ export class InvoicesService {
       where: { id },
       data: { status: InvoiceStatus.VOIDED },
     });
+  }
+
+  /**
+   * 删除发票
+   */
+  async remove(id: string) {
+    const invoice = await this.findOne(id);
+
+    const deleted = await this.prisma.invoice.delete({
+      where: { id },
+    });
+
+    if (invoice.attachmentUrl) {
+      try {
+        await this.uploadService.deleteFile(invoice.attachmentUrl);
+      } catch (error) {
+        this.logger.warn(`发票附件删除失败(${invoice.attachmentUrl}): ${(error as Error)?.message || error}`);
+      }
+    }
+
+    return deleted;
   }
 
   /**

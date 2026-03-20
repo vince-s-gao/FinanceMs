@@ -169,6 +169,7 @@ model Contract {
   invoices       Invoice[] // 发票
   expenses       Expense[] // 报销单
   costs          Cost[] // 费用
+  paymentRequests PaymentRequest[] // 付款申请
 
   @@index([signDate])
   @@index([endDate])
@@ -584,6 +585,7 @@ model PaymentRequest {
   id              String                 @id @default(cuid())
   requestNo       String                 @unique // 申请单号
   projectId       String                 // 关联项目ID
+  contractId      String?                // 关联合同ID（采购合同）
   reason          String                 // 付款事由
   amount          Decimal                @db.Decimal(15, 2) // 付款金额
   currency        String                 @default("CNY") // 币种
@@ -614,10 +616,12 @@ model PaymentRequest {
 
   // 关联
   project         Project                @relation(fields: [projectId], references: [id])
+  contract        Contract?              @relation(fields: [contractId], references: [id])
   bankAccount     BankAccount            @relation(fields: [bankAccountId], references: [id])
   applicant       User                   @relation("PaymentRequestApplicant", fields: [applicantId], references: [id])
   approver        User?                  @relation("PaymentRequestApprover", fields: [approvedBy], references: [id])
 
+  @@index([contractId])
   @@map("payment_requests")
 }
 

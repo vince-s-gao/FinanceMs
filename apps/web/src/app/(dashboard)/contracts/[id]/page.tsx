@@ -22,6 +22,7 @@ import {
   EditOutlined,
   DownloadOutlined,
   PaperClipOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import { api } from '@/lib/api';
 import {
@@ -95,6 +96,8 @@ interface InvoiceRecord {
   taxAmount?: number | null;
   invoiceDate: string;
   status: string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
 }
 
 interface DictionaryItem {
@@ -128,6 +131,45 @@ export default function ContractDetailPage() {
       return `${window.location.protocol}//${window.location.hostname}:3001/api/contracts/${id}/attachment/download`;
     }
     return `http://127.0.0.1:3001/api/contracts/${id}/attachment/download`;
+  };
+
+  const resolveInvoiceAttachmentUrl = (url?: string | null) => {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+    const normalizedPath = url.startsWith('/') ? url : `/${url}`;
+
+    const configured = process.env.NEXT_PUBLIC_API_URL;
+    if (configured) {
+      try {
+        const parsed = new URL(configured);
+        return `${parsed.protocol}//${parsed.host}${normalizedPath}`;
+      } catch {
+        // ignore invalid configured url
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      return `${window.location.protocol}//${window.location.hostname}:3001${normalizedPath}`;
+    }
+    return `http://127.0.0.1:3001${normalizedPath}`;
+  };
+
+  const resolveInvoiceAttachmentDownloadUrl = (id: string) => {
+    const configured = process.env.NEXT_PUBLIC_API_URL;
+    if (configured) {
+      try {
+        const parsed = new URL(configured);
+        const basePath = parsed.pathname.replace(/\/$/, '');
+        const apiPath = basePath.endsWith('/api') ? basePath : `${basePath}/api`;
+        return `${parsed.protocol}//${parsed.host}${apiPath}/invoices/${id}/attachment/download`;
+      } catch {
+        // ignore invalid configured url
+      }
+    }
+    if (typeof window !== 'undefined') {
+      return `${window.location.protocol}//${window.location.hostname}:3001/api/invoices/${id}/attachment/download`;
+    }
+    return `http://127.0.0.1:3001/api/invoices/${id}/attachment/download`;
   };
 
   const resolveContractFlow = (contractTypeCode?: string | null) => {
@@ -423,6 +465,38 @@ export default function ContractDetailPage() {
         </Tag>
       ),
     },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 170,
+      render: (_: unknown, record: InvoiceRecord) =>
+        record.attachmentUrl ? (
+          <Space size="small">
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              href={resolveInvoiceAttachmentUrl(record.attachmentUrl)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              预览
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              icon={<DownloadOutlined />}
+              href={resolveInvoiceAttachmentDownloadUrl(record.id)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              下载
+            </Button>
+          </Space>
+        ) : (
+          '-'
+        ),
+    },
   ];
 
   return (
@@ -631,7 +705,7 @@ export default function ContractDetailPage() {
           pagination={false}
           size="small"
           locale={{ emptyText: '暂无开票记录' }}
-          scroll={{ x: 960 }}
+          scroll={{ x: 1140 }}
         />
       </Card>
     </div>

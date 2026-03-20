@@ -53,6 +53,7 @@ interface PaymentRequest {
   id: string;
   requestNo: string;
   projectId: string;
+  contractId?: string;
   reason: string;
   amount: number;
   currency: string;
@@ -60,6 +61,7 @@ interface PaymentRequest {
   paymentDate: string;
   status: string;
   project?: { id: string; code: string; name: string };
+  contract?: { id: string; contractNo: string; name: string; contractType?: string };
   applicant: { id: string; name: string; email: string };
   bankAccount: { id: string; accountName: string; bankName: string };
   createdAt: string;
@@ -167,6 +169,23 @@ export default function PaymentRequestsPage() {
             <div>{record.project.code}</div>
             <Text type="secondary" className="text-xs">
               {record.project.name}
+            </Text>
+          </div>
+        ) : (
+          '-'
+        ),
+    },
+    {
+      title: '采购合同',
+      key: 'contract',
+      width: 220,
+      ellipsis: true,
+      render: (_, record) =>
+        record.contract ? (
+          <div>
+            <div>{record.contract.contractNo}</div>
+            <Text type="secondary" className="text-xs">
+              {record.contract.name}
             </Text>
           </div>
         ) : (

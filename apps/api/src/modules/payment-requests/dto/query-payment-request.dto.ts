@@ -40,6 +40,11 @@ export class QueryPaymentRequestDto {
   @IsOptional()
   projectId?: string;
 
+  @ApiPropertyOptional({ description: '关联合同ID' })
+  @IsString()
+  @IsOptional()
+  contractId?: string;
+
   @ApiPropertyOptional({ description: '银行账户ID' })
   @IsString()
   @IsOptional()

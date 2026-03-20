@@ -7,11 +7,13 @@ import {
   Body,
   Param,
   Patch,
+  Delete,
   Query,
   UseGuards,
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
+  Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
@@ -20,6 +22,7 @@ import { QueryInvoiceDto } from './dto/query-invoice.dto';
 import { JwtAuthGuard, RolesGuard } from '../../common/guards';
 import { Roles } from '../../common/decorators';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 
 // 角色常量
 const Role = {
@@ -63,6 +66,21 @@ export class InvoicesController {
   @ApiOperation({ summary: '获取合同开票风险预警' })
   async getInvoiceRisk(@Param('contractId') contractId: string) {
     return this.invoicesService.getInvoiceRisk(contractId);
+  }
+
+  @Get(':id/attachment/download')
+  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @ApiOperation({ summary: '下载发票附件' })
+  async downloadAttachment(@Param('id') id: string, @Res() res: Response) {
+    const payload = await this.invoicesService.getAttachmentDownloadPayload(id);
+    const asciiFallbackName = payload.filename.replace(/[^\x20-\x7E]/g, '_');
+    const encodedFilename = encodeURIComponent(payload.filename);
+    res.setHeader('Content-Type', payload.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${asciiFallbackName}"; filename*=UTF-8''${encodedFilename}`,
+    );
+    res.send(payload.buffer);
   }
 
   @Get(':id')
@@ -152,5 +170,12 @@ export class InvoicesController {
   @ApiOperation({ summary: '作废发票' })
   async void(@Param('id') id: string) {
     return this.invoicesService.void(id);
+  }
+
+  @Delete(':id')
+  @Roles(Role.FINANCE, Role.ADMIN)
+  @ApiOperation({ summary: '删除发票' })
+  async remove(@Param('id') id: string) {
+    return this.invoicesService.remove(id);
   }
 }
