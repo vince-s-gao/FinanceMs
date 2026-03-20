@@ -8,6 +8,13 @@ import { QueryCustomerDto } from './dto/query-customer.dto';
 import { ApproveCustomerDto } from './dto/approve-customer.dto';
 import { ApprovalStatus, Prisma } from '@prisma/client';
 import { resolveSortField } from '../../common/utils/query.utils';
+import {
+  normalizeText,
+  parseTabularBuffer,
+  resolveHeaderIndex,
+  toCsv,
+  toXlsxBuffer,
+} from '../../common/utils/tabular.utils';
 
 // 生成客户编号
 function generateCustomerCode(sequence: number): string {
@@ -23,9 +30,80 @@ const ALLOWED_CUSTOMER_SORT_FIELDS = [
   'updatedAt',
 ] as const;
 
+const CUSTOMER_IMPORT_HEADER_ALIASES = {
+  code: ['客户编号', 'customer_code', 'customercode', 'code'],
+  name: ['客户名称', 'customer_name', 'customername', 'name'],
+  type: ['客户类型', 'customer_type', 'customertype', 'type'],
+  creditCode: ['统一社会信用代码', '信用代码', 'credit_code', 'creditcode'],
+  contactName: ['联系人', 'contact_name', 'contactname'],
+  contactPhone: ['联系电话', '手机', '电话', 'contact_phone', 'contactphone', 'phone'],
+  contactEmail: ['联系邮箱', '邮箱', 'contact_email', 'contactemail', 'email'],
+  address: ['地址', 'address'],
+  remark: ['备注', 'remark'],
+} as const;
+
+const CUSTOMER_APPROVAL_STATUS_LABELS: Record<string, string> = {
+  PENDING: '待审批',
+  APPROVED: '已通过',
+  REJECTED: '已拒绝',
+};
+
 @Injectable()
 export class CustomersService {
   constructor(private prisma: PrismaService) {}
+
+  private toLookupKey(value: string): string {
+    return normalizeText(value).toLowerCase();
+  }
+
+  private toNullable(value: string): string | null {
+    const normalized = normalizeText(value || '');
+    return normalized || null;
+  }
+
+  private buildWhere(keyword?: string, type?: string): Prisma.CustomerWhereInput {
+    const where: Prisma.CustomerWhereInput = { isDeleted: false };
+    if (keyword) {
+      where.OR = [
+        { name: { contains: keyword, mode: 'insensitive' } },
+        { code: { contains: keyword, mode: 'insensitive' } },
+        { contactName: { contains: keyword, mode: 'insensitive' } },
+      ];
+    }
+    if (type) {
+      where.type = type;
+    }
+    return where;
+  }
+
+  private async getCustomerTypeLookup(): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    const dictItems = await this.prisma.dictionary.findMany({
+      where: { type: 'CUSTOMER_TYPE', isEnabled: true },
+      select: { code: true, name: true, value: true },
+    });
+
+    dictItems.forEach((item) => {
+      const candidates = [item.code, item.name || '', item.value || ''];
+      candidates.forEach((candidate) => {
+        const key = this.toLookupKey(candidate);
+        if (key) map.set(key, item.code);
+      });
+    });
+
+    map.set(this.toLookupKey('企业'), 'ENTERPRISE');
+    map.set(this.toLookupKey('enterprise'), 'ENTERPRISE');
+    map.set(this.toLookupKey('个人'), 'INDIVIDUAL');
+    map.set(this.toLookupKey('individual'), 'INDIVIDUAL');
+
+    return map;
+  }
+
+  private resolveCustomerTypeCode(lookup: Map<string, string>, text: string): string | undefined {
+    const key = this.toLookupKey(text);
+    if (!key) return undefined;
+    return lookup.get(key);
+  }
 
   /**
    * 生成客户编号
@@ -67,23 +145,7 @@ export class CustomersService {
     const skip = (page - 1) * pageSize;
     const safeSortBy = resolveSortField(sortBy, ALLOWED_CUSTOMER_SORT_FIELDS, 'createdAt');
 
-    const where: any = {
-      isDeleted: false,
-    };
-
-    // 关键词搜索（名称、编号、联系人）
-    if (keyword) {
-      where.OR = [
-        { name: { contains: keyword, mode: 'insensitive' } },
-        { code: { contains: keyword, mode: 'insensitive' } },
-        { contactName: { contains: keyword, mode: 'insensitive' } },
-      ];
-    }
-
-    // 客户类型筛选
-    if (type) {
-      where.type = type;
-    }
+    const where = this.buildWhere(keyword, type);
 
     const [items, total] = await Promise.all([
       this.prisma.customer.findMany({
@@ -93,7 +155,11 @@ export class CustomersService {
         orderBy: { [safeSortBy]: sortOrder },
         include: {
           _count: {
-            select: { contracts: true },
+            select: {
+              contracts: {
+                where: { isDeleted: false },
+              },
+            },
           },
         },
       }),
@@ -122,7 +188,11 @@ export class CustomersService {
           take: 10,
         },
         _count: {
-          select: { contracts: true },
+          select: {
+            contracts: {
+              where: { isDeleted: false },
+            },
+          },
         },
       },
     });
@@ -328,6 +398,242 @@ export class CustomersService {
       page,
       pageSize,
       totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  private async buildExportPayload(query: QueryCustomerDto) {
+    const where = this.buildWhere(query.keyword, query.type);
+    const [items, customerTypeLookup] = await Promise.all([
+      this.prisma.customer.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          _count: {
+            select: {
+              contracts: {
+                where: { isDeleted: false },
+              },
+            },
+          },
+        },
+      }),
+      this.getCustomerTypeLookup(),
+    ]);
+
+    const headers: string[] = [
+      '客户编号',
+      '客户名称',
+      '客户类型',
+      '统一社会信用代码',
+      '联系人',
+      '联系电话',
+      '联系邮箱',
+      '地址',
+      '合同数',
+      '审批状态',
+      '备注',
+    ];
+    const rows: unknown[][] = items.map((item) => [
+      item.code,
+      item.name,
+      customerTypeLookup.get(this.toLookupKey(item.type)) || item.type,
+      item.creditCode || '',
+      item.contactName || '',
+      item.contactPhone || '',
+      item.contactEmail || '',
+      item.address || '',
+      item._count?.contracts || 0,
+      CUSTOMER_APPROVAL_STATUS_LABELS[item.approvalStatus] || item.approvalStatus,
+      item.remark || '',
+    ]);
+
+    return { headers, rows };
+  }
+
+  async exportCsv(query: QueryCustomerDto) {
+    const { headers, rows } = await this.buildExportPayload(query);
+    return toCsv(headers, rows);
+  }
+
+  async exportExcel(query: QueryCustomerDto): Promise<Buffer> {
+    const { headers, rows } = await this.buildExportPayload(query);
+    return toXlsxBuffer(headers, rows);
+  }
+
+  async importFile(fileBuffer: Buffer, fileName: string, userId: string) {
+    const rows = parseTabularBuffer(fileBuffer, fileName);
+    if (rows.length <= 1) {
+      return {
+        total: 0,
+        success: 0,
+        failed: 0,
+        errors: [] as Array<{ row: number; message: string }>,
+      };
+    }
+
+    const header = rows[0];
+    const codeIdx = resolveHeaderIndex(header, CUSTOMER_IMPORT_HEADER_ALIASES.code);
+    const nameIdx = resolveHeaderIndex(header, CUSTOMER_IMPORT_HEADER_ALIASES.name);
+    const typeIdx = resolveHeaderIndex(header, CUSTOMER_IMPORT_HEADER_ALIASES.type);
+    const creditCodeIdx = resolveHeaderIndex(header, CUSTOMER_IMPORT_HEADER_ALIASES.creditCode);
+    const contactNameIdx = resolveHeaderIndex(header, CUSTOMER_IMPORT_HEADER_ALIASES.contactName);
+    const contactPhoneIdx = resolveHeaderIndex(header, CUSTOMER_IMPORT_HEADER_ALIASES.contactPhone);
+    const contactEmailIdx = resolveHeaderIndex(header, CUSTOMER_IMPORT_HEADER_ALIASES.contactEmail);
+    const addressIdx = resolveHeaderIndex(header, CUSTOMER_IMPORT_HEADER_ALIASES.address);
+    const remarkIdx = resolveHeaderIndex(header, CUSTOMER_IMPORT_HEADER_ALIASES.remark);
+
+    const missing: string[] = [];
+    if (nameIdx === undefined) missing.push('客户名称');
+    if (typeIdx === undefined) missing.push('客户类型');
+    if (missing.length > 0) {
+      throw new ConflictException(`导入文件缺少字段: ${missing.join('、')}`);
+    }
+
+    const typeLookup = await this.getCustomerTypeLookup();
+    const errors: Array<{ row: number; message: string }> = [];
+    let total = 0;
+    let success = 0;
+
+    const getCell = (row: string[], idx?: number): string => {
+      if (idx === undefined) return '';
+      return normalizeText(String(row[idx] || ''));
+    };
+
+    for (let i = 1; i < rows.length; i += 1) {
+      const row = rows[i];
+      if (row.every((cell) => !normalizeText(cell))) continue;
+      total += 1;
+      const rowNo = i + 1;
+
+      const code = this.toNullable(getCell(row, codeIdx));
+      const name = this.toNullable(getCell(row, nameIdx));
+      const typeRaw = getCell(row, typeIdx);
+      const typeCode = this.resolveCustomerTypeCode(typeLookup, typeRaw);
+      const creditCode = this.toNullable(getCell(row, creditCodeIdx));
+      const contactName = this.toNullable(getCell(row, contactNameIdx));
+      const contactPhone = this.toNullable(getCell(row, contactPhoneIdx));
+      const contactEmail = this.toNullable(getCell(row, contactEmailIdx));
+      const address = this.toNullable(getCell(row, addressIdx));
+      const remark = this.toNullable(getCell(row, remarkIdx));
+
+      if (!name) {
+        errors.push({ row: rowNo, message: '客户名称不能为空' });
+        continue;
+      }
+      if (!typeCode) {
+        errors.push({ row: rowNo, message: `客户类型无效: ${typeRaw || '(空)'}` });
+        continue;
+      }
+
+      try {
+        const existingByCode = code
+          ? await this.prisma.customer.findFirst({
+              where: { code, isDeleted: false },
+            })
+          : null;
+        const existingByCredit = !existingByCode && creditCode
+          ? await this.prisma.customer.findFirst({
+              where: { creditCode, isDeleted: false },
+            })
+          : null;
+        const existing = existingByCode || existingByCredit;
+
+        if (existing) {
+          if (creditCode && creditCode !== existing.creditCode) {
+            const duplicateCredit = await this.prisma.customer.findFirst({
+              where: {
+                creditCode,
+                isDeleted: false,
+                NOT: { id: existing.id },
+              },
+            });
+            if (duplicateCredit) {
+              throw new ConflictException('统一社会信用代码已存在');
+            }
+          }
+          await this.prisma.customer.update({
+            where: { id: existing.id },
+            data: {
+              name,
+              type: typeCode,
+              creditCode,
+              contactName,
+              contactPhone,
+              contactEmail,
+              address,
+              remark,
+            },
+          });
+          success += 1;
+          continue;
+        }
+
+        const createData = {
+          name,
+          type: typeCode,
+          creditCode,
+          contactName,
+          contactPhone,
+          contactEmail,
+          address,
+          remark,
+          approvalStatus: ApprovalStatus.APPROVED,
+          submittedBy: userId,
+          submittedAt: new Date(),
+          approvedBy: userId,
+          approvedAt: new Date(),
+          approvalRemark: '批量导入自动通过',
+        };
+
+        if (code) {
+          await this.prisma.customer.create({
+            data: {
+              ...createData,
+              code,
+            },
+          });
+          success += 1;
+          continue;
+        }
+
+        let created = false;
+        for (let retry = 0; retry < 8; retry += 1) {
+          const autoCode = await this.generateCode();
+          try {
+            await this.prisma.customer.create({
+              data: {
+                ...createData,
+                code: autoCode,
+              },
+            });
+            created = true;
+            break;
+          } catch (error) {
+            if (this.isUniqueConflict(error, 'code') && retry < 7) {
+              continue;
+            }
+            throw error;
+          }
+        }
+
+        if (!created) {
+          throw new ConflictException('客户编号生成失败，请重试');
+        }
+        success += 1;
+      } catch (error: any) {
+        const message =
+          error?.response?.message ||
+          error?.message ||
+          '导入失败';
+        errors.push({ row: rowNo, message: String(message) });
+      }
+    }
+
+    return {
+      total,
+      success,
+      failed: total - success,
+      errors,
     };
   }
 }

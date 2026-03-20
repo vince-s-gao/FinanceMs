@@ -16,14 +16,17 @@ import {
   Typography,
   Spin,
   message,
+  Upload,
 } from 'antd';
-import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
-import { api } from '@/lib/api';
+import { ArrowLeftOutlined, SaveOutlined, InboxOutlined } from '@ant-design/icons';
+import apiClient, { api } from '@/lib/api';
 import dayjs from 'dayjs';
+import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 
 const { Title } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
+const { Dragger } = Upload;
 
 interface Contract {
   id: string;
@@ -33,6 +36,7 @@ interface Contract {
   customer: {
     id: string;
     name: string;
+    code?: string;
   };
   amountWithTax: number;
   amountWithoutTax: number;
@@ -44,6 +48,8 @@ interface Contract {
   startDate?: string;
   endDate?: string;
   remark?: string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
 }
 
 interface CustomerOption {
@@ -67,14 +73,68 @@ export default function ContractEditPage() {
   const [contract, setContract] = useState<Contract | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [contractTypes, setContractTypes] = useState<DictionaryItem[]>([]);
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [uploadedFile, setUploadedFile] = useState<{ url: string; filename: string } | null>(null);
+
+  const mergeCurrentCustomerOption = (list: CustomerOption[], current?: Contract | null): CustomerOption[] => {
+    const customer = current?.customer;
+    if (!customer?.id || !customer?.name) return list;
+    if (list.some((item) => item.id === customer.id)) return list;
+    return [
+      {
+        id: customer.id,
+        name: customer.name,
+        code: customer.code || '',
+      },
+      ...list,
+    ];
+  };
 
   const contractId = params.id as string;
+
+  const uploadProps: UploadProps = {
+    name: 'file',
+    multiple: false,
+    maxCount: 1,
+    fileList,
+    accept: '.pdf,.jpg,.jpeg,.png,.doc,.docx',
+    customRequest: async ({ file, onSuccess, onError }) => {
+      try {
+        const formData = new FormData();
+        formData.append('file', file as File);
+
+        const response = await apiClient.post('/upload?category=contracts', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        setUploadedFile({
+          url: response.data.url,
+          filename: response.data.originalName || response.data.filename,
+        });
+
+        onSuccess?.(response.data);
+        message.success('附件上传成功');
+      } catch (error: any) {
+        onError?.(error);
+        message.error(error.message || '附件上传失败');
+      }
+    },
+    onChange(info) {
+      setFileList(info.fileList);
+    },
+    onRemove() {
+      setUploadedFile(null);
+      return true;
+    },
+  };
 
   // 加载客户选项
   const fetchCustomers = async () => {
     try {
       const res = await api.get<CustomerOption[]>('/customers/options');
-      setCustomers(res);
+      setCustomers(mergeCurrentCustomerOption(res, contract));
     } catch (error) {
       console.error('加载客户列表失败', error);
     }
@@ -108,6 +168,25 @@ export default function ContractEditPage() {
         startDate: res.startDate ? dayjs(res.startDate) : null,
         endDate: res.endDate ? dayjs(res.endDate) : null,
       });
+      if (res.attachmentUrl) {
+        const attachmentName =
+          res.attachmentName || res.attachmentUrl.split('/').pop() || '合同附件';
+        setUploadedFile({
+          url: res.attachmentUrl,
+          filename: attachmentName,
+        });
+        setFileList([
+          {
+            uid: 'existing-contract-attachment',
+            name: attachmentName,
+            status: 'done',
+          },
+        ]);
+      } else {
+        setUploadedFile(null);
+        setFileList([]);
+      }
+      setCustomers((prev) => mergeCurrentCustomerOption(prev, res));
     } catch (error: any) {
       message.error(error.message || '加载失败');
     } finally {
@@ -128,16 +207,26 @@ export default function ContractEditPage() {
     try {
       const values = await form.validateFields();
       setSubmitting(true);
+      const { status, ...rest } = values;
 
       // 格式化日期
       const data = {
-        ...values,
-        signDate: values.signDate?.format('YYYY-MM-DD'),
-        startDate: values.startDate?.format('YYYY-MM-DD'),
-        endDate: values.endDate?.format('YYYY-MM-DD'),
+        ...rest,
+        signDate: rest.signDate?.format('YYYY-MM-DD'),
+        startDate: rest.startDate?.format('YYYY-MM-DD'),
+        endDate: rest.endDate?.format('YYYY-MM-DD'),
+        ...(uploadedFile
+          ? {
+              attachmentUrl: uploadedFile.url,
+              attachmentName: uploadedFile.filename,
+            }
+          : {}),
       };
 
       await api.patch(`/contracts/${contractId}`, data);
+      if (status && contract?.status && status !== contract.status) {
+        await api.patch(`/contracts/${contractId}/status`, { status });
+      }
       message.success('保存成功');
       router.push(`/contracts/${contractId}`);
     } catch (error: any) {
@@ -205,8 +294,9 @@ export default function ContractEditPage() {
           <Form.Item
             name="contractNo"
             label="合同编号"
+            rules={[{ required: true, message: '请输入合同编号' }]}
           >
-            <Input disabled />
+            <Input placeholder="请输入合同编号（可自定义）" />
           </Form.Item>
 
           <Form.Item
@@ -241,13 +331,14 @@ export default function ContractEditPage() {
 
           <Form.Item
             name="customerId"
-            label="客户"
-            rules={[{ required: true, message: '请选择客户' }]}
+            label="对方签约主体"
+            rules={[{ required: true, message: '请选择对方签约主体' }]}
           >
-            <Select placeholder="请选择客户" showSearch optionFilterProp="children">
+            <Select placeholder="请选择对方签约主体" showSearch optionFilterProp="children">
               {customers.map((c) => (
                 <Option key={c.id} value={c.id}>
-                  {c.name} ({c.code})
+                  {c.name}
+                  {c.code ? ` (${c.code})` : ''}
                 </Option>
               ))}
             </Select>
@@ -337,6 +428,19 @@ export default function ContractEditPage() {
             label="备注"
           >
             <TextArea rows={4} placeholder="请输入备注" />
+          </Form.Item>
+
+          <Form.Item
+            label="合同附件"
+            extra="支持 PDF、图片、Word 文档，文件大小不超过 100MB"
+          >
+            <Dragger {...uploadProps}>
+              <p className="ant-upload-drag-icon">
+                <InboxOutlined />
+              </p>
+              <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+              <p className="ant-upload-hint">上传后会覆盖当前合同附件</p>
+            </Dragger>
           </Form.Item>
         </Form>
       </Card>

@@ -219,6 +219,15 @@ export default function ContractNewPage() {
           <Row gutter={24}>
             <Col span={12}>
               <Form.Item
+                name="contractNo"
+                label="合同编号"
+                rules={[{ required: true, message: '请输入合同编号' }]}
+              >
+                <Input placeholder="请输入合同编号（可自定义）" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
                 name="name"
                 label="合同名称"
                 rules={[{ required: true, message: '请输入合同名称' }]}
@@ -226,13 +235,16 @@ export default function ContractNewPage() {
                 <Input placeholder="请输入合同名称" />
               </Form.Item>
             </Col>
+          </Row>
+
+          <Row gutter={24}>
             <Col span={12}>
               <Form.Item
                 name="customerId"
-                label="客户"
-                rules={[{ required: true, message: '请选择客户' }]}
+                label="对方签约主体"
+                rules={[{ required: true, message: '请选择对方签约主体' }]}
               >
-                <Select placeholder="请选择客户" showSearch optionFilterProp="children">
+                <Select placeholder="请选择对方签约主体" showSearch optionFilterProp="children">
                   {customers.map((c) => (
                     <Option key={c.id} value={c.id}>
                       {c.name} ({c.code})
@@ -396,7 +408,7 @@ export default function ContractNewPage() {
           <Form.Item
             label="双章版合同扫描件"
             required
-            extra="支持 PDF、图片、Word 文档，文件大小不超过 10MB"
+            extra="支持 PDF、图片、Word 文档，文件大小不超过 100MB"
           >
             <Dragger {...uploadProps}>
               <p className="ant-upload-drag-icon">

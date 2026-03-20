@@ -19,7 +19,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    const status =
+    let status =
       exception instanceof HttpException
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
@@ -41,7 +41,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
         details = responseObj.details;
       }
     } else if (exception instanceof Error) {
-      message = exception.message;
+      const errnoException = exception as NodeJS.ErrnoException;
+      // 静态附件缺失属于资源不存在，返回 404，避免误报 500
+      if (errnoException.code === 'ENOENT' && request.url.startsWith('/uploads/')) {
+        status = HttpStatus.NOT_FOUND;
+        error = 'Not Found';
+        code = `HTTP_${status}`;
+        message = '附件不存在或已被删除';
+      } else {
+        message = exception.message;
+      }
     }
 
     // 生产环境下隐藏详细错误信息

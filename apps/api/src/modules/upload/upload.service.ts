@@ -4,7 +4,7 @@ import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/com
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 /**
  * 文件魔数映射表（用于验证文件内容）
@@ -93,6 +93,25 @@ export class UploadService {
     return allowedExts.includes(ext);
   }
 
+  private filenameScore(value: string): number {
+    const cjkCount = (value.match(/[\u4e00-\u9fff]/g) || []).length;
+    const replacementCount = (value.match(/\uFFFD/g) || []).length;
+    const mojibakeHintCount = (value.match(/[ÃÂ]/g) || []).length;
+    return cjkCount * 3 - replacementCount * 4 - mojibakeHintCount * 2;
+  }
+
+  /**
+   * 标准化上传文件名，优先修复 UTF-8 被按 latin1 解析导致的中文乱码
+   */
+  private normalizeOriginalFileName(originalName: string): string {
+    const baseName = path.basename(originalName || '').trim() || 'file';
+    const decoded = Buffer.from(baseName, 'latin1').toString('utf8').trim();
+    if (!decoded) return baseName;
+    return this.filenameScore(decoded) > this.filenameScore(baseName)
+      ? decoded.normalize('NFC')
+      : baseName;
+  }
+
   /**
    * 清理路径，防止路径遍历攻击
    * @param inputPath 输入路径
@@ -115,6 +134,8 @@ export class UploadService {
     file: Express.Multer.File,
     category: string = 'temp',
   ): Promise<{ url: string; filename: string; originalName: string; size: number }> {
+    const normalizedOriginalName = this.normalizeOriginalFileName(file.originalname);
+
     // 验证文件分类
     if (!ALLOWED_CATEGORIES.includes(category)) {
       throw new BadRequestException('无效的文件分类');
@@ -127,14 +148,14 @@ export class UploadService {
     }
 
     // 验证文件扩展名
-    if (!this.validateFileExtension(file.originalname, file.mimetype)) {
+    if (!this.validateFileExtension(normalizedOriginalName, file.mimetype)) {
       throw new BadRequestException('文件扩展名与文件类型不匹配');
     }
 
-    // 验证文件大小（最大 10MB）
-    const maxSize = 10 * 1024 * 1024;
+    // 验证文件大小（最大 100MB）
+    const maxSize = 100 * 1024 * 1024;
     if (file.size > maxSize) {
-      throw new BadRequestException('文件大小不能超过 10MB');
+      throw new BadRequestException('文件大小不能超过 100MB');
     }
 
     // 验证文件内容（魔数检查）
@@ -143,8 +164,8 @@ export class UploadService {
     }
 
     // 生成唯一文件名
-    const ext = path.extname(file.originalname);
-    const filename = `${uuidv4()}${ext}`;
+    const ext = path.extname(normalizedOriginalName);
+    const filename = `${randomUUID()}${ext}`;
     
     // 清理路径，防止路径遍历
     const sanitizedCategory = this.sanitizePath(category);
@@ -158,6 +179,9 @@ export class UploadService {
       throw new BadRequestException('无效的文件路径');
     }
 
+    // 兜底创建目录，避免目录缺失导致 ENOENT
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+
     // 保存文件
     fs.writeFileSync(fullPath, file.buffer);
 
@@ -165,7 +189,7 @@ export class UploadService {
     return {
       url: `/uploads/${relativePath}`,
       filename,
-      originalName: file.originalname,
+      originalName: normalizedOriginalName,
       size: file.size,
     };
   }

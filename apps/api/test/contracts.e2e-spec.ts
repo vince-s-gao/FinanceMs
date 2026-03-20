@@ -52,19 +52,20 @@ describe('ContractsController Flow (e2e-like)', () => {
     serviceMock.changeStatus.mockResolvedValueOnce({ id: 'c-2', status: 'TERMINATED' });
     serviceMock.remove.mockResolvedValueOnce({ id: 'c-2', isDeleted: true });
 
-    const createDto = { name: '新合同', customerId: 'cu-1' } as any;
+    const createDto = { contractNo: 'HT-CUSTOM-001', name: '新合同', customerId: 'cu-1' } as any;
     const updateDto = { name: '更新后合同' } as any;
     const statusDto = { status: 'TERMINATED', reason: '终止原因' } as any;
+    const adminUser = { id: 'u-admin', role: 'ADMIN' } as any;
 
     const created = await controller.create(createDto);
-    const updated = await controller.update('c-2', updateDto);
+    const updated = await controller.update('c-2', updateDto, adminUser);
     const changed = await controller.changeStatus('c-2', statusDto);
-    const removed = await controller.remove('c-2');
+    const removed = await controller.remove('c-2', adminUser);
 
     expect(serviceMock.create).toHaveBeenCalledWith(createDto);
-    expect(serviceMock.update).toHaveBeenCalledWith('c-2', updateDto);
+    expect(serviceMock.update).toHaveBeenCalledWith('c-2', updateDto, { allowNonDraft: true });
     expect(serviceMock.changeStatus).toHaveBeenCalledWith('c-2', statusDto);
-    expect(serviceMock.remove).toHaveBeenCalledWith('c-2');
+    expect(serviceMock.remove).toHaveBeenCalledWith('c-2', { allowNonDraft: true });
     expect(created.id).toBe('c-2');
     expect(updated.name).toBe('更新后合同');
     expect(changed.status).toBe('TERMINATED');

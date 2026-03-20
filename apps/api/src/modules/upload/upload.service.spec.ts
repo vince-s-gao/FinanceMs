@@ -76,7 +76,7 @@ describe('UploadService', () => {
         {
           mimetype: 'application/pdf',
           originalname: 'a.pdf',
-          size: 10 * 1024 * 1024 + 1,
+          size: 100 * 1024 * 1024 + 1,
           buffer: pdfBuffer,
         } as any,
         'temp',
@@ -112,6 +112,24 @@ describe('UploadService', () => {
     expect(result.filename).toBe('mock-uuid.pdf');
     expect(result.url).toBe('/uploads/contracts/mock-uuid.pdf');
     expect(fs.existsSync(path.join(uploadRoot, 'contracts', 'mock-uuid.pdf'))).toBe(true);
+  });
+
+  it('should normalize mojibake original filename to readable utf-8', async () => {
+    const readableName = '测试合同.pdf';
+    const mojibakeName = Buffer.from(readableName, 'utf8').toString('latin1');
+
+    const result = await service.saveFile(
+      {
+        mimetype: 'application/pdf',
+        originalname: mojibakeName,
+        size: pdfBuffer.length,
+        buffer: pdfBuffer,
+      } as any,
+      'contracts',
+    );
+
+    expect(result.originalName).toBe(readableName);
+    expect(result.filename).toBe('mock-uuid.pdf');
   });
 
   it('should use default temp category when saveFile category is omitted', async () => {

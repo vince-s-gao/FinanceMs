@@ -119,10 +119,10 @@ export default function NewExpensePage() {
       setFileList(newFileList);
     },
     beforeUpload: (file) => {
-      // 限制文件大小 10MB
-      const isLt10M = file.size / 1024 / 1024 < 10;
-      if (!isLt10M) {
-        message.error('文件大小不能超过10MB');
+      // 限制文件大小 100MB
+      const isLt100M = file.size / 1024 / 1024 < 100;
+      if (!isLt100M) {
+        message.error('文件大小不能超过100MB');
         return Upload.LIST_IGNORE;
       }
       setFileList([...fileList, file]);
@@ -426,7 +426,7 @@ export default function NewExpensePage() {
           <Button icon={<UploadOutlined />}>选择文件</Button>
         </Upload>
         <div className="mt-2 text-gray-500 text-sm">
-          支持上传发票、收据、行程单等凭证，单个文件不超过10MB，支持jpg、png、pdf格式
+          支持上传发票、收据、行程单等凭证，单个文件不超过100MB，支持jpg、png、pdf格式
         </div>
       </Card>
 

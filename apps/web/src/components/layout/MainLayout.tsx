@@ -27,6 +27,7 @@ import {
   DatabaseOutlined,
   BellOutlined,
   FileSearchOutlined,
+  ShopOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/stores/auth';
 import { ROLE_LABELS } from '@/lib/constants';
@@ -47,6 +48,7 @@ const ALL_MENU_ITEMS = [
     children: [
       { key: '/dashboard', icon: <DashboardOutlined />, label: '工作台' },
       { key: '/customers', icon: <TeamOutlined />, label: '客户管理' },
+      { key: '/suppliers', icon: <ShopOutlined />, label: '供应商管理' },
       { key: '/contracts', icon: <FileTextOutlined />, label: '合同管理' },
       { key: '/payments', icon: <DollarOutlined />, label: '回款管理' },
       { key: '/projects', icon: <ProjectOutlined />, label: '项目管理' },
@@ -85,9 +87,9 @@ const ALL_MENU_ITEMS = [
 const ROLE_MENU_CONFIG: Record<string, string[]> = {
   EMPLOYEE: ['/dashboard', '/expenses'],
   SALES: ['/dashboard', '/customers', '/contracts', '/payments', '/expenses', '/projects'],
-  FINANCE: ['/dashboard', '/customers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
-  MANAGER: ['/dashboard', '/customers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
-  ADMIN: ['/dashboard', '/customers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects', '/departments', '/permissions', '/settings', '/settings/dictionaries', '/audit-logs'],
+  FINANCE: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
+  MANAGER: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
+  ADMIN: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects', '/departments', '/permissions', '/settings', '/settings/dictionaries', '/audit-logs'],
 };
 
 interface MainLayoutProps {

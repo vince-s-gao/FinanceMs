@@ -12,6 +12,10 @@ type InvoiceType = typeof INVOICE_TYPES[number];
 const INVOICE_STATUS = ['ISSUED', 'VOIDED'] as const;
 type InvoiceStatus = typeof INVOICE_STATUS[number];
 
+// 发票方向
+const INVOICE_DIRECTIONS = ['INBOUND', 'OUTBOUND'] as const;
+type InvoiceDirection = typeof INVOICE_DIRECTIONS[number];
+
 export class QueryInvoiceDto extends PaginationDto {
   @ApiPropertyOptional({ description: '关键词搜索（发票号、合同编号、合同名称）' })
   @IsOptional()
@@ -32,6 +36,11 @@ export class QueryInvoiceDto extends PaginationDto {
   @IsOptional()
   @IsIn(INVOICE_STATUS)
   status?: InvoiceStatus;
+
+  @ApiPropertyOptional({ description: '发票方向（INBOUND=供应商开给我方，OUTBOUND=我方开给客户）', enum: INVOICE_DIRECTIONS })
+  @IsOptional()
+  @IsIn(INVOICE_DIRECTIONS)
+  direction?: InvoiceDirection;
 
   @ApiPropertyOptional({ description: '开票日期开始' })
   @IsOptional()

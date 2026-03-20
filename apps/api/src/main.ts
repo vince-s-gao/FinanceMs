@@ -87,14 +87,27 @@ async function bootstrap() {
   app.use('/api/auth/feishu/login', authLimiter);
   app.use('/api/auth/feishu/exchange-ticket', authLimiter);
 
-  const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:43001')
+  const configuredCorsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:43001')
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+  const localCorsOrigins = [
+    'http://localhost:3000',
+    'http://localhost:43001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:43001',
+  ];
+  const corsOrigins = Array.from(new Set([...configuredCorsOrigins, ...localCorsOrigins]));
 
   // CORS配置
   app.enableCors({
-    origin: corsOrigins,
+    origin: (origin, callback) => {
+      if (!origin || corsOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Skip-Auth-Refresh'],
   });
@@ -111,11 +124,12 @@ async function bootstrap() {
 
   // 启动服务
   const port = process.env.API_PORT || 3001;
-  await app.listen(port);
+  const host = process.env.API_HOST || '0.0.0.0';
+  await app.listen(port, host);
   
   logger.log('🚀 InfFinanceMs API 服务已启动');
-  logger.log(`📡 服务地址: http://localhost:${port}`);
-  logger.log(`📚 API文档: http://localhost:${port}/api/docs`);
+  logger.log(`📡 服务地址: http://localhost:${port} / http://127.0.0.1:${port}`);
+  logger.log(`📚 API文档: http://127.0.0.1:${port}/api/docs`);
   logger.log('🔒 安全配置已启用：速率限制、安全头、CORS');
 }
 

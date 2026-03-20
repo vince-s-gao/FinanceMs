@@ -342,8 +342,8 @@ export default function EditPaymentRequestPage() {
   const handleUpload = async (options: any) => {
     const { file, onSuccess, onError } = options;
 
-    if (file.size > 500 * 1024 * 1024) {
-      message.error(`文件 ${file.name} 超过500MB限制`);
+    if (file.size > 100 * 1024 * 1024) {
+      message.error(`文件 ${file.name} 超过100MB限制`);
       onError(new Error('文件过大'));
       return;
     }
@@ -525,7 +525,7 @@ export default function EditPaymentRequestPage() {
         </Card>
 
         {/* 附件 */}
-        <Card title="附件" extra={<Text type="secondary">上限30个文件，最大500MB/个</Text>}>
+        <Card title="附件" extra={<Text type="secondary">上限30个文件，最大100MB/个</Text>}>
           <Upload
             customRequest={handleUpload}
             fileList={fileList}

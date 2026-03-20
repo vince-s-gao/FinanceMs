@@ -27,7 +27,7 @@ import {
 } from '@ant-design/icons';
 import { api } from '@/lib/api';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const { Option } = Select;
 
 interface Dictionary {
@@ -63,11 +63,16 @@ const DICT_TYPES = [
   { value: 'CONTRACT_TYPE', label: '合同类型' },
 ];
 
+const DICT_TYPE_LABEL_MAP = DICT_TYPES.reduce<Record<string, string>>((acc, item) => {
+  acc[item.value] = item.label;
+  return acc;
+}, {});
+
 export default function DictionariesPage() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [dictionaries, setDictionaries] = useState<Dictionary[]>([]);
-  const [typeFilter, setTypeFilter] = useState<string>('CUSTOMER_TYPE');
+  const [typeFilter, setTypeFilter] = useState<string>('CONTRACT_TYPE');
 
   // 弹窗状态
   const [modalVisible, setModalVisible] = useState(false);
@@ -75,6 +80,8 @@ export default function DictionariesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const typeLabel = DICT_TYPE_LABEL_MAP[typeFilter] || typeFilter;
+  const isContractTypeView = typeFilter === 'CONTRACT_TYPE';
 
   // 加载字典列表
   const fetchDictionaries = async () => {
@@ -98,7 +105,7 @@ export default function DictionariesPage() {
 
   // 打开新增弹窗
   const handleAdd = () => {
-    setModalTitle('新增字典项');
+    setModalTitle(`新增${typeLabel}`);
     setEditingId(null);
     form.resetFields();
     form.setFieldsValue({
@@ -112,7 +119,8 @@ export default function DictionariesPage() {
 
   // 打开编辑弹窗
   const handleEdit = (record: Dictionary) => {
-    setModalTitle('编辑字典项');
+    const label = DICT_TYPE_LABEL_MAP[record.type] || record.type;
+    setModalTitle(`编辑${label}`);
     setEditingId(record.id);
     form.setFieldsValue(record);
     setModalVisible(true);
@@ -270,21 +278,20 @@ export default function DictionariesPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <Title level={4} className="!mb-0">
-          数据字典管理
-        </Title>
+        <div>
+          <Title level={4} className="!mb-0">
+            {isContractTypeView ? '合同类型管理' : '数据字典管理'}
+          </Title>
+          <Text type="secondary">
+            {isContractTypeView ? '维护合同类型选项，管理员可执行增删改查。' : '维护系统字典项，支持客户类型、报销类型与合同类型。'}
+          </Text>
+        </div>
         <Space>
-          <Button onClick={handleInitCustomerTypes}>
-            初始化客户类型
-          </Button>
-          <Button onClick={handleInitExpenseTypes}>
-            初始化报销类型
-          </Button>
-          <Button onClick={handleInitContractTypes}>
-            初始化合同类型
-          </Button>
+          {typeFilter === 'CUSTOMER_TYPE' && <Button onClick={handleInitCustomerTypes}>初始化客户类型</Button>}
+          {typeFilter === 'EXPENSE_TYPE' && <Button onClick={handleInitExpenseTypes}>初始化报销类型</Button>}
+          {typeFilter === 'CONTRACT_TYPE' && <Button onClick={handleInitContractTypes}>初始化合同类型</Button>}
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-            新增字典项
+            {`新增${typeLabel}`}
           </Button>
         </Space>
       </div>

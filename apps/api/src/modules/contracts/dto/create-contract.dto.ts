@@ -1,9 +1,14 @@
 // InfFinanceMs - 创建合同DTO
 
-import { IsString, IsNumber, IsOptional, IsDateString, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, Min, IsNotEmpty } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateContractDto {
+  @ApiProperty({ description: '合同编号', example: 'HT-CUSTOM-001' })
+  @IsString()
+  @IsNotEmpty()
+  contractNo: string;
+
   @ApiProperty({ description: '合同名称' })
   @IsString()
   name: string;

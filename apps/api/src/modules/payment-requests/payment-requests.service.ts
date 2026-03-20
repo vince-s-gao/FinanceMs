@@ -494,6 +494,7 @@ export class PaymentRequestsService {
       paidCount,
       totalAmount,
       paidAmount,
+      payableAmount,
     ] = await Promise.all([
       this.prisma.paymentRequest.count({ where: { isDeleted: false } }),
       this.prisma.paymentRequest.count({ where: { isDeleted: false, status: 'DRAFT' } }),
@@ -509,6 +510,11 @@ export class PaymentRequestsService {
         where: { isDeleted: false, status: 'PAID' },
         _sum: { amount: true },
       }),
+      // 应付款金额：待审批与已通过但未付款
+      this.prisma.paymentRequest.aggregate({
+        where: { isDeleted: false, status: { in: ['PENDING', 'APPROVED'] } },
+        _sum: { amount: true },
+      }),
     ]);
 
     return {
@@ -520,6 +526,7 @@ export class PaymentRequestsService {
       paidCount,
       totalAmount: totalAmount._sum.amount || 0,
       paidAmount: paidAmount._sum.amount || 0,
+      payableAmount: payableAmount._sum.amount || 0,
     };
   }
 }

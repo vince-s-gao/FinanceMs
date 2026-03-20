@@ -34,4 +34,14 @@ export class CreateInvoiceDto {
   @ApiProperty({ description: '开票日期' })
   @IsDateString()
   invoiceDate: string;
+
+  @ApiPropertyOptional({ description: '附件URL' })
+  @IsOptional()
+  @IsString()
+  attachmentUrl?: string;
+
+  @ApiPropertyOptional({ description: '附件文件名' })
+  @IsOptional()
+  @IsString()
+  attachmentName?: string;
 }

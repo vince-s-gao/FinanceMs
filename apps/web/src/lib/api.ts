@@ -2,7 +2,28 @@
 
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = (() => {
+  if (typeof window !== 'undefined') {
+    const configured = process.env.NEXT_PUBLIC_API_URL;
+    if (configured) {
+      // 避免 localhost/127.0.0.1 不一致导致跨站 Cookie 问题
+      if (window.location.hostname === '127.0.0.1' && configured.includes('://localhost')) {
+        return configured.replace('://localhost', '://127.0.0.1');
+      }
+      if (window.location.hostname === 'localhost' && configured.includes('://127.0.0.1')) {
+        return configured.replace('://127.0.0.1', '://localhost');
+      }
+      return configured;
+    }
+    const protocol = window.location.protocol || 'http:';
+    const hostname = window.location.hostname || '127.0.0.1';
+    return `${protocol}//${hostname}:3001/api`;
+  }
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  return 'http://127.0.0.1:3001/api';
+})();
 
 interface PendingRequest {
   resolve: () => void;

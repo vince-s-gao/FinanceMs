@@ -5,6 +5,7 @@ import { InvoicesService } from './invoices.service';
 describe('InvoicesService', () => {
   let service: InvoicesService;
   let prisma: any;
+  let uploadService: any;
 
   beforeEach(() => {
     prisma = {
@@ -23,9 +24,19 @@ describe('InvoicesService', () => {
       paymentRecord: {
         aggregate: jest.fn(),
       },
+      dictionary: {
+        findMany: jest.fn().mockResolvedValue([
+          { code: 'SALES', name: '销售合同', value: '销售' },
+          { code: 'PURCHASE', name: '采购合同', value: '采购' },
+        ]),
+      },
+    };
+    uploadService = {
+      saveFile: jest.fn(),
+      deleteFile: jest.fn(),
     };
 
-    service = new InvoicesService(prisma);
+    service = new InvoicesService(prisma, uploadService);
   });
 
   it('should fallback to createdAt when sortBy is invalid', async () => {
@@ -87,6 +98,15 @@ describe('InvoicesService', () => {
       }),
     );
     expect(result.total).toBe(1);
+  });
+
+  it('should apply direction filter based on contract type for outbound invoices', async () => {
+    await service.findAll({
+      direction: 'OUTBOUND',
+    } as any);
+
+    const findManyArg = prisma.invoice.findMany.mock.calls[0][0];
+    expect(findManyArg.where.contract.contractType.in).toContain('SALES');
   });
 
   it('should throw when findOne invoice does not exist', async () => {
@@ -282,5 +302,83 @@ describe('InvoicesService', () => {
     expect(result.uninvoicedAmount.toString()).toBe('0');
     expect(result.hasRisk).toBe(false);
     expect(result.riskMessage).toBeNull();
+  });
+
+  it('should preview parsed invoice attachment rows', async () => {
+    prisma.contract.findFirst.mockResolvedValue({ id: 'contract-1', isDeleted: false });
+    const file = {
+      originalname: '发票号码88886666_金额1000.50_日期2026-03-18_专票.pdf',
+      buffer: Buffer.from(''),
+      mimetype: 'application/pdf',
+      size: 1024,
+    } as Express.Multer.File;
+
+    const result = await service.previewImportFiles([file], 'contract-1');
+    expect(result.total).toBe(1);
+    expect(result.valid).toBe(1);
+    expect(result.invalid).toBe(0);
+    expect(result.samples[0].invoiceNo).toContain('88886666');
+    expect(result.samples[0].invoiceType).toBe('VAT_SPECIAL');
+    expect(result.samples[0].invoiceDate).toBe('2026-03-18');
+  });
+
+  it('should parse pdf text instead of binary metadata noise', async () => {
+    const file = {
+      originalname: '词元无限 910房间 Q1房租发票.pdf',
+      buffer: Buffer.from('fake-pdf'),
+      mimetype: 'application/pdf',
+      size: 4096,
+    } as Express.Multer.File;
+
+    jest.spyOn(service as any, 'extractAttachmentText').mockResolvedValue(
+      [
+        '电子发票（增值税专用发票）',
+        '发票号码：26112000000347783971',
+        '开票日期：2026年01月27日',
+        '价税合计（小写）¥86700.00',
+        'CreationDate:2012-08-23',
+        'PDF-1.7 amount:1.00',
+      ].join('\n'),
+    );
+
+    const parsed = await (service as any).parseAttachmentFile(file, 1, 'contract-1');
+    expect(parsed.error).toBeUndefined();
+    expect(parsed.candidate.invoiceNo).toBe('26112000000347783971');
+    expect(parsed.candidate.amount).toBe(86700);
+    expect(parsed.candidate.invoiceDate).toBe('2026-01-27');
+  });
+
+  it('should import parsed invoice files and save attachment', async () => {
+    prisma.contract.findFirst.mockResolvedValue({ id: 'contract-1', isDeleted: false });
+    uploadService.saveFile.mockResolvedValue({
+      url: '/uploads/invoices/test.pdf',
+      filename: 'stored-test.pdf',
+      originalName: 'test.pdf',
+    });
+    const createSpy = jest.spyOn(service, 'create').mockResolvedValue({ id: 'inv-1001' } as any);
+
+    const file = {
+      originalname: '发票号码18889999_金额2000_日期2026-03-19_普票.pdf',
+      buffer: Buffer.from(''),
+      mimetype: 'application/pdf',
+      size: 512,
+    } as Express.Multer.File;
+
+    const result = await service.importFiles([file], {
+      contractId: 'contract-1',
+      allowPartial: false,
+    });
+
+    expect(uploadService.saveFile).toHaveBeenCalledTimes(1);
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contractId: 'contract-1',
+        attachmentUrl: '/uploads/invoices/test.pdf',
+        attachmentName: 'test.pdf',
+      }),
+    );
+    expect(result.success).toBe(1);
+    expect(result.failed).toBe(0);
+    createSpy.mockRestore();
   });
 });

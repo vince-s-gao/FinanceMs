@@ -94,6 +94,7 @@ export type ContractStatus = 'DRAFT' | 'EXECUTING' | 'COMPLETED' | 'TERMINATED';
 
 /** 创建合同请求 */
 export interface CreateContractRequest {
+  contractNo: string;
   name: string;
   customerId: string;
   signingEntity?: string;
@@ -101,6 +102,8 @@ export interface CreateContractRequest {
   amountWithTax: number;
   amountWithoutTax: number;
   taxRate?: number;
+  attachmentUrl?: string;
+  attachmentName?: string;
   signDate: string;
   startDate?: string;
   endDate?: string;
@@ -150,6 +153,9 @@ export type InvoiceType = 'VAT_SPECIAL' | 'VAT_NORMAL' | 'RECEIPT';
 /** 发票状态 */
 export type InvoiceStatus = 'ISSUED' | 'VOIDED';
 
+/** 发票方向 */
+export type InvoiceDirection = 'INBOUND' | 'OUTBOUND';
+
 /** 创建发票请求 */
 export interface CreateInvoiceRequest {
   contractId: string;
@@ -158,6 +164,8 @@ export interface CreateInvoiceRequest {
   amount: number;
   taxAmount?: number;
   invoiceDate: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
 }
 
 // ==================== 报销相关类型 ====================

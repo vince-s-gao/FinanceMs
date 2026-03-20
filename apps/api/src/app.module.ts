@@ -3,7 +3,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
+import { resolve } from 'path';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -25,6 +25,7 @@ import { BankAccountsModule } from './modules/bank-accounts/bank-accounts.module
 import { AuditModule } from './modules/audit/audit.module';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
 
 @Module({
   imports: [
@@ -35,8 +36,12 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     }),
     // 静态文件服务（用于访问上传的文件）
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),
+      rootPath: resolve(process.cwd(), process.env.UPLOAD_DIR || 'uploads'),
       serveRoot: '/uploads',
+      serveStaticOptions: {
+        index: false,
+        fallthrough: false,
+      },
     }),
     // Prisma数据库模块
     PrismaModule,
@@ -60,6 +65,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     BankAccountsModule,     // 银行账户模块
     AuditModule,            // 审计日志模块
     NotificationsModule,    // 消息通知模块
+    SuppliersModule,        // 供应商模块
   ],
 })
 export class AppModule implements NestModule {

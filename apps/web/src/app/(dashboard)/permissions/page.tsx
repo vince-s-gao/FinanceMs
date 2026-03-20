@@ -38,6 +38,7 @@ const ROLES = ['EMPLOYEE', 'SALES', 'FINANCE', 'MANAGER', 'ADMIN'];
 const MENU_PERMISSIONS = [
   { key: '/dashboard', name: '工作台', description: '首页数据概览' },
   { key: '/customers', name: '客户管理', description: '客户信息维护' },
+  { key: '/suppliers', name: '供应商管理', description: '供应商主数据维护' },
   { key: '/contracts', name: '合同管理', description: '合同全生命周期管理' },
   { key: '/payments', name: '回款管理', description: '回款计划与记录' },
   { key: '/invoices', name: '发票管理', description: '发票开具与管理' },
@@ -64,6 +65,9 @@ const FUNCTION_PERMISSIONS = [
   { key: 'customer.edit', name: '编辑客户', module: '客户管理' },
   { key: 'customer.delete', name: '删除客户', module: '客户管理' },
   { key: 'customer.approve', name: '审批客户', module: '客户管理' },
+  { key: 'supplier.create', name: '创建供应商', module: '供应商管理' },
+  { key: 'supplier.edit', name: '编辑供应商', module: '供应商管理' },
+  { key: 'supplier.delete', name: '删除供应商', module: '供应商管理' },
   { key: 'invoice.create', name: '开具发票', module: '发票管理' },
   { key: 'invoice.void', name: '作废发票', module: '发票管理' },
   { key: 'budget.create', name: '创建预算', module: '预算管理' },
@@ -71,6 +75,10 @@ const FUNCTION_PERMISSIONS = [
   { key: 'user.create', name: '创建用户', module: '系统设置' },
   { key: 'user.edit', name: '编辑用户', module: '系统设置' },
   { key: 'department.manage', name: '管理部门', module: '部门管理' },
+  { key: 'dictionary.read', name: '查看字典项', module: '数据字典' },
+  { key: 'dictionary.create', name: '新增字典项', module: '数据字典' },
+  { key: 'dictionary.edit', name: '编辑字典项', module: '数据字典' },
+  { key: 'dictionary.delete', name: '删除字典项', module: '数据字典' },
 ];
 
 // 角色功能权限矩阵（已移至动态加载）
@@ -107,8 +115,8 @@ export default function PermissionsPage() {
   const ROLE_MENU_MATRIX_DEFAULT: Record<string, { menus: string[]; functions: string[] }> = {
     EMPLOYEE: { menus: ['/dashboard', '/expenses'], functions: ['expense.create'] },
     SALES: { menus: ['/dashboard', '/customers', '/contracts', '/payments', '/expenses'], functions: ['expense.create', 'customer.create', 'customer.edit', 'contract.create', 'contract.edit'] },
-    FINANCE: { menus: ['/dashboard', '/customers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'expense.pay', 'invoice.create', 'invoice.void', 'budget.create', 'budget.edit'] },
-    MANAGER: { menus: ['/dashboard', '/customers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'customer.create', 'customer.edit', 'customer.approve', 'contract.create', 'contract.edit'] },
+    FINANCE: { menus: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'expense.pay', 'invoice.create', 'invoice.void', 'budget.create', 'budget.edit', 'supplier.create', 'supplier.edit', 'supplier.delete'] },
+    MANAGER: { menus: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'customer.create', 'customer.edit', 'customer.approve', 'contract.create', 'contract.edit', 'supplier.create', 'supplier.edit'] },
     ADMIN: { menus: MENU_PERMISSIONS.map(m => m.key), functions: FUNCTION_PERMISSIONS.map(f => f.key) },
   };
 

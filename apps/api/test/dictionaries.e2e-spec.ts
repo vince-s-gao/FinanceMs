@@ -13,6 +13,7 @@ describe('DictionariesController Flow (e2e-like)', () => {
     create: jest.fn(),
     initCustomerTypes: jest.fn(),
     initExpenseTypes: jest.fn(),
+    initContractTypes: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
   };
@@ -54,6 +55,7 @@ describe('DictionariesController Flow (e2e-like)', () => {
     serviceMock.create.mockResolvedValueOnce({ id: 'd2' });
     serviceMock.initCustomerTypes.mockResolvedValueOnce([{ code: 'ENTERPRISE' }]);
     serviceMock.initExpenseTypes.mockResolvedValueOnce([{ code: 'TRAVEL' }]);
+    serviceMock.initContractTypes.mockResolvedValueOnce([{ code: 'SERVICE' }]);
     serviceMock.update.mockResolvedValueOnce({ id: 'd2', name: '企业客户' });
     serviceMock.remove.mockResolvedValueOnce({ id: 'd2' });
 
@@ -63,17 +65,20 @@ describe('DictionariesController Flow (e2e-like)', () => {
     const created = await controller.create(createDto);
     const initCustomer = await controller.initCustomerTypes();
     const initExpense = await controller.initExpenseTypes();
+    const initContract = await controller.initContractTypes();
     const updated = await controller.update('d2', updateDto);
     const removed = await controller.remove('d2');
 
     expect(serviceMock.create).toHaveBeenCalledWith(createDto);
     expect(serviceMock.initCustomerTypes).toHaveBeenCalledTimes(1);
     expect(serviceMock.initExpenseTypes).toHaveBeenCalledTimes(1);
+    expect(serviceMock.initContractTypes).toHaveBeenCalledTimes(1);
     expect(serviceMock.update).toHaveBeenCalledWith('d2', updateDto);
     expect(serviceMock.remove).toHaveBeenCalledWith('d2');
     expect(created.id).toBe('d2');
     expect(initCustomer[0].code).toBe('ENTERPRISE');
     expect(initExpense[0].code).toBe('TRAVEL');
+    expect(initContract[0].code).toBe('SERVICE');
     expect(updated.name).toBe('企业客户');
     expect(removed.id).toBe('d2');
   });

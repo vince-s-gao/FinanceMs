@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 发票管理页面
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Table,
   Button,
@@ -18,14 +18,22 @@ import {
   DatePicker,
   InputNumber,
   Popconfirm,
+  Upload,
+  Alert,
+  Checkbox,
 } from 'antd';
 import {
   PlusOutlined,
   SearchOutlined,
   StopOutlined,
+  UploadOutlined,
+  LinkOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
-import { api } from '@/lib/api';
+import apiClient, { api } from '@/lib/api';
 import {
+  INVOICE_DIRECTION_COLORS,
+  INVOICE_DIRECTION_LABELS,
   INVOICE_TYPE_LABELS,
   INVOICE_STATUS_LABELS,
   INVOICE_STATUS_COLORS,
@@ -33,6 +41,7 @@ import {
   formatDate,
 } from '@/lib/constants';
 import dayjs from 'dayjs';
+import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -45,6 +54,9 @@ interface Invoice {
   taxAmount?: number;
   invoiceDate: string;
   status: string;
+  direction: 'INBOUND' | 'OUTBOUND';
+  attachmentUrl?: string;
+  attachmentName?: string;
   contract: {
     id: string;
     contractNo: string;
@@ -60,6 +72,35 @@ interface Contract {
   id: string;
   contractNo: string;
   name: string;
+  contractType?: string | null;
+  customer?: {
+    name?: string;
+  };
+}
+
+interface InvoiceImportError {
+  row: number;
+  fileName: string;
+  message: string;
+}
+
+interface InvoiceImportSample {
+  row: number;
+  fileName: string;
+  contractNo: string;
+  invoiceNo: string;
+  invoiceType: string;
+  amount: number;
+  taxAmount?: number | null;
+  invoiceDate: string;
+}
+
+interface InvoiceImportPreview {
+  total: number;
+  valid: number;
+  invalid: number;
+  errors: InvoiceImportError[];
+  samples: InvoiceImportSample[];
 }
 
 export default function InvoicesPage() {
@@ -70,12 +111,103 @@ export default function InvoicesPage() {
   const [pageSize, setPageSize] = useState(20);
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [directionFilter, setDirectionFilter] = useState<string | undefined>();
 
   // 弹窗状态
   const [modalVisible, setModalVisible] = useState(false);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [uploadedFile, setUploadedFile] = useState<{ url: string; filename: string } | null>(null);
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importFileList, setImportFileList] = useState<UploadFile[]>([]);
+  const [importFiles, setImportFiles] = useState<File[]>([]);
+  const [importContractId, setImportContractId] = useState<string | undefined>();
+  const [importPreview, setImportPreview] = useState<InvoiceImportPreview | null>(null);
+  const [allowPartialImport, setAllowPartialImport] = useState(false);
+  const [previewingImport, setPreviewingImport] = useState(false);
+  const [confirmingImport, setConfirmingImport] = useState(false);
+  const [contractSearching, setContractSearching] = useState(false);
+
+  const resolveAttachmentUrl = (url?: string) => {
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+    const normalizedPath = url.startsWith('/') ? url : `/${url}`;
+
+    const configured = process.env.NEXT_PUBLIC_API_URL;
+    if (configured) {
+      try {
+        const parsed = new URL(configured);
+        return `${parsed.protocol}//${parsed.host}${normalizedPath}`;
+      } catch {
+        // ignore invalid configured url
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      return `${window.location.protocol}//${window.location.hostname}:3001${normalizedPath}`;
+    }
+    return `http://127.0.0.1:3001${normalizedPath}`;
+  };
+
+  const uploadProps: UploadProps = {
+    name: 'file',
+    multiple: false,
+    maxCount: 1,
+    fileList,
+    accept: '.pdf,.jpg,.jpeg,.png,.doc,.docx',
+    customRequest: async ({ file, onSuccess, onError }) => {
+      try {
+        const formData = new FormData();
+        formData.append('file', file as File);
+
+        const response = await apiClient.post('/upload?category=invoices', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        setUploadedFile({
+          url: response.data.url,
+          filename: response.data.originalName || response.data.filename,
+        });
+
+        onSuccess?.(response.data);
+        message.success('附件上传成功');
+      } catch (error: any) {
+        onError?.(error);
+        message.error(error.message || '附件上传失败');
+      }
+    },
+    onChange(info) {
+      setFileList(info.fileList);
+    },
+    onRemove() {
+      setUploadedFile(null);
+      return true;
+    },
+  };
+
+  const importUploadProps: UploadProps = {
+    multiple: true,
+    accept: '.pdf,.jpg,.jpeg,.png,.doc,.docx,.csv,.xlsx,.xls',
+    fileList: importFileList,
+    beforeUpload: () => false,
+    onChange(info) {
+      setImportFileList(info.fileList);
+      const selected = info.fileList
+        .map((item) => item.originFileObj)
+        .filter(Boolean) as File[];
+      setImportFiles(selected);
+    },
+    onRemove(file) {
+      const nextList = importFileList.filter((item) => item.uid !== file.uid);
+      setImportFileList(nextList);
+      setImportFiles(nextList.map((item) => item.originFileObj).filter(Boolean) as File[]);
+      return true;
+    },
+  };
 
   // 加载发票列表
   const fetchInvoices = async () => {
@@ -84,6 +216,7 @@ export default function InvoicesPage() {
       const params: any = { page, pageSize };
       if (keyword) params.keyword = keyword;
       if (statusFilter) params.status = statusFilter;
+      if (directionFilter) params.direction = directionFilter;
 
       const res = await api.get<any>('/invoices', { params });
       setInvoices(res.items);
@@ -96,24 +229,178 @@ export default function InvoicesPage() {
   };
 
   // 加载合同列表（用于下拉选择）
-  const fetchContracts = async () => {
+  const fetchContracts = async (searchKeyword?: string) => {
+    setContractSearching(true);
     try {
-      const res = await api.get<any>('/contracts', { params: { pageSize: 100, status: 'EXECUTING' } });
+      const keyword = (searchKeyword || '').trim();
+      const res = await api.get<any>('/contracts', {
+        params: {
+          page: 1,
+          pageSize: 50,
+          keyword: keyword || undefined,
+          sortBy: 'signDate',
+          sortOrder: 'desc',
+        },
+      });
       setContracts(res.items);
     } catch (error) {
       console.error('加载合同列表失败', error);
+    } finally {
+      setContractSearching(false);
+    }
+  };
+
+  const resetImportState = () => {
+    setImportFileList([]);
+    setImportFiles([]);
+    setImportContractId(undefined);
+    setImportPreview(null);
+    setAllowPartialImport(false);
+    setPreviewingImport(false);
+    setConfirmingImport(false);
+  };
+
+  const openImportModal = () => {
+    fetchContracts('');
+    resetImportState();
+    setImportModalVisible(true);
+  };
+
+  const handlePreviewImport = async () => {
+    if (!importFiles.length) {
+      message.warning('请先选择要上传的发票文件');
+      return;
+    }
+    if (!importContractId) {
+      message.warning('请先选择关联合同');
+      return;
+    }
+
+    setPreviewingImport(true);
+    try {
+      const formData = new FormData();
+      formData.append('contractId', importContractId);
+      importFiles.forEach((file) => formData.append('files', file));
+
+      const response = await apiClient.post('/invoices/import/preview', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImportPreview(response.data as InvoiceImportPreview);
+      if ((response.data as InvoiceImportPreview).invalid > 0) {
+        setAllowPartialImport(false);
+      }
+    } catch (error: any) {
+      message.error(error?.message || '解析预览失败');
+    } finally {
+      setPreviewingImport(false);
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (!importFiles.length) {
+      message.warning('请先选择要上传的发票文件');
+      return;
+    }
+    if (!importContractId) {
+      message.warning('请先选择关联合同');
+      return;
+    }
+    if (!importPreview) {
+      message.warning('请先执行解析预览');
+      return;
+    }
+    if (importPreview.invalid > 0 && !allowPartialImport) {
+      message.warning('存在异常行，请勾选“忽略错误并仅导入有效行”后继续');
+      return;
+    }
+
+    setConfirmingImport(true);
+    try {
+      const formData = new FormData();
+      formData.append('contractId', importContractId);
+      formData.append('allowPartial', allowPartialImport ? 'true' : 'false');
+      importFiles.forEach((file) => formData.append('files', file));
+
+      const response = await apiClient.post('/invoices/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const summary = response.data as {
+        total: number;
+        success: number;
+        failed: number;
+        errors: InvoiceImportError[];
+      };
+
+      if (summary.failed > 0) {
+        setImportPreview({
+          total: summary.total,
+          valid: summary.success,
+          invalid: summary.failed,
+          errors: summary.errors || [],
+          samples: [],
+        });
+        if (summary.success === 0) {
+          message.error(`本次未导入成功数据：失败 ${summary.failed} 条，请根据错误修正后重试`);
+        } else {
+          message.warning(`导入完成：成功 ${summary.success} 条，失败 ${summary.failed} 条`);
+        }
+      } else {
+        message.success(`导入成功：共 ${summary.success} 条`);
+        setImportModalVisible(false);
+        resetImportState();
+      }
+      await fetchInvoices();
+    } catch (error: any) {
+      const details =
+        (Array.isArray(error?.details?.errors) ? error.details.errors : undefined) ||
+        (Array.isArray(error?.data?.details?.errors) ? error.data.details.errors : undefined) ||
+        [];
+      if (details.length > 0 && importPreview) {
+        setImportPreview({
+          ...importPreview,
+          errors: details,
+          invalid: details.length,
+        });
+      }
+      message.error(error?.message || '批量导入失败');
+    } finally {
+      setConfirmingImport(false);
     }
   };
 
   useEffect(() => {
     fetchInvoices();
-  }, [page, pageSize, keyword, statusFilter]);
+  }, [page, pageSize, keyword, statusFilter, directionFilter]);
 
   // 打开新增弹窗
   const handleAdd = () => {
-    fetchContracts();
+    fetchContracts('');
     form.resetFields();
+    setFileList([]);
+    setUploadedFile(null);
     setModalVisible(true);
+  };
+
+  const contractOptions = contracts.map((contract) => ({
+    value: contract.id,
+    label: `${contract.contractNo} - ${contract.name}${contract.customer?.name ? `（${contract.customer.name}）` : ''}`,
+  }));
+
+  const selectedNewInvoiceContractId = Form.useWatch('contractId', form);
+  const selectedNewInvoiceContract = useMemo(
+    () => contracts.find((item) => item.id === selectedNewInvoiceContractId),
+    [contracts, selectedNewInvoiceContractId],
+  );
+  const selectedImportContract = useMemo(
+    () => contracts.find((item) => item.id === importContractId),
+    [contracts, importContractId],
+  );
+
+  const resolveDirectionByContractType = (contractType?: string | null): 'INBOUND' | 'OUTBOUND' => {
+    const normalized = (contractType || '').trim().toUpperCase();
+    return normalized.includes('SALES') || (contractType || '').includes('销售')
+      ? 'OUTBOUND'
+      : 'INBOUND';
   };
 
   // 提交表单
@@ -125,6 +412,8 @@ export default function InvoicesPage() {
       await api.post('/invoices', {
         ...values,
         invoiceDate: values.invoiceDate.format('YYYY-MM-DD'),
+        attachmentUrl: uploadedFile?.url,
+        attachmentName: uploadedFile?.filename,
       });
       message.success('创建成功');
 
@@ -180,11 +469,41 @@ export default function InvoicesPage() {
       ellipsis: true,
     },
     {
+      title: '发票方向',
+      dataIndex: 'direction',
+      key: 'direction',
+      width: 220,
+      render: (direction: 'INBOUND' | 'OUTBOUND') => (
+        <Tag color={INVOICE_DIRECTION_COLORS[direction]}>
+          {INVOICE_DIRECTION_LABELS[direction] || direction}
+        </Tag>
+      ),
+    },
+    {
       title: '发票类型',
       dataIndex: 'invoiceType',
       key: 'invoiceType',
       width: 130,
       render: (v: string) => INVOICE_TYPE_LABELS[v],
+    },
+    {
+      title: '附件',
+      key: 'attachment',
+      width: 110,
+      render: (_: any, record: Invoice) =>
+        record.attachmentUrl ? (
+          <Button
+            type="link"
+            size="small"
+            icon={<LinkOutlined />}
+            href={resolveAttachmentUrl(record.attachmentUrl)}
+            target="_blank"
+          >
+            查看附件
+          </Button>
+        ) : (
+          '-'
+        ),
     },
     {
       title: '金额',
@@ -248,9 +567,14 @@ export default function InvoicesPage() {
         <Title level={4} className="!mb-0">
           发票管理
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-          新增发票
-        </Button>
+        <Space>
+          <Button icon={<FileSearchOutlined />} onClick={openImportModal}>
+            上传发票并解析
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+            新增发票
+          </Button>
+        </Space>
       </div>
 
       {/* 搜索栏 */}
@@ -274,6 +598,16 @@ export default function InvoicesPage() {
             <Option value="ISSUED">已开具</Option>
             <Option value="VOIDED">已作废</Option>
           </Select>
+          <Select
+            placeholder="发票方向"
+            value={directionFilter}
+            onChange={setDirectionFilter}
+            style={{ width: 260 }}
+            allowClear
+          >
+            <Option value="INBOUND">进项发票（供应商开给词元无限）</Option>
+            <Option value="OUTBOUND">销项发票（词元无限开给客户）</Option>
+          </Select>
         </Space>
       </Card>
 
@@ -295,7 +629,7 @@ export default function InvoicesPage() {
             setPageSize(ps);
           },
         }}
-        scroll={{ x: 1100 }}
+        scroll={{ x: 1200 }}
       />
 
       {/* 新增弹窗 */}
@@ -313,14 +647,22 @@ export default function InvoicesPage() {
             label="关联合同"
             rules={[{ required: true, message: '请选择合同' }]}
           >
-            <Select placeholder="请选择合同" showSearch optionFilterProp="children">
-              {contracts.map((c) => (
-                <Option key={c.id} value={c.id}>
-                  {c.contractNo} - {c.name}
-                </Option>
-              ))}
-            </Select>
+            <Select
+              placeholder="请输入合同编号/合同名称/对方签约主体"
+              showSearch
+              filterOption={false}
+              onSearch={fetchContracts}
+              notFoundContent={contractSearching ? '搜索中...' : '无匹配合同'}
+              options={contractOptions}
+            />
           </Form.Item>
+          {selectedNewInvoiceContract && (
+            <Form.Item label="发票方向">
+              <Tag color={INVOICE_DIRECTION_COLORS[resolveDirectionByContractType(selectedNewInvoiceContract.contractType)]}>
+                {INVOICE_DIRECTION_LABELS[resolveDirectionByContractType(selectedNewInvoiceContract.contractType)]}
+              </Tag>
+            </Form.Item>
+          )}
 
           <Form.Item
             name="invoiceNo"
@@ -377,7 +719,137 @@ export default function InvoicesPage() {
           >
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
+
+          <Form.Item
+            label="发票附件"
+            extra="支持 PDF、图片、Word 文档，文件大小不超过 100MB"
+          >
+            <Upload {...uploadProps}>
+              <Button icon={<UploadOutlined />}>上传附件</Button>
+            </Upload>
+          </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="上传发票并解析"
+        open={importModalVisible}
+        width={980}
+        onCancel={() => {
+          if (previewingImport || confirmingImport) return;
+          setImportModalVisible(false);
+          resetImportState();
+        }}
+        onOk={handleConfirmImport}
+        okText="确认导入"
+        cancelText="取消"
+        confirmLoading={confirmingImport}
+        okButtonProps={{
+          disabled: !importPreview,
+        }}
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Select
+            placeholder="请输入合同编号/合同名称/对方签约主体"
+            value={importContractId}
+            onChange={(value) => {
+              setImportContractId(value);
+              setImportPreview(null);
+              setAllowPartialImport(false);
+            }}
+            showSearch
+            filterOption={false}
+            onSearch={fetchContracts}
+            notFoundContent={contractSearching ? '搜索中...' : '无匹配合同'}
+            style={{ width: '100%' }}
+            options={contractOptions}
+          />
+          {selectedImportContract && (
+            <Alert
+              type="info"
+              showIcon
+              message={`当前关联合同将按「${INVOICE_DIRECTION_LABELS[resolveDirectionByContractType(selectedImportContract.contractType)]}」处理`}
+            />
+          )}
+          <Upload.Dragger {...importUploadProps}>
+            <p className="ant-upload-drag-icon">
+              <UploadOutlined />
+            </p>
+            <p>点击或拖拽发票文件到此区域上传</p>
+            <p className="text-xs text-gray-500">
+              支持 PDF、图片、Word、CSV、Excel；单文件最大 100MB
+            </p>
+          </Upload.Dragger>
+          <Button
+            icon={<FileSearchOutlined />}
+            onClick={handlePreviewImport}
+            loading={previewingImport}
+          >
+            解析预览
+          </Button>
+
+          {importPreview && (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Alert
+                type={importPreview.invalid > 0 ? 'warning' : 'success'}
+                showIcon
+                message={`总计 ${importPreview.total} 条，可导入 ${importPreview.valid} 条，异常 ${importPreview.invalid} 条`}
+              />
+              {importPreview.invalid > 0 && (
+                <Checkbox
+                  checked={allowPartialImport}
+                  onChange={(e) => setAllowPartialImport(e.target.checked)}
+                >
+                  忽略错误并仅导入有效行
+                </Checkbox>
+              )}
+              {importPreview.errors.length > 0 && (
+                <div className="max-h-48 overflow-auto border rounded px-3 py-2 bg-gray-50 text-sm">
+                  {importPreview.errors.slice(0, 50).map((item, index) => (
+                    <div key={`${item.fileName}-${item.row}-${index}`}>
+                      {item.fileName} 第 {item.row} 行：{item.message}
+                    </div>
+                  ))}
+                  {importPreview.errors.length > 50 && <div>仅展示前 50 条错误。</div>}
+                </div>
+              )}
+              {importPreview.samples.length > 0 && (
+                <Table
+                  size="small"
+                  pagination={false}
+                  rowKey={(row) => `${row.fileName}-${row.row}-${row.invoiceNo}`}
+                  dataSource={importPreview.samples}
+                  scroll={{ x: 980, y: 260 }}
+                  columns={[
+                    { title: '文件', dataIndex: 'fileName', width: 170, ellipsis: true },
+                    { title: '行号', dataIndex: 'row', width: 70 },
+                    { title: '发票号码', dataIndex: 'invoiceNo', width: 180 },
+                    {
+                      title: '发票类型',
+                      dataIndex: 'invoiceType',
+                      width: 140,
+                      render: (value: string) => INVOICE_TYPE_LABELS[value] || value,
+                    },
+                    {
+                      title: '金额',
+                      dataIndex: 'amount',
+                      width: 120,
+                      render: (value: number) => `¥${formatAmount(value)}`,
+                    },
+                    {
+                      title: '税额',
+                      dataIndex: 'taxAmount',
+                      width: 120,
+                      render: (value?: number | null) =>
+                        value === null || value === undefined ? '-' : `¥${formatAmount(value)}`,
+                    },
+                    { title: '开票日期', dataIndex: 'invoiceDate', width: 130 },
+                  ]}
+                />
+              )}
+            </Space>
+          )}
+        </Space>
       </Modal>
     </div>
   );

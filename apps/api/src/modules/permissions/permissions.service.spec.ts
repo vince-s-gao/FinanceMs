@@ -26,6 +26,14 @@ describe('PermissionsService', () => {
     expect(result.role).toBe('ADMIN');
     expect(result.menus).toContain('/dashboard');
     expect(result.functions).toContain('expense.create');
+    expect(result.functions).toEqual(
+      expect.arrayContaining([
+        'dictionary.read',
+        'dictionary.create',
+        'dictionary.edit',
+        'dictionary.delete',
+      ]),
+    );
   });
 
   it('should return empty defaults for unknown role without db config', async () => {

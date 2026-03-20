@@ -237,6 +237,21 @@ export class ContractsController {
     return this.contractsService.clearImportHistory(this.getScopedOperatorId(currentUser));
   }
 
+  @Get(':id/attachment/download')
+  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @ApiOperation({ summary: '下载合同附件' })
+  async downloadAttachment(@Param('id') id: string, @Res() res: Response) {
+    const payload = await this.contractsService.getAttachmentDownloadPayload(id);
+    const asciiFallbackName = payload.filename.replace(/[^\x20-\x7E]/g, '_');
+    const encodedFilename = encodeURIComponent(payload.filename);
+    res.setHeader('Content-Type', payload.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${asciiFallbackName}"; filename*=UTF-8''${encodedFilename}`,
+    );
+    res.send(payload.buffer);
+  }
+
   @Get(':id')
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
   @ApiOperation({ summary: '获取合同详情' })
@@ -247,8 +262,14 @@ export class ContractsController {
   @Patch(':id')
   @Roles(Role.FINANCE, Role.ADMIN)
   @ApiOperation({ summary: '更新合同' })
-  async update(@Param('id') id: string, @Body() updateContractDto: UpdateContractDto) {
-    return this.contractsService.update(id, updateContractDto);
+  async update(
+    @Param('id') id: string,
+    @Body() updateContractDto: UpdateContractDto,
+    @CurrentUser() currentUser?: any,
+  ) {
+    return this.contractsService.update(id, updateContractDto, {
+      allowNonDraft: currentUser?.role === Role.ADMIN,
+    });
   }
 
   @Patch(':id/status')
@@ -261,7 +282,9 @@ export class ContractsController {
   @Delete(':id')
   @Roles(Role.FINANCE, Role.ADMIN)
   @ApiOperation({ summary: '删除合同' })
-  async remove(@Param('id') id: string) {
-    return this.contractsService.remove(id);
+  async remove(@Param('id') id: string, @CurrentUser() currentUser?: any) {
+    return this.contractsService.remove(id, {
+      allowNonDraft: currentUser?.role === Role.ADMIN,
+    });
   }
 }

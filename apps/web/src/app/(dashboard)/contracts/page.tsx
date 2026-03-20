@@ -19,6 +19,7 @@ import {
   Modal,
   Alert,
   Checkbox,
+  Popconfirm,
 } from 'antd';
 import {
   PlusOutlined,
@@ -26,10 +27,13 @@ import {
   EyeOutlined,
   ReloadOutlined,
   UploadOutlined,
+  EditOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { api } from '@/lib/api';
 import apiClient from '@/lib/api';
+import { useAuthStore } from '@/stores/auth';
 import { CONTRACT_STATUS_LABELS, CONTRACT_STATUS_COLORS, formatAmount, formatDate } from '@/lib/constants';
 import type { UploadProps } from 'antd/es/upload/interface';
 
@@ -76,6 +80,7 @@ interface ImportPreviewResult {
   errors: Array<{ row: number; message: string }>;
   samples: Array<{
     row: number;
+    contractNo: string;
     name: string;
     customerName: string;
     contractType: string;
@@ -104,11 +109,13 @@ const IMPORT_HISTORY_LIMIT = 10;
 
 export default function ContractsPage() {
   const router = useRouter();
+  const currentUser = useAuthStore((state) => state.user);
   const [loading, setLoading] = useState(false);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
 
   const [keywordInput, setKeywordInput] = useState('');
   const [customerKeywordInput, setCustomerKeywordInput] = useState('');
@@ -128,6 +135,17 @@ export default function ContractsPage() {
   const [importHistory, setImportHistory] = useState<ImportHistoryItem[]>([]);
   const [importHistoryLoading, setImportHistoryLoading] = useState(false);
 
+  const normalizeImportErrorMessage = (error: any, fallback: string) => {
+    const rawMessage =
+      error?.message ||
+      (typeof error?.data?.message === 'string' ? error.data.message : '') ||
+      fallback;
+    if (typeof rawMessage === 'string' && rawMessage.includes('仅支持 CSV 文件')) {
+      return '后端服务仍在旧版本（仅支持CSV），请重启 API 服务后再上传 Excel，或先上传 CSV。';
+    }
+    return rawMessage || fallback;
+  };
+
   const contractTypeMap = useMemo(() => {
     return contractTypes.reduce<Record<string, DictionaryItem>>((acc, item) => {
       acc[item.code] = item;
@@ -139,6 +157,7 @@ export default function ContractsPage() {
     const currentYear = dayjs().year();
     return Array.from({ length: 10 }).map((_, index) => currentYear - index);
   }, []);
+  const isAdmin = currentUser?.role === 'ADMIN';
 
   const getContractTypeInfo = (code?: string | null) => {
     if (!code) {
@@ -251,6 +270,34 @@ export default function ContractsPage() {
     }
   };
 
+  const handleDeleteOne = async (id: string) => {
+    try {
+      await api.delete(`/contracts/${id}`);
+      message.success('删除成功');
+      setSelectedRowKeys((prev) => prev.filter((key) => key !== id));
+      await fetchContracts();
+    } catch (error: any) {
+      message.error(error?.message || '删除失败');
+    }
+  };
+
+  const handleBatchDeleteSelected = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.info('请先选择要删除的合同');
+      return;
+    }
+    const results = await Promise.allSettled(selectedRowKeys.map((id) => api.delete(`/contracts/${id}`)));
+    const success = results.filter((item) => item.status === 'fulfilled').length;
+    const failed = results.length - success;
+    if (success > 0) {
+      message.success(`批量删除完成：成功 ${success} 条${failed ? `，失败 ${failed} 条` : ''}`);
+    } else {
+      message.error('批量删除失败');
+    }
+    setSelectedRowKeys([]);
+    await fetchContracts();
+  };
+
   const handleDownloadImportTemplate = async () => {
     try {
       const response = await apiClient.get('/contracts/import/template/excel', {
@@ -268,7 +315,7 @@ export default function ContractsPage() {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (error: any) {
-      message.error(error?.message || '下载导入模板失败');
+      message.error(normalizeImportErrorMessage(error, '下载导入模板失败'));
     }
   };
 
@@ -353,7 +400,7 @@ export default function ContractsPage() {
         setImportPreviewOpen(true);
         onSuccess?.(res.data);
       } catch (error: any) {
-        message.error(error?.message || '导入预校验失败');
+        message.error(normalizeImportErrorMessage(error, '导入预校验失败'));
         onError?.(error);
       }
     },
@@ -411,7 +458,7 @@ export default function ContractsPage() {
           invalid: detailedErrors.length,
         });
       }
-      message.error(error?.message || '批量导入失败');
+      message.error(normalizeImportErrorMessage(error, '批量导入失败'));
     } finally {
       setImporting(false);
     }
@@ -464,7 +511,7 @@ export default function ContractsPage() {
       width: 260,
     },
     {
-      title: '客户名称',
+      title: '对方签约主体',
       dataIndex: ['customer', 'name'],
       key: 'customer',
       width: 220,
@@ -519,17 +566,42 @@ export default function ContractsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 90,
+      width: 200,
       fixed: 'right' as const,
       render: (_: unknown, record: Contract) => (
-        <Button
-          type="link"
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => router.push(`/contracts/${record.id}`)}
-        >
-          查看
-        </Button>
+        <Space size={4}>
+          <Button
+            type="link"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => router.push(`/contracts/${record.id}`)}
+          >
+            查看
+          </Button>
+          {isAdmin && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => router.push(`/contracts/${record.id}/edit`)}
+            >
+              编辑
+            </Button>
+          )}
+          {isAdmin && (
+            <Popconfirm
+              title="确定删除该合同吗？"
+              description="删除后将不可恢复"
+              onConfirm={() => handleDeleteOne(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          )}
+        </Space>
       ),
     },
   ];
@@ -561,6 +633,23 @@ export default function ContractsPage() {
             <Button onClick={() => router.push('/settings/dictionaries?type=CONTRACT_TYPE')}>
               合同类型管理
             </Button>
+            {isAdmin && (
+              <Popconfirm
+                title={`确定删除已选中的 ${selectedRowKeys.length} 条合同吗？`}
+                description="删除后将不可恢复"
+                onConfirm={handleBatchDeleteSelected}
+                okText="确定"
+                cancelText="取消"
+                disabled={selectedRowKeys.length === 0}
+              >
+                <Button danger disabled={selectedRowKeys.length === 0}>
+                  批量删除
+                </Button>
+              </Popconfirm>
+            )}
+            {isAdmin && selectedRowKeys.length > 0 && (
+              <Text type="secondary">已选择 {selectedRowKeys.length} 条</Text>
+            )}
           </Space>
         </div>
         <Space wrap>
@@ -574,7 +663,7 @@ export default function ContractsPage() {
             onPressEnter={handleSearch}
           />
           <Input
-            placeholder="客户名称（模糊搜索）"
+            placeholder="对方签约主体（模糊搜索）"
             value={customerKeywordInput}
             onChange={(e) => setCustomerKeywordInput(e.target.value)}
             style={{ width: 220 }}
@@ -628,6 +717,14 @@ export default function ContractsPage() {
         columns={columns}
         dataSource={contracts}
         rowKey="id"
+        rowSelection={
+          isAdmin
+            ? {
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys as string[]),
+              }
+            : undefined
+        }
         loading={loading}
         pagination={{
           current: page,
@@ -647,6 +744,8 @@ export default function ContractsPage() {
       <Modal
         title="批量导入预校验结果"
         open={importPreviewOpen}
+        width={980}
+        styles={{ body: { maxHeight: '70vh', overflow: 'auto' } }}
         onCancel={() => {
           if (importing) return;
           setImportPreviewOpen(false);
@@ -703,10 +802,12 @@ export default function ContractsPage() {
                 rowKey="row"
                 pagination={false}
                 dataSource={importPreview.samples}
+                scroll={{ x: 980 }}
                 columns={[
                   { title: '行号', dataIndex: 'row', width: 70 },
-                  { title: '合同名称', dataIndex: 'name', ellipsis: true },
-                  { title: '客户名称', dataIndex: 'customerName', ellipsis: true },
+                  { title: '合同编号', dataIndex: 'contractNo', width: 160 },
+                  { title: '合同名称', dataIndex: 'name', width: 220, ellipsis: true },
+                  { title: '对方签约主体', dataIndex: 'customerName', width: 220, ellipsis: true },
                   { title: '合同类型', dataIndex: 'contractType', width: 120 },
                   {
                     title: '金额',

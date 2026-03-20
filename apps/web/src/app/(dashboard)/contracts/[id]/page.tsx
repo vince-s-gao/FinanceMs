@@ -20,11 +20,16 @@ import {
 import {
   ArrowLeftOutlined,
   EditOutlined,
+  DownloadOutlined,
+  PaperClipOutlined,
 } from '@ant-design/icons';
 import { api } from '@/lib/api';
 import {
   CONTRACT_STATUS_LABELS,
   CONTRACT_STATUS_COLORS,
+  INVOICE_STATUS_COLORS,
+  INVOICE_STATUS_LABELS,
+  INVOICE_TYPE_LABELS,
   formatAmount,
   formatDate,
 } from '@/lib/constants';
@@ -37,6 +42,8 @@ interface Contract {
   name: string;
   signingEntity?: string | null;
   contractType?: string | null;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
   customer: {
     id: string;
     name: string;
@@ -54,6 +61,14 @@ interface Contract {
   receivable: number;
   paymentPlans: PaymentPlan[];
   paymentRecords: PaymentRecord[];
+  invoices: InvoiceRecord[];
+  summary?: {
+    totalPaid?: number | string;
+    receivable?: number | string;
+    totalInvoiced?: number | string;
+    uninvoiced?: number | string;
+    paymentProgress?: number | string;
+  };
 }
 
 interface PaymentPlan {
@@ -72,6 +87,16 @@ interface PaymentRecord {
   remark?: string;
 }
 
+interface InvoiceRecord {
+  id: string;
+  invoiceNo: string;
+  invoiceType: string;
+  amount: number;
+  taxAmount?: number | null;
+  invoiceDate: string;
+  status: string;
+}
+
 interface DictionaryItem {
   id: string;
   code: string;
@@ -86,6 +111,72 @@ export default function ContractDetailPage() {
   const [contractTypeMap, setContractTypeMap] = useState<Record<string, string>>({});
 
   const contractId = params.id as string;
+
+  const resolveAttachmentDownloadUrl = (id: string) => {
+    const configured = process.env.NEXT_PUBLIC_API_URL;
+    if (configured) {
+      try {
+        const parsed = new URL(configured);
+        const basePath = parsed.pathname.replace(/\/$/, '');
+        const apiPath = basePath.endsWith('/api') ? basePath : `${basePath}/api`;
+        return `${parsed.protocol}//${parsed.host}${apiPath}/contracts/${id}/attachment/download`;
+      } catch {
+        // ignore invalid configured url
+      }
+    }
+    if (typeof window !== 'undefined') {
+      return `${window.location.protocol}//${window.location.hostname}:3001/api/contracts/${id}/attachment/download`;
+    }
+    return `http://127.0.0.1:3001/api/contracts/${id}/attachment/download`;
+  };
+
+  const resolveContractFlow = (contractTypeCode?: string | null) => {
+    const displayType = contractTypeCode
+      ? contractTypeMap[contractTypeCode] || contractTypeCode
+      : '';
+    const normalized = String(displayType).toLowerCase();
+    const isPurchase =
+      /采购|purchase|procurement|buy|应付|付款/.test(normalized);
+    const isSales =
+      /销售|sale|sales|应收|回款/.test(normalized);
+    if (isPurchase && !isSales) {
+      return {
+        overviewTitle: '付款概览',
+        progressLabel: '付款进度',
+        doneLabel: '已付款',
+        balanceLabel: '应付余额',
+        planTitle: '付款计划',
+        recordTitle: '付款记录',
+        planStatusPending: '待付款',
+        planStatusPartial: '部分付款',
+        amountColumn: '付款金额',
+        dateColumn: '付款日期',
+        methodColumn: '付款方式',
+      };
+    }
+    return {
+      overviewTitle: '回款概览',
+      progressLabel: '回款进度',
+      doneLabel: '已回款',
+      balanceLabel: '应收余额',
+      planTitle: '回款计划',
+      recordTitle: '回款记录',
+      planStatusPending: '待回款',
+      planStatusPartial: '部分回款',
+      amountColumn: '回款金额',
+      dateColumn: '回款日期',
+      methodColumn: '回款方式',
+    };
+  };
+
+  const isNoPaymentContractType = (contractTypeCode?: string | null) => {
+    if (!contractTypeCode) return false;
+    const displayType = contractTypeMap[contractTypeCode] || contractTypeCode;
+    const normalized = String(displayType).toLowerCase().trim();
+    const compact = normalized.replace(/\s+/g, '');
+    const noPaymentTypes = new Set(['nda', 'other', 'ts', 'fa', '其他']);
+    return noPaymentTypes.has(compact) || compact.includes('保密');
+  };
 
   // 加载合同详情
   const fetchContract = async () => {
@@ -126,12 +217,56 @@ export default function ContractDetailPage() {
   }, [contractId]);
 
   // 计算回款进度
+  const toNumber = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined) return 0;
+    const n = typeof value === 'string' ? Number(value) : value;
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const getTotalPaid = () => {
+    if (!contract) return 0;
+    const fromSummary = toNumber(contract.summary?.totalPaid);
+    if (fromSummary > 0) return fromSummary;
+    return (contract.paymentRecords || []).reduce((sum, item) => sum + toNumber(item.amount), 0);
+  };
+
+  const getReceivable = () => {
+    if (!contract) return 0;
+    const fromSummary = toNumber(contract.summary?.receivable);
+    if (contract.summary?.receivable !== undefined) return fromSummary;
+    return toNumber(contract.amountWithTax) - getTotalPaid();
+  };
+
+  const getTotalInvoiced = () => {
+    if (!contract) return 0;
+    const fromSummary = toNumber(contract.summary?.totalInvoiced);
+    if (contract.summary?.totalInvoiced !== undefined) return fromSummary;
+    return (contract.invoices || [])
+      .filter((item) => item.status === 'ISSUED')
+      .reduce((sum, item) => sum + toNumber(item.amount), 0);
+  };
+
+  const getUninvoiced = () => {
+    if (!contract) return 0;
+    const fromSummary = toNumber(contract.summary?.uninvoiced);
+    if (contract.summary?.uninvoiced !== undefined) return fromSummary;
+    return toNumber(contract.amountWithTax) - getTotalInvoiced();
+  };
+
   const getPaymentProgress = () => {
     if (!contract) return 0;
     const amount = Number(contract.amountWithTax);
-    const paid = Number(contract.totalPaid);
+    const paid = getTotalPaid();
     if (amount === 0) return 0;
     return Math.round((paid / amount) * 100);
+  };
+
+  const getInvoiceProgress = () => {
+    if (!contract) return 0;
+    const totalAmount = toNumber(contract.amountWithTax);
+    const invoiced = getTotalInvoiced();
+    if (totalAmount <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round((invoiced / totalAmount) * 100)));
   };
 
   // 回款计划表格列
@@ -233,6 +368,62 @@ export default function ContractDetailPage() {
   }
 
   const progress = getPaymentProgress();
+  const invoiceProgress = getInvoiceProgress();
+  const totalPaid = getTotalPaid();
+  const receivable = getReceivable();
+  const totalInvoiced = getTotalInvoiced();
+  const uninvoiced = getUninvoiced();
+  const flowLabels = resolveContractFlow(contract.contractType);
+  const hidePaymentSection = isNoPaymentContractType(contract.contractType);
+
+  const invoiceColumns = [
+    {
+      title: '发票号码',
+      dataIndex: 'invoiceNo',
+      key: 'invoiceNo',
+      width: 180,
+      ellipsis: true,
+    },
+    {
+      title: '发票类型',
+      dataIndex: 'invoiceType',
+      key: 'invoiceType',
+      width: 150,
+      render: (v: string) => INVOICE_TYPE_LABELS[v] || v || '-',
+    },
+    {
+      title: '金额',
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 140,
+      render: (v: number) => <Text strong>¥{formatAmount(v)}</Text>,
+    },
+    {
+      title: '税额',
+      dataIndex: 'taxAmount',
+      key: 'taxAmount',
+      width: 140,
+      render: (v?: number | null) => (v === null || v === undefined ? '-' : `¥${formatAmount(v)}`),
+    },
+    {
+      title: '开票日期',
+      dataIndex: 'invoiceDate',
+      key: 'invoiceDate',
+      width: 130,
+      render: (v: string) => formatDate(v),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 110,
+      render: (v: string) => (
+        <Tag color={INVOICE_STATUS_COLORS[v] || 'default'}>
+          {INVOICE_STATUS_LABELS[v] || v || '-'}
+        </Tag>
+      ),
+    },
+  ];
 
   return (
     <div>
@@ -267,7 +458,7 @@ export default function ContractDetailPage() {
           <Descriptions.Item label="合同名称">
             {contract.name}
           </Descriptions.Item>
-          <Descriptions.Item label="客户">
+          <Descriptions.Item label="对方签约主体">
             {contract.customer?.name || '-'}
           </Descriptions.Item>
           <Descriptions.Item label="签约年份">
@@ -304,60 +495,143 @@ export default function ContractDetailPage() {
           <Descriptions.Item label="备注" span={3}>
             {contract.remark || '-'}
           </Descriptions.Item>
+          <Descriptions.Item label="合同附件" span={3}>
+            {contract.attachmentUrl ? (
+              <Space wrap>
+                <Tag icon={<PaperClipOutlined />} color="blue">
+                  {contract.attachmentName || '合同附件'}
+                </Tag>
+                <Button
+                  type="link"
+                  icon={<DownloadOutlined />}
+                  href={resolveAttachmentDownloadUrl(contract.id)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  下载附件
+                </Button>
+              </Space>
+            ) : (
+              '-'
+            )}
+          </Descriptions.Item>
         </Descriptions>
       </Card>
 
-      {/* 回款概览 */}
-      <Card title="回款概览" className="mb-4">
-        <div className="flex items-center gap-8">
+      {!hidePaymentSection && (
+        <>
+          {/* 回款概览 */}
+          <Card title={flowLabels.overviewTitle} className="mb-4">
+            <div className="flex items-center gap-8">
+              <div className="flex-1">
+                <div className="mb-2">
+                  <Text type="secondary">{flowLabels.progressLabel}</Text>
+                </div>
+                <Progress
+                  percent={progress}
+                  status={progress >= 100 ? 'success' : 'active'}
+                  strokeWidth={12}
+                />
+              </div>
+              <Divider type="vertical" style={{ height: 60 }} />
+              <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">
+                  ¥{formatAmount(totalPaid)}
+              </div>
+              <Text type="secondary">{flowLabels.doneLabel}</Text>
+            </div>
+              <Divider type="vertical" style={{ height: 60 }} />
+              <div className="text-center">
+              <div className="text-2xl font-bold text-orange-500">
+                  ¥{formatAmount(receivable)}
+              </div>
+              <Text type="secondary">{flowLabels.balanceLabel}</Text>
+            </div>
+            </div>
+          </Card>
+
+          {/* 回款计划 */}
+          <Card title={flowLabels.planTitle} className="mb-4">
+            <Table
+              columns={planColumns.map((item) =>
+                item.key === 'status'
+                  ? {
+                      ...item,
+                      render: (status: string) => {
+                        const statusMap: Record<string, { label: string; color: string }> = {
+                          PENDING: { label: flowLabels.planStatusPending, color: 'default' },
+                          PARTIAL: { label: flowLabels.planStatusPartial, color: 'processing' },
+                          COMPLETED: { label: '已完成', color: 'success' },
+                        };
+                        const info = statusMap[status] || { label: status, color: 'default' };
+                        return <Tag color={info.color}>{info.label}</Tag>;
+                      },
+                    }
+                  : item,
+              )}
+              dataSource={contract.paymentPlans || []}
+              rowKey="id"
+              pagination={false}
+              size="small"
+              locale={{ emptyText: `暂无${flowLabels.planTitle}` }}
+            />
+          </Card>
+
+          {/* 回款记录 */}
+          <Card title={flowLabels.recordTitle}>
+            <Table
+              columns={recordColumns.map((item) => {
+                if (item.key === 'amount') return { ...item, title: flowLabels.amountColumn };
+                if (item.key === 'paymentDate') return { ...item, title: flowLabels.dateColumn };
+                if (item.key === 'paymentMethod') return { ...item, title: flowLabels.methodColumn };
+                return item;
+              })}
+              dataSource={contract.paymentRecords || []}
+              rowKey="id"
+              pagination={false}
+              size="small"
+              locale={{ emptyText: `暂无${flowLabels.recordTitle}` }}
+            />
+          </Card>
+        </>
+      )}
+
+      <Card title="开票情况" className="mt-4">
+        <div className="flex items-center gap-8 mb-4">
           <div className="flex-1">
             <div className="mb-2">
-              <Text type="secondary">回款进度</Text>
+              <Text type="secondary">开票进度</Text>
             </div>
             <Progress
-              percent={progress}
-              status={progress >= 100 ? 'success' : 'active'}
-              strokeWidth={12}
+              percent={invoiceProgress}
+              status={invoiceProgress >= 100 ? 'success' : 'active'}
+              strokeWidth={10}
             />
           </div>
           <Divider type="vertical" style={{ height: 60 }} />
           <div className="text-center">
-            <div className="text-2xl font-bold text-green-600">
-              ¥{formatAmount(contract.totalPaid)}
+            <div className="text-2xl font-bold text-blue-600">
+              ¥{formatAmount(totalInvoiced)}
             </div>
-            <Text type="secondary">已回款</Text>
+            <Text type="secondary">已开票</Text>
           </div>
           <Divider type="vertical" style={{ height: 60 }} />
           <div className="text-center">
             <div className="text-2xl font-bold text-orange-500">
-              ¥{formatAmount(contract.receivable)}
+              ¥{formatAmount(uninvoiced)}
             </div>
-            <Text type="secondary">应收余额</Text>
+            <Text type="secondary">未开票</Text>
           </div>
         </div>
-      </Card>
 
-      {/* 回款计划 */}
-      <Card title="回款计划" className="mb-4">
         <Table
-          columns={planColumns}
-          dataSource={contract.paymentPlans || []}
+          columns={invoiceColumns}
+          dataSource={contract.invoices || []}
           rowKey="id"
           pagination={false}
           size="small"
-          locale={{ emptyText: '暂无回款计划' }}
-        />
-      </Card>
-
-      {/* 回款记录 */}
-      <Card title="回款记录">
-        <Table
-          columns={recordColumns}
-          dataSource={contract.paymentRecords || []}
-          rowKey="id"
-          pagination={false}
-          size="small"
-          locale={{ emptyText: '暂无回款记录' }}
+          locale={{ emptyText: '暂无开票记录' }}
+          scroll={{ x: 960 }}
         />
       </Card>
     </div>

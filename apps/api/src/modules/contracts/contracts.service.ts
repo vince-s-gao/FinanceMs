@@ -7,9 +7,12 @@ import { UpdateContractDto } from './dto/update-contract.dto';
 import { QueryContractDto } from './dto/query-contract.dto';
 import { ChangeStatusDto } from './dto/change-status.dto';
 import { Decimal } from '@prisma/client/runtime/library';
-import { Prisma } from '@prisma/client';
+import { ApprovalStatus, Prisma } from '@prisma/client';
 import { parseDateRangeEnd, parseDateRangeStart, resolveSortField } from '../../common/utils/query.utils';
 import { read as readWorkbook, utils as xlsxUtils, write as writeWorkbook } from 'xlsx';
+import * as fs from 'fs';
+import * as path from 'path';
+import { UploadService } from '../upload/upload.service';
 
 // 合同状态常量
 const ContractStatus = {
@@ -32,13 +35,6 @@ const ALLOWED_CONTRACT_SORT_FIELDS = [
   'createdAt',
   'updatedAt',
 ] as const;
-
-// 生成合同编号
-function generateContractNo(date: Date, sequence: number): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `HT${year}${month}-${String(sequence).padStart(4, '0')}`;
-}
 
 function formatCsvCell(value: unknown): string {
   if (value === null || value === undefined) return '""';
@@ -104,9 +100,51 @@ function parseCsvLine(line: string): string[] {
 function toDateString(value: string): string | null {
   const text = normalizeText(value);
   if (!text) return null;
-  const date = new Date(text);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+
+  const normalizeValidDate = (date: Date): string | null => {
+    if (Number.isNaN(date.getTime())) return null;
+    const year = date.getUTCFullYear();
+    if (year < 1900 || year > 2100) return null;
+    return date.toISOString().slice(0, 10);
+  };
+
+  // YYYY-MM-DD / YYYY/MM/DD / YYYY.M.D
+  const ymdMatched = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (ymdMatched) {
+    const year = Number(ymdMatched[1]);
+    const month = Number(ymdMatched[2]);
+    const day = Number(ymdMatched[3]);
+    const normalized = normalizeValidDate(new Date(Date.UTC(year, month - 1, day)));
+    if (!normalized) return null;
+    const [ny, nm, nd] = normalized.split('-').map((n) => Number(n));
+    if (ny !== year || nm !== month || nd !== day) return null;
+    return normalized;
+  }
+
+  // YYYYMMDD
+  const compactMatched = text.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compactMatched) {
+    const year = Number(compactMatched[1]);
+    const month = Number(compactMatched[2]);
+    const day = Number(compactMatched[3]);
+    const normalized = normalizeValidDate(new Date(Date.UTC(year, month - 1, day)));
+    if (!normalized) return null;
+    const [ny, nm, nd] = normalized.split('-').map((n) => Number(n));
+    if (ny !== year || nm !== month || nd !== day) return null;
+    return normalized;
+  }
+
+  // Excel serial date, e.g. 46025 -> 2026-01-03
+  const asNumber = Number(text);
+  if (!Number.isNaN(asNumber) && Number.isFinite(asNumber) && asNumber > 0 && asNumber < 100000) {
+    const serial = Math.floor(asNumber);
+    const excelEpochUtc = Date.UTC(1899, 11, 30);
+    const date = new Date(excelEpochUtc + serial * 24 * 60 * 60 * 1000);
+    const normalized = normalizeValidDate(date);
+    if (normalized) return normalized;
+  }
+
+  return normalizeValidDate(new Date(text));
 }
 
 function toNumber(value: string): number | null {
@@ -144,6 +182,7 @@ type ImportPreviewResult = {
   errors: Array<{ row: number; message: string }>;
   samples: Array<{
     row: number;
+    contractNo: string;
     name: string;
     customerName: string;
     contractType: string;
@@ -172,10 +211,18 @@ type PreparedImportRow = {
   row: number;
   customerName: string;
   contractTypeText: string;
-  dto: CreateContractDto;
+  contractData: Omit<CreateContractDto, 'customerId'>;
+};
+
+type PreparedImportResult = {
+  total: number;
+  validRows: PreparedImportRow[];
+  errors: Array<{ row: number; message: string }>;
+  contractTypeCodeByLookup: Map<string, string>;
 };
 
 const IMPORT_HEADER_ALIASES = {
+  contractNo: ['合同编号', 'contract_no', 'contractno', 'no'],
   name: ['合同名称', 'name', 'contract_name', 'contractname'],
   customerName: ['客户名称', 'customer_name', 'customername', 'customer'],
   signingEntity: ['公司签约主体', '签约主体', 'signing_entity', 'signingentity', 'company'],
@@ -185,8 +232,15 @@ const IMPORT_HEADER_ALIASES = {
   endDate: ['结束日期', '到期日期', 'end_date', 'enddate'],
 } as const;
 
+const IMPORT_CUSTOMER_REMARK_VISIBLE = '由合同导入自动创建，待完善客户信息';
+const IMPORT_CUSTOMER_REMARK_HIDDEN_NON_SALES = '由非销售合同自动创建（隐藏），仅用于合同关联';
+
 function normalizeHeader(value: string): string {
-  return normalizeText(value).toLowerCase().replace(/[\s_\-]/g, '');
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[（(].*?[）)]/g, '')
+    .replace(/[\s_\-/:：]/g, '')
+    .replace(/[^\u4e00-\u9fa5a-z0-9]/g, '');
 }
 
 function getFileExtension(fileName?: string): string {
@@ -198,41 +252,502 @@ function getFileExtension(fileName?: string): string {
 
 @Injectable()
 export class ContractsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploadService: UploadService,
+  ) {}
 
-  /**
-   * 生成合同编号
-   */
-  private async generateContractNo(now: Date): Promise<string> {
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `HT${year}${month}-`;
-    const lastContract = await this.prisma.contract.findFirst({
+  private resolveAttachmentMimeType(fileName: string): string {
+    const ext = path.extname(fileName).toLowerCase();
+    const mimeByExt: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    };
+    return mimeByExt[ext] || 'application/octet-stream';
+  }
+
+  private attachmentNameScore(value: string): number {
+    const cjkCount = (value.match(/[\u4e00-\u9fff]/g) || []).length;
+    const replacementCount = (value.match(/\uFFFD/g) || []).length;
+    const mojibakeHintCount = (value.match(/[ÃÂ]/g) || []).length;
+    return cjkCount * 3 - replacementCount * 4 - mojibakeHintCount * 2;
+  }
+
+  private normalizeAttachmentName(value?: string | null): string | null {
+    if (!value) return null;
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    const decoded = Buffer.from(raw, 'latin1').toString('utf8').trim();
+    if (!decoded) return raw;
+
+    return this.attachmentNameScore(decoded) > this.attachmentNameScore(raw)
+      ? decoded.normalize('NFC')
+      : raw;
+  }
+
+  async getAttachmentDownloadPayload(id: string) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id, isDeleted: false },
+      select: {
+        contractNo: true,
+        attachmentUrl: true,
+        attachmentName: true,
+      },
+    });
+
+    if (!contract) {
+      throw new NotFoundException('合同不存在');
+    }
+
+    if (!contract.attachmentUrl) {
+      throw new BadRequestException('该合同暂无附件');
+    }
+
+    const fullPath = this.uploadService.getFilePath(contract.attachmentUrl);
+    if (!fs.existsSync(fullPath)) {
+      throw new NotFoundException('附件不存在或已被删除');
+    }
+
+    const filenameRaw =
+      contract.attachmentName?.trim()
+      || path.basename(fullPath)
+      || `${contract.contractNo}-附件`;
+    const filename = this.normalizeAttachmentName(filenameRaw) || filenameRaw;
+
+    return {
+      filename,
+      mimeType: this.resolveAttachmentMimeType(filename),
+      buffer: fs.readFileSync(fullPath),
+    };
+  }
+
+  private normalizeContractNo(value?: string): string {
+    return normalizeText(value || '');
+  }
+
+  private toLookupKey(value: string): string {
+    return normalizeText(value).toLowerCase();
+  }
+
+  private resolveDictionaryCodeByText(
+    codeByLookup: Map<string, string>,
+    text: string,
+  ): string | undefined {
+    const key = this.toLookupKey(text);
+    if (!key) return undefined;
+    return codeByLookup.get(key);
+  }
+
+  private registerDictionaryLookup(
+    codeByLookup: Map<string, string>,
+    item: { code: string; name?: string | null; value?: string | null },
+  ) {
+    const candidates = [item.code, item.name || '', item.value || ''];
+    candidates.forEach((value) => {
+      const key = this.toLookupKey(value);
+      if (key) {
+        codeByLookup.set(key, item.code);
+      }
+    });
+  }
+
+  private async generateCustomerCodeForImport(): Promise<string> {
+    const lastCustomer = await this.prisma.customer.findFirst({
       where: {
-        contractNo: {
-          startsWith: prefix,
+        code: {
+          startsWith: 'CUS',
         },
       },
-      orderBy: { contractNo: 'desc' },
-      select: { contractNo: true },
+      orderBy: { code: 'desc' },
+      select: { code: true },
     });
 
     let sequence = 1;
-    if (lastContract?.contractNo) {
-      const match = lastContract.contractNo.match(/-(\d{4})$/);
+    if (lastCustomer?.code) {
+      const match = lastCustomer.code.match(/^CUS(\d{6})$/);
       if (match) {
         sequence = Number(match[1]) + 1;
       }
     }
 
-    return generateContractNo(now, sequence);
+    return `CUS${String(sequence).padStart(6, '0')}`;
   }
 
-  private isContractNoConflict(error: unknown): boolean {
+  private async generateAutoContractTypeCodeForImport(): Promise<string> {
+    const prefix = 'AUTO_CT_';
+    const lastType = await this.prisma.dictionary.findFirst({
+      where: {
+        type: 'CONTRACT_TYPE',
+        code: {
+          startsWith: prefix,
+        },
+      },
+      orderBy: { code: 'desc' },
+      select: { code: true },
+    });
+
+    let sequence = 1;
+    if (lastType?.code) {
+      const match = lastType.code.match(/^AUTO_CT_(\d{6})$/);
+      if (match) {
+        sequence = Number(match[1]) + 1;
+      }
+    }
+
+    return `${prefix}${String(sequence).padStart(6, '0')}`;
+  }
+
+  private async generateSupplierCodeForAutoCreate(): Promise<string> {
+    const lastSupplier = await this.prisma.supplier.findFirst({
+      where: {
+        code: {
+          startsWith: 'SUP',
+        },
+      },
+      orderBy: { code: 'desc' },
+      select: { code: true },
+    });
+
+    let sequence = 1;
+    if (lastSupplier?.code) {
+      const match = lastSupplier.code.match(/^SUP(\d{6})$/);
+      if (match) {
+        sequence = Number(match[1]) + 1;
+      }
+    }
+
+    return `SUP${String(sequence).padStart(6, '0')}`;
+  }
+
+  private toSuggestedContractTypeCode(contractTypeText: string): string | null {
+    const normalized = normalizeText(contractTypeText)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    if (!normalized) return null;
+    return normalized.length > 40 ? normalized.slice(0, 40) : normalized;
+  }
+
+  private async getNextContractTypeSortOrderForImport(): Promise<number> {
+    const lastType = await this.prisma.dictionary.findFirst({
+      where: { type: 'CONTRACT_TYPE' },
+      orderBy: [{ sortOrder: 'desc' }, { createdAt: 'desc' }],
+      select: { sortOrder: true },
+    });
+    return (lastType?.sortOrder || 0) + 1;
+  }
+
+  private isUniqueConflict(error: unknown, field: string): boolean {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
     if (error.code !== 'P2002') return false;
     const target = (error.meta?.target || []) as string[];
-    return target.includes('contractNo');
+    return target.includes(field);
+  }
+
+  private async getDefaultCustomerTypeForImport(): Promise<string> {
+    const preferred = await this.prisma.dictionary.findFirst({
+      where: {
+        type: 'CUSTOMER_TYPE',
+        isEnabled: true,
+        isDefault: true,
+      },
+      select: { code: true },
+    });
+
+    if (preferred?.code) {
+      return preferred.code;
+    }
+
+    const fallback = await this.prisma.dictionary.findFirst({
+      where: {
+        type: 'CUSTOMER_TYPE',
+        isEnabled: true,
+      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: { code: true },
+    });
+
+    return fallback?.code || 'ENTERPRISE';
+  }
+
+  private getDefaultSupplierTypeForAutoCreate(): string {
+    return 'CORPORATE';
+  }
+
+  private async ensureCustomerForImport(
+    customerName: string,
+    customerIdByName: Map<string, string>,
+    defaultCustomerType: string,
+    operatorId?: string,
+    options?: { visibleInCustomerList?: boolean },
+  ): Promise<string> {
+    const cached = customerIdByName.get(customerName);
+    if (cached) {
+      return cached;
+    }
+
+    const visibleInCustomerList = options?.visibleInCustomerList !== false;
+
+    const existing = await this.prisma.customer.findFirst({
+      where: {
+        name: customerName,
+        isDeleted: false,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      customerIdByName.set(customerName, existing.id);
+      return existing.id;
+    }
+
+    const existingHidden = await this.prisma.customer.findFirst({
+      where: {
+        name: customerName,
+        isDeleted: true,
+      },
+      select: { id: true },
+    });
+    if (existingHidden) {
+      if (visibleInCustomerList) {
+        await this.prisma.customer.update({
+          where: { id: existingHidden.id },
+          data: {
+            isDeleted: false,
+          },
+        });
+      }
+      customerIdByName.set(customerName, existingHidden.id);
+      return existingHidden.id;
+    }
+
+    for (let i = 0; i < 8; i += 1) {
+      const code = await this.generateCustomerCodeForImport();
+      try {
+        const created = await this.prisma.customer.create({
+          data: {
+            code,
+            name: customerName,
+            type: defaultCustomerType,
+            isDeleted: !visibleInCustomerList,
+            approvalStatus: ApprovalStatus.PENDING,
+            submittedBy: operatorId,
+            submittedAt: operatorId ? new Date() : undefined,
+            remark: visibleInCustomerList
+              ? IMPORT_CUSTOMER_REMARK_VISIBLE
+              : IMPORT_CUSTOMER_REMARK_HIDDEN_NON_SALES,
+          },
+          select: { id: true },
+        });
+        customerIdByName.set(customerName, created.id);
+        return created.id;
+      } catch (error) {
+        if (this.isUniqueConflict(error, 'code')) {
+          if (i < 7) {
+            continue;
+          }
+          break;
+        }
+        throw error;
+      }
+    }
+
+    throw new ConflictException(`自动创建客户失败: ${customerName}`);
+  }
+
+  private async ensureSupplierForCounterparty(
+    supplierName: string,
+    supplierIdByName: Map<string, string>,
+    defaultSupplierType: string,
+  ): Promise<string> {
+    const cached = supplierIdByName.get(supplierName);
+    if (cached) {
+      return cached;
+    }
+
+    const existing = await this.prisma.supplier.findFirst({
+      where: {
+        name: supplierName,
+        isDeleted: false,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      supplierIdByName.set(supplierName, existing.id);
+      return existing.id;
+    }
+
+    for (let i = 0; i < 8; i += 1) {
+      const code = await this.generateSupplierCodeForAutoCreate();
+      try {
+        const created = await this.prisma.supplier.create({
+          data: {
+            code,
+            name: supplierName,
+            type: defaultSupplierType,
+            remark: '由合同自动同步创建，待完善供应商信息',
+          },
+          select: { id: true },
+        });
+        supplierIdByName.set(supplierName, created.id);
+        return created.id;
+      } catch (error) {
+        if (this.isUniqueConflict(error, 'code')) {
+          if (i < 7) {
+            continue;
+          }
+          break;
+        }
+        throw error;
+      }
+    }
+
+    throw new ConflictException(`自动创建供应商失败: ${supplierName}`);
+  }
+
+  private isSalesContractType(values: string[]): boolean {
+    return values.some((value) => {
+      const normalized = normalizeText(value).toUpperCase();
+      return normalized.includes('SALES') || value.includes('销售');
+    });
+  }
+
+  private async resolveContractTypeHintsByCode(contractTypeCode?: string): Promise<string[]> {
+    if (!contractTypeCode) return [];
+    const hints: string[] = [contractTypeCode];
+    const dictionaryItem = await this.prisma.dictionary.findFirst({
+      where: {
+        type: 'CONTRACT_TYPE',
+        code: { equals: contractTypeCode, mode: Prisma.QueryMode.insensitive },
+      },
+      select: { name: true, value: true },
+    });
+    if (dictionaryItem?.name) hints.push(dictionaryItem.name);
+    if (dictionaryItem?.value) hints.push(dictionaryItem.value);
+    return hints;
+  }
+
+  private async isSalesByContractType(args: {
+    contractTypeCode?: string;
+    contractTypeText?: string;
+  }): Promise<boolean> {
+    const contractTypeHints = [
+      ...(await this.resolveContractTypeHintsByCode(args.contractTypeCode)),
+      ...(args.contractTypeText ? [args.contractTypeText] : []),
+    ];
+    return this.isSalesContractType(contractTypeHints);
+  }
+
+  private async syncCounterpartyByContractType(args: {
+    contractTypeCode?: string;
+    contractTypeText?: string;
+    counterpartyName?: string;
+    supplierIdByName: Map<string, string>;
+    defaultSupplierType: string;
+    isSalesContractType?: boolean;
+  }) {
+    const counterpartyName = normalizeText(args.counterpartyName || '');
+    if (!counterpartyName) return;
+
+    const isSalesContractType =
+      args.isSalesContractType ?? await this.isSalesByContractType(args);
+    if (isSalesContractType) {
+      return;
+    }
+
+    await this.ensureSupplierForCounterparty(
+      counterpartyName,
+      args.supplierIdByName,
+      args.defaultSupplierType,
+    );
+  }
+
+  private async ensureContractTypeForImport(
+    contractTypeText: string,
+    resolvedContractTypeCode: string | undefined,
+    contractTypeCodeByLookup: Map<string, string>,
+    sortOrderState: { next: number },
+  ): Promise<string> {
+    const normalizedContractTypeText = normalizeText(contractTypeText);
+    if (!normalizedContractTypeText) {
+      throw new BadRequestException('合同类型不能为空');
+    }
+
+    if (resolvedContractTypeCode) {
+      this.registerDictionaryLookup(contractTypeCodeByLookup, {
+        code: resolvedContractTypeCode,
+        name: normalizedContractTypeText,
+        value: normalizedContractTypeText,
+      });
+      return resolvedContractTypeCode;
+    }
+
+    const cachedCode = this.resolveDictionaryCodeByText(
+      contractTypeCodeByLookup,
+      normalizedContractTypeText,
+    );
+    if (cachedCode) return cachedCode;
+
+    const existing = await this.prisma.dictionary.findFirst({
+      where: {
+        type: 'CONTRACT_TYPE',
+        OR: [
+          { code: { equals: normalizedContractTypeText, mode: Prisma.QueryMode.insensitive } },
+          { name: { equals: normalizedContractTypeText, mode: Prisma.QueryMode.insensitive } },
+          { value: { equals: normalizedContractTypeText, mode: Prisma.QueryMode.insensitive } },
+        ],
+      },
+      select: { code: true, name: true, value: true },
+    });
+
+    if (existing) {
+      this.registerDictionaryLookup(contractTypeCodeByLookup, existing);
+      return existing.code;
+    }
+
+    const suggestedCode = this.toSuggestedContractTypeCode(normalizedContractTypeText);
+    const candidateCodes: string[] = [];
+    if (suggestedCode) {
+      candidateCodes.push(suggestedCode);
+    }
+
+    for (let i = 0; i < 8; i += 1) {
+      candidateCodes.push(await this.generateAutoContractTypeCodeForImport());
+    }
+
+    for (const code of candidateCodes) {
+      try {
+        const created = await this.prisma.dictionary.create({
+          data: {
+            type: 'CONTRACT_TYPE',
+            code,
+            name: normalizedContractTypeText,
+            value: normalizedContractTypeText,
+            color: 'default',
+            sortOrder: sortOrderState.next,
+            isDefault: false,
+            isEnabled: true,
+            remark: '由合同导入自动创建',
+          },
+          select: { code: true, name: true, value: true },
+        });
+        sortOrderState.next += 1;
+        this.registerDictionaryLookup(contractTypeCodeByLookup, created);
+        return created.code;
+      } catch (error) {
+        if (this.isUniqueConflict(error, 'code')) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new ConflictException(`自动创建合同类型失败: ${normalizedContractTypeText}`);
   }
 
   /**
@@ -265,6 +780,14 @@ export class ContractsService {
       where.OR = [
         { contractNo: { contains: keyword, mode: 'insensitive' } },
         { name: { contains: keyword, mode: 'insensitive' } },
+        {
+          customer: {
+            name: {
+              contains: keyword,
+              mode: 'insensitive',
+            },
+          },
+        },
       ];
     }
 
@@ -466,8 +989,8 @@ export class ContractsService {
    * 下载合同导入模板（Excel）
    */
   getImportTemplateExcel(): Buffer {
-    const headers = ['合同名称', '客户名称', '公司签约主体', '合同类型', '合同金额', '签署日期', '结束日期'];
-    const rows = [['示例合同A', '北京科技有限公司', 'InfFinanceMs', '服务合同', 100000, '2026-03-18', '2026-12-31']];
+    const headers = ['合同编号', '合同名称', '客户名称', '公司签约主体', '合同类型', '合同金额', '签署日期', '结束日期'];
+    const rows = [['HT-CUSTOM-0001', '示例合同A', '北京科技有限公司', 'InfFinanceMs', '服务合同', 100000, '2026-03-18', '2026-12-31']];
     return toXlsxBuffer(headers, rows);
   }
 
@@ -499,11 +1022,7 @@ export class ContractsService {
       .map((line) => parseCsvLine(line));
   }
 
-  private async prepareImportRows(fileBuffer: Buffer, fileName?: string): Promise<{
-    total: number;
-    validRows: PreparedImportRow[];
-    errors: Array<{ row: number; message: string }>;
-  }> {
+  private async prepareImportRows(fileBuffer: Buffer, fileName?: string): Promise<PreparedImportResult> {
     const rows = this.parseImportRows(fileBuffer, fileName);
 
     if (rows.length < 2) {
@@ -511,19 +1030,44 @@ export class ContractsService {
     }
 
     const headers = rows[0];
-    const indexByHeader = headers.reduce<Record<string, number>>((acc, header, index) => {
-      acc[normalizeHeader(header)] = index;
+    const normalizedHeaders = headers.map((header) => normalizeHeader(header));
+    const indexByHeader = normalizedHeaders.reduce<Record<string, number>>((acc, header, index) => {
+      if (header && acc[header] === undefined) {
+        acc[header] = index;
+      }
       return acc;
     }, {});
 
     const resolveHeaderIndex = (aliases: readonly string[]) => {
-      for (const alias of aliases) {
-        const idx = indexByHeader[normalizeHeader(alias)];
+      const normalizedAliases = aliases.map((alias) => normalizeHeader(alias)).filter(Boolean);
+
+      // 1) 精确匹配
+      for (const alias of normalizedAliases) {
+        const idx = indexByHeader[alias];
         if (idx !== undefined) return idx;
+      }
+
+      // 2) 容错匹配：支持“签署日期（必填）”/“sign_date_required”等扩展写法
+      for (let i = 0; i < normalizedHeaders.length; i += 1) {
+        const header = normalizedHeaders[i];
+        if (!header) continue;
+        const matched = normalizedAliases.some(
+          (alias) => header.includes(alias) || alias.includes(header),
+        );
+        if (matched) return i;
+      }
+
+      // 3) 原始文本兜底（忽略大小写）
+      for (const alias of aliases) {
+        const idx = headers.findIndex(
+          (header) => normalizeText(header).toLowerCase() === normalizeText(alias).toLowerCase(),
+        );
+        if (idx >= 0) return idx;
       }
       return undefined;
     };
 
+    const contractNoIdx = resolveHeaderIndex(IMPORT_HEADER_ALIASES.contractNo);
     const nameIdx = resolveHeaderIndex(IMPORT_HEADER_ALIASES.name);
     const customerNameIdx = resolveHeaderIndex(IMPORT_HEADER_ALIASES.customerName);
     const signingEntityIdx = resolveHeaderIndex(IMPORT_HEADER_ALIASES.signingEntity);
@@ -533,6 +1077,7 @@ export class ContractsService {
     const endDateIdx = resolveHeaderIndex(IMPORT_HEADER_ALIASES.endDate);
 
     const missingHeaders: string[] = [];
+    if (contractNoIdx === undefined) missingHeaders.push('合同编号/contract_no');
     if (nameIdx === undefined) missingHeaders.push('合同名称/name');
     if (customerNameIdx === undefined) missingHeaders.push('客户名称/customer_name');
     if (signingEntityIdx === undefined) missingHeaders.push('公司签约主体/signing_entity');
@@ -540,25 +1085,17 @@ export class ContractsService {
     if (amountIdx === undefined) missingHeaders.push('合同金额/amount');
     if (signDateIdx === undefined) missingHeaders.push('签署日期/sign_date');
     if (missingHeaders.length > 0) {
-      throw new BadRequestException(`CSV 缺少必要字段: ${missingHeaders.join('、')}`);
+      throw new BadRequestException(`导入文件缺少必要字段: ${missingHeaders.join('、')}`);
     }
 
     const contractTypes = await this.prisma.dictionary.findMany({
-      where: { type: 'CONTRACT_TYPE', isEnabled: true },
-      select: { code: true, name: true },
+      where: { type: 'CONTRACT_TYPE' },
+      select: { code: true, name: true, value: true },
     });
-    const contractTypeCodeByText = new Map<string, string>();
+    const contractTypeCodeByLookup = new Map<string, string>();
     contractTypes.forEach((type) => {
-      contractTypeCodeByText.set(type.code, type.code);
-      contractTypeCodeByText.set(type.name, type.code);
+      this.registerDictionaryLookup(contractTypeCodeByLookup, type);
     });
-
-    const customers = await this.prisma.customer.findMany({
-      where: { isDeleted: false },
-      select: { id: true, name: true },
-    });
-    const customerIdByName = new Map<string, string>();
-    customers.forEach((item) => customerIdByName.set(item.name, item.id));
 
     const errors: Array<{ row: number; message: string }> = [];
     const validRows: PreparedImportRow[] = [];
@@ -568,6 +1105,7 @@ export class ContractsService {
       const cells = rows[i];
       const getByIndex = (idx?: number) => normalizeText(idx === undefined ? '' : cells[idx] || '');
 
+      const contractNo = this.normalizeContractNo(getByIndex(contractNoIdx));
       const name = getByIndex(nameIdx);
       const customerName = getByIndex(customerNameIdx);
       const signingEntity = getByIndex(signingEntityIdx) || 'InfFinanceMs';
@@ -576,6 +1114,10 @@ export class ContractsService {
       const signDate = toDateString(getByIndex(signDateIdx));
       const endDate = toDateString(getByIndex(endDateIdx));
 
+      if (!contractNo) {
+        errors.push({ row: rowNumber, message: '合同编号不能为空' });
+        continue;
+      }
       if (!name) {
         errors.push({ row: rowNumber, message: '合同名称不能为空' });
         continue;
@@ -592,28 +1134,21 @@ export class ContractsService {
         errors.push({ row: rowNumber, message: '签署日期格式无效' });
         continue;
       }
-
-      const customerId = customerIdByName.get(customerName);
-      if (!customerId) {
-        errors.push({ row: rowNumber, message: `未找到客户: ${customerName}` });
+      if (!contractTypeRaw) {
+        errors.push({ row: rowNumber, message: '合同类型不能为空' });
         continue;
       }
-
-      const contractType = contractTypeCodeByText.get(contractTypeRaw);
-      if (!contractType) {
-        errors.push({ row: rowNumber, message: `合同类型无效: ${contractTypeRaw}` });
-        continue;
-      }
+      const contractTypeCode = this.resolveDictionaryCodeByText(contractTypeCodeByLookup, contractTypeRaw);
 
       validRows.push({
         row: rowNumber,
         customerName,
         contractTypeText: contractTypeRaw,
-        dto: {
+        contractData: {
+          contractNo,
           name,
-          customerId,
           signingEntity,
-          contractType,
+          contractType: contractTypeCode,
           amountWithTax: amount,
           amountWithoutTax: amount,
           taxRate: 0,
@@ -628,6 +1163,7 @@ export class ContractsService {
       total: rows.length - 1,
       validRows,
       errors,
+      contractTypeCodeByLookup,
     };
   }
 
@@ -640,11 +1176,12 @@ export class ContractsService {
       errors: prepared.errors,
       samples: prepared.validRows.slice(0, 5).map((row) => ({
         row: row.row,
-        name: row.dto.name,
+        contractNo: row.contractData.contractNo,
+        name: row.contractData.name,
         customerName: row.customerName,
         contractType: row.contractTypeText,
-        amount: Number(row.dto.amountWithTax),
-        signDate: row.dto.signDate,
+        amount: Number(row.contractData.amountWithTax),
+        signDate: row.contractData.signDate,
       })),
     };
   }
@@ -689,6 +1226,14 @@ export class ContractsService {
     const allowPartial = !!options?.allowPartial;
     const fileName = options?.fileName || 'contracts-import.csv';
     const operatorId = options?.operatorId;
+    const defaultCustomerType = await this.getDefaultCustomerTypeForImport();
+    const defaultSupplierType = this.getDefaultSupplierTypeForAutoCreate();
+    const customerIdByName = new Map<string, string>();
+    const supplierIdByName = new Map<string, string>();
+    const contractTypeCodeByLookup = new Map(prepared.contractTypeCodeByLookup);
+    const contractTypeSortOrderState = {
+      next: await this.getNextContractTypeSortOrderForImport(),
+    };
 
     if (prepared.errors.length > 0 && !allowPartial) {
       await this.saveImportLog({
@@ -717,7 +1262,98 @@ export class ContractsService {
 
     for (const row of prepared.validRows) {
       try {
-        await this.create(row.dto);
+        const contractTypeCode = await this.ensureContractTypeForImport(
+          row.contractTypeText,
+          row.contractData.contractType,
+          contractTypeCodeByLookup,
+          contractTypeSortOrderState,
+        );
+        const isSalesContractType = await this.isSalesByContractType({
+          contractTypeCode,
+          contractTypeText: row.contractTypeText,
+        });
+        const customerId = await this.ensureCustomerForImport(
+          row.customerName,
+          customerIdByName,
+          defaultCustomerType,
+          operatorId,
+          { visibleInCustomerList: isSalesContractType },
+        );
+        await this.syncCounterpartyByContractType({
+          contractTypeCode,
+          contractTypeText: row.contractTypeText,
+          counterpartyName: row.customerName,
+          supplierIdByName,
+          defaultSupplierType,
+          isSalesContractType,
+        });
+        const existingContract = await this.prisma.contract.findUnique({
+          where: { contractNo: row.contractData.contractNo },
+          select: {
+            id: true,
+            name: true,
+            customerId: true,
+            signingEntity: true,
+            contractType: true,
+            amountWithTax: true,
+            amountWithoutTax: true,
+            taxRate: true,
+            signDate: true,
+            endDate: true,
+            isDeleted: true,
+          },
+        });
+
+        if (existingContract) {
+          const nextAmount = Number(row.contractData.amountWithTax);
+          const nextSignDate = row.contractData.signDate;
+          const nextEndDate = row.contractData.endDate || null;
+          const updateData: Prisma.ContractUpdateInput = {};
+
+          if (existingContract.name !== row.contractData.name) {
+            updateData.name = row.contractData.name;
+          }
+          if (existingContract.customerId !== customerId) {
+            updateData.customer = { connect: { id: customerId } };
+          }
+          if (existingContract.signingEntity !== row.contractData.signingEntity) {
+            updateData.signingEntity = row.contractData.signingEntity;
+          }
+          if (existingContract.contractType !== contractTypeCode) {
+            updateData.contractType = contractTypeCode;
+          }
+          if (Number(existingContract.amountWithTax) !== nextAmount) {
+            updateData.amountWithTax = nextAmount;
+          }
+          if (Number(existingContract.amountWithoutTax) !== nextAmount) {
+            updateData.amountWithoutTax = nextAmount;
+          }
+          if (Number(existingContract.taxRate ?? 0) !== 0) {
+            updateData.taxRate = 0;
+          }
+          if (formatDateOnly(existingContract.signDate) !== nextSignDate) {
+            updateData.signDate = new Date(nextSignDate);
+          }
+          if (formatDateOnly(existingContract.endDate) !== (nextEndDate || '')) {
+            updateData.endDate = nextEndDate ? new Date(nextEndDate) : null;
+          }
+          if (existingContract.isDeleted) {
+            updateData.isDeleted = false;
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            await this.prisma.contract.update({
+              where: { id: existingContract.id },
+              data: updateData,
+            });
+          }
+        } else {
+          await this.create({
+            ...row.contractData,
+            contractType: contractTypeCode,
+            customerId,
+          } as CreateContractDto);
+        }
         result.success += 1;
       } catch (error: unknown) {
         result.failed += 1;
@@ -864,6 +1500,7 @@ export class ContractsService {
 
     return {
       ...contract,
+      attachmentName: this.normalizeAttachmentName(contract.attachmentName) || contract.attachmentName,
       summary: {
         totalPaid,
         receivable: new Decimal(contract.amountWithTax.toString()).minus(totalPaid),
@@ -881,71 +1518,155 @@ export class ContractsService {
    * 创建合同
    */
   async create(createContractDto: CreateContractDto) {
-    // 验证客户是否存在
+    const normalizedContractNo = this.normalizeContractNo(createContractDto.contractNo);
+    if (!normalizedContractNo) {
+      throw new BadRequestException('合同编号不能为空');
+    }
+
+    const isSalesContractType = createContractDto.contractType
+      ? await this.isSalesByContractType({ contractTypeCode: createContractDto.contractType })
+      : true;
+
+    // 验证对方签约主体是否存在。销售合同要求在客户列表可见，非销售允许隐藏客户（仅用于合同关联）。
     const customer = await this.prisma.customer.findFirst({
-      where: { id: createContractDto.customerId, isDeleted: false },
+      where: isSalesContractType
+        ? { id: createContractDto.customerId, isDeleted: false }
+        : { id: createContractDto.customerId },
+      select: { id: true, name: true, isDeleted: true },
     });
     if (!customer) {
-      throw new BadRequestException('客户不存在');
+      throw new BadRequestException('对方签约主体不存在');
     }
 
-    // 并发下可能出现编号冲突，依赖唯一索引进行重试
-    for (let i = 0; i < 8; i++) {
-      const contractNo = await this.generateContractNo(new Date());
-      try {
-        return await this.prisma.contract.create({
-          data: {
-            ...createContractDto,
-            contractNo,
-            signDate: new Date(createContractDto.signDate),
-            startDate: createContractDto.startDate ? new Date(createContractDto.startDate) : null,
-            endDate: createContractDto.endDate ? new Date(createContractDto.endDate) : null,
+    if (isSalesContractType && customer.isDeleted) {
+      await this.prisma.customer.update({
+        where: { id: customer.id },
+        data: { isDeleted: false },
+      });
+    }
+
+    if (createContractDto.contractType) {
+      await this.syncCounterpartyByContractType({
+        contractTypeCode: createContractDto.contractType,
+        counterpartyName: customer.name,
+        supplierIdByName: new Map<string, string>(),
+        defaultSupplierType: this.getDefaultSupplierTypeForAutoCreate(),
+        isSalesContractType,
+      });
+    }
+
+    try {
+      return await this.prisma.contract.create({
+        data: {
+          ...createContractDto,
+          contractNo: normalizedContractNo,
+          signDate: new Date(createContractDto.signDate),
+          startDate: createContractDto.startDate ? new Date(createContractDto.startDate) : null,
+          endDate: createContractDto.endDate ? new Date(createContractDto.endDate) : null,
+        },
+        include: {
+          customer: {
+            select: { id: true, name: true, code: true },
           },
-          include: {
-            customer: {
-              select: { id: true, name: true, code: true },
-            },
-          },
-        });
-      } catch (error) {
-        if (this.isContractNoConflict(error)) {
-          if (i < 7) {
-            continue;
-          }
-          break;
-        }
-        throw error;
+        },
+      });
+    } catch (error) {
+      if (this.isUniqueConflict(error, 'contractNo')) {
+        throw new ConflictException('合同编号已存在');
       }
+      throw error;
     }
-
-    throw new ConflictException('合同编号生成失败，请重试');
   }
 
   /**
    * 更新合同
    */
-  async update(id: string, updateContractDto: UpdateContractDto) {
+  async update(id: string, updateContractDto: UpdateContractDto, options?: { allowNonDraft?: boolean }) {
     const contract = await this.findOne(id);
+    const allowNonDraft = !!options?.allowNonDraft;
 
     // 只有草稿状态可以编辑
-    if (contract.status !== ContractStatus.DRAFT) {
+    if (contract.status !== ContractStatus.DRAFT && !allowNonDraft) {
       throw new BadRequestException('只有草稿状态的合同可以编辑');
     }
 
-    return this.prisma.contract.update({
-      where: { id },
-      data: {
-        ...updateContractDto,
-        signDate: updateContractDto.signDate ? new Date(updateContractDto.signDate) : undefined,
-        startDate: updateContractDto.startDate ? new Date(updateContractDto.startDate) : undefined,
-        endDate: updateContractDto.endDate ? new Date(updateContractDto.endDate) : undefined,
-      },
-      include: {
-        customer: {
-          select: { id: true, name: true, code: true },
+    const normalizedContractNo =
+      updateContractDto.contractNo !== undefined
+        ? this.normalizeContractNo(updateContractDto.contractNo)
+        : undefined;
+    if (normalizedContractNo !== undefined && !normalizedContractNo) {
+      throw new BadRequestException('合同编号不能为空');
+    }
+
+    const nextContractTypeCode = updateContractDto.contractType || contract.contractType || undefined;
+    const isSalesContractType = nextContractTypeCode
+      ? await this.isSalesByContractType({ contractTypeCode: nextContractTypeCode })
+      : true;
+
+    let resolvedCounterpartyName = contract.customer?.name || '';
+    if (updateContractDto.customerId) {
+      const customer = await this.prisma.customer.findFirst({
+        where: isSalesContractType
+          ? { id: updateContractDto.customerId, isDeleted: false }
+          : { id: updateContractDto.customerId },
+        select: { id: true, name: true, isDeleted: true },
+      });
+      if (!customer) {
+        throw new BadRequestException('对方签约主体不存在');
+      }
+      resolvedCounterpartyName = customer.name;
+
+      if (isSalesContractType && customer.isDeleted) {
+        await this.prisma.customer.update({
+          where: { id: customer.id },
+          data: { isDeleted: false },
+        });
+      }
+    } else if (isSalesContractType && contract.customerId) {
+      const currentCustomer = await this.prisma.customer.findFirst({
+        where: { id: contract.customerId },
+        select: { id: true, isDeleted: true },
+      });
+      if (currentCustomer?.isDeleted) {
+        await this.prisma.customer.update({
+          where: { id: currentCustomer.id },
+          data: { isDeleted: false },
+        });
+      }
+    }
+
+    if (nextContractTypeCode) {
+      await this.syncCounterpartyByContractType({
+        contractTypeCode: nextContractTypeCode,
+        counterpartyName: resolvedCounterpartyName,
+        supplierIdByName: new Map<string, string>(),
+        defaultSupplierType: this.getDefaultSupplierTypeForAutoCreate(),
+        isSalesContractType,
+      });
+    }
+
+    try {
+      return await this.prisma.contract.update({
+        where: { id },
+        data: {
+          ...updateContractDto,
+          contractNo: normalizedContractNo,
+          signDate: updateContractDto.signDate ? new Date(updateContractDto.signDate) : undefined,
+          startDate: updateContractDto.startDate ? new Date(updateContractDto.startDate) : undefined,
+          endDate: updateContractDto.endDate ? new Date(updateContractDto.endDate) : undefined,
         },
-      },
-    });
+        include: {
+          customer: {
+            select: { id: true, name: true, code: true },
+          },
+        },
+      });
+    } catch (error) {
+      if (this.isUniqueConflict(error, 'contractNo')) {
+        throw new ConflictException('合同编号已存在');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -978,11 +1699,12 @@ export class ContractsService {
   /**
    * 删除合同（软删除）
    */
-  async remove(id: string) {
+  async remove(id: string, options?: { allowNonDraft?: boolean }) {
     const contract = await this.findOne(id);
+    const allowNonDraft = !!options?.allowNonDraft;
 
     // 只有草稿状态可以删除
-    if (contract.status !== ContractStatus.DRAFT) {
+    if (contract.status !== ContractStatus.DRAFT && !allowNonDraft) {
       throw new BadRequestException('只有草稿状态的合同可以删除');
     }
 

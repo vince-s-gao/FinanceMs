@@ -94,6 +94,18 @@ export const INVOICE_STATUS_COLORS: Record<string, string> = {
   VOIDED: 'error',
 };
 
+// 发票方向标签
+export const INVOICE_DIRECTION_LABELS: Record<string, string> = {
+  INBOUND: '进项发票（供应商开给词元无限）',
+  OUTBOUND: '销项发票（词元无限开给客户）',
+};
+
+// 发票方向颜色
+export const INVOICE_DIRECTION_COLORS: Record<string, string> = {
+  INBOUND: 'cyan',
+  OUTBOUND: 'blue',
+};
+
 // 费用类型标签
 export const FEE_TYPE_LABELS: Record<string, string> = {
   ...SHARED_FEE_TYPE_LABELS,
