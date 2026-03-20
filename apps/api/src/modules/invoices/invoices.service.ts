@@ -73,6 +73,11 @@ interface PreparedInvoiceImportData {
   errors: InvoiceImportErrorItem[];
 }
 
+interface DirectionCheckContext {
+  expectedDirection?: InvoiceDirectionValue;
+  normalizedSalesSet?: Set<string>;
+}
+
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
@@ -152,6 +157,22 @@ export class InvoicesService {
     const normalized = normalizeText(contractType || '').toUpperCase();
     if (!normalized) return 'INBOUND';
     return salesContractTypeCodeSet.has(normalized) ? 'OUTBOUND' : 'INBOUND';
+  }
+
+  private directionLabel(direction: InvoiceDirectionValue): string {
+    return direction === 'OUTBOUND' ? '出项发票' : '进项发票';
+  }
+
+  private assertDirectionMatches(
+    actualDirection: InvoiceDirectionValue,
+    expectedDirection: InvoiceDirectionValue | undefined,
+    scene: string,
+  ) {
+    if (!expectedDirection) return;
+    if (actualDirection === expectedDirection) return;
+    throw new BadRequestException(
+      `${scene}与当前模块不匹配：期望 ${this.directionLabel(expectedDirection)}，实际为 ${this.directionLabel(actualDirection)}`,
+    );
   }
 
   private filenameScore(value: string): number {
@@ -701,19 +722,26 @@ export class InvoicesService {
   private async prepareImportData(
     files: Express.Multer.File[],
     defaultContractId?: string,
+    expectedDirection?: InvoiceDirectionValue,
   ): Promise<PreparedInvoiceImportData> {
     if (!files || files.length === 0) {
       throw new BadRequestException('请至少上传一个发票文件');
     }
 
     if (defaultContractId) {
+      const salesContractTypeCodes = expectedDirection ? await this.getSalesContractTypeCodes() : [];
+      const normalizedSalesSet = new Set(
+        salesContractTypeCodes.map((item) => normalizeText(item).toUpperCase()),
+      );
       const contract = await this.prisma.contract.findFirst({
         where: { id: defaultContractId, isDeleted: false },
-        select: { id: true },
+        select: { id: true, contractType: true, contractNo: true },
       });
       if (!contract) {
         throw new NotFoundException('所选关联合同不存在');
       }
+      const actualDirection = this.resolveDirectionByContractType(contract.contractType, normalizedSalesSet);
+      this.assertDirectionMatches(actualDirection, expectedDirection, `合同 ${contract.contractNo || contract.id}`);
     }
 
     const errors: InvoiceImportErrorItem[] = [];
@@ -769,49 +797,78 @@ export class InvoicesService {
 
   private async resolveContractId(
     row: ParsedInvoiceCandidate,
-    contractCacheById: Map<string, boolean>,
-    contractCacheByNo: Map<string, string>,
+    contractCacheById: Map<string, { id: string; direction: InvoiceDirectionValue }>,
+    contractCacheByNo: Map<string, { id: string; direction: InvoiceDirectionValue }>,
+    directionCheckContext?: DirectionCheckContext,
   ): Promise<string> {
+    const expectedDirection = directionCheckContext?.expectedDirection;
+    const normalizedSalesSet = directionCheckContext?.normalizedSalesSet || new Set<string>();
+
     if (row.contractId) {
-      if (contractCacheById.has(row.contractId)) return row.contractId;
+      const cached = contractCacheById.get(row.contractId);
+      if (cached) {
+        this.assertDirectionMatches(cached.direction, expectedDirection, `第 ${row.row} 行关联合同`);
+        return cached.id;
+      }
       const contract = await this.prisma.contract.findFirst({
         where: { id: row.contractId, isDeleted: false },
-        select: { id: true },
+        select: { id: true, contractNo: true, contractType: true },
       });
       if (!contract) {
         throw new NotFoundException(`第 ${row.row} 行合同不存在（ID: ${row.contractId}）`);
       }
-      contractCacheById.set(row.contractId, true);
-      return row.contractId;
+      const direction = this.resolveDirectionByContractType(contract.contractType, normalizedSalesSet);
+      this.assertDirectionMatches(direction, expectedDirection, `第 ${row.row} 行合同 ${contract.contractNo || contract.id}`);
+      const cacheItem = { id: contract.id, direction };
+      contractCacheById.set(contract.id, cacheItem);
+      return contract.id;
     }
 
     const contractNo = normalizeText(row.contractNo || '').toUpperCase();
     if (!contractNo) {
       throw new BadRequestException(`第 ${row.row} 行缺少关联合同`);
     }
-    const cachedId = contractCacheByNo.get(contractNo);
-    if (cachedId) return cachedId;
+    const cached = contractCacheByNo.get(contractNo);
+    if (cached) {
+      this.assertDirectionMatches(cached.direction, expectedDirection, `第 ${row.row} 行合同 ${contractNo}`);
+      return cached.id;
+    }
     const contract = await this.prisma.contract.findFirst({
       where: { contractNo, isDeleted: false },
-      select: { id: true },
+      select: { id: true, contractNo: true, contractType: true },
     });
     if (!contract) {
       throw new NotFoundException(`第 ${row.row} 行合同编号不存在（${contractNo}）`);
     }
-    contractCacheByNo.set(contractNo, contract.id);
+    const direction = this.resolveDirectionByContractType(contract.contractType, normalizedSalesSet);
+    this.assertDirectionMatches(direction, expectedDirection, `第 ${row.row} 行合同 ${contractNo}`);
+    const cacheItem = { id: contract.id, direction };
+    contractCacheByNo.set(contractNo, cacheItem);
+    contractCacheById.set(contract.id, cacheItem);
     return contract.id;
   }
 
-  async previewImportFiles(files: Express.Multer.File[], defaultContractId?: string) {
-    const prepared = await this.prepareImportData(files, defaultContractId);
-    const contractCacheById = new Map<string, boolean>();
-    const contractCacheByNo = new Map<string, string>();
+  async previewImportFiles(
+    files: Express.Multer.File[],
+    defaultContractId?: string,
+    expectedDirection?: InvoiceDirectionValue,
+  ) {
+    const prepared = await this.prepareImportData(files, defaultContractId, expectedDirection);
+    const contractCacheById = new Map<string, { id: string; direction: InvoiceDirectionValue }>();
+    const contractCacheByNo = new Map<string, { id: string; direction: InvoiceDirectionValue }>();
     const confirmedRows: ParsedInvoiceCandidate[] = [];
     const errors = [...prepared.errors];
+    const salesContractTypeCodes = expectedDirection ? await this.getSalesContractTypeCodes() : [];
+    const normalizedSalesSet = new Set(
+      salesContractTypeCodes.map((item) => normalizeText(item).toUpperCase()),
+    );
 
     for (const row of prepared.validRows) {
       try {
-        await this.resolveContractId(row, contractCacheById, contractCacheByNo);
+        await this.resolveContractId(row, contractCacheById, contractCacheByNo, {
+          expectedDirection,
+          normalizedSalesSet,
+        });
         confirmedRows.push(row);
       } catch (error) {
         errors.push({
@@ -842,18 +899,26 @@ export class InvoicesService {
 
   async importFiles(
     files: Express.Multer.File[],
-    options?: { allowPartial?: boolean; contractId?: string },
+    options?: { allowPartial?: boolean; contractId?: string; expectedDirection?: InvoiceDirectionValue },
   ) {
-    const prepared = await this.prepareImportData(files, options?.contractId);
+    const expectedDirection = options?.expectedDirection;
+    const prepared = await this.prepareImportData(files, options?.contractId, expectedDirection);
     const allowPartial = !!options?.allowPartial;
-    const contractCacheById = new Map<string, boolean>();
-    const contractCacheByNo = new Map<string, string>();
+    const contractCacheById = new Map<string, { id: string; direction: InvoiceDirectionValue }>();
+    const contractCacheByNo = new Map<string, { id: string; direction: InvoiceDirectionValue }>();
     const errors = [...prepared.errors];
     const importQueue: Array<ParsedInvoiceCandidate & { resolvedContractId: string }> = [];
+    const salesContractTypeCodes = expectedDirection ? await this.getSalesContractTypeCodes() : [];
+    const normalizedSalesSet = new Set(
+      salesContractTypeCodes.map((item) => normalizeText(item).toUpperCase()),
+    );
 
     for (const row of prepared.validRows) {
       try {
-        const resolvedContractId = await this.resolveContractId(row, contractCacheById, contractCacheByNo);
+        const resolvedContractId = await this.resolveContractId(row, contractCacheById, contractCacheByNo, {
+          expectedDirection,
+          normalizedSalesSet,
+        });
         importQueue.push({
           ...row,
           resolvedContractId,
@@ -890,6 +955,7 @@ export class InvoicesService {
           invoiceDate: row.invoiceDate,
           attachmentUrl: uploadResult?.url,
           attachmentName: uploadResult?.originalName || uploadResult?.filename,
+          expectedDirection,
         });
         success += 1;
       } catch (error) {
@@ -1067,6 +1133,7 @@ export class InvoicesService {
       invoiceDate,
       attachmentUrl,
       attachmentName,
+      expectedDirection,
     } = createInvoiceDto;
 
     // 验证合同
@@ -1075,6 +1142,15 @@ export class InvoicesService {
     });
     if (!contract) {
       throw new NotFoundException('合同不存在');
+    }
+
+    if (expectedDirection) {
+      const salesContractTypeCodes = await this.getSalesContractTypeCodes();
+      const normalizedSalesSet = new Set(
+        salesContractTypeCodes.map((item) => normalizeText(item).toUpperCase()),
+      );
+      const actualDirection = this.resolveDirectionByContractType(contract.contractType, normalizedSalesSet);
+      this.assertDirectionMatches(actualDirection, expectedDirection, `合同 ${contract.contractNo}`);
     }
 
     // 检查发票号是否重复

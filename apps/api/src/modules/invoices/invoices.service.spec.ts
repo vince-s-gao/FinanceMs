@@ -200,6 +200,28 @@ describe('InvoicesService', () => {
     expect(prisma.invoice.create).toHaveBeenCalledTimes(1);
   });
 
+  it('should reject create when expected direction mismatches contract type', async () => {
+    prisma.contract.findFirst.mockResolvedValueOnce({
+      id: 'contract-1',
+      contractNo: 'HT-001',
+      contractType: 'SALES',
+      amountWithTax: new Decimal(1000),
+      isDeleted: false,
+    });
+
+    await expect(
+      service.create({
+        contractId: 'contract-1',
+        invoiceNo: 'INV-DIR-001',
+        invoiceType: 'VAT_SPECIAL',
+        amount: 100,
+        taxAmount: 10,
+        invoiceDate: '2026-03-17',
+        expectedDirection: 'INBOUND',
+      } as any),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   it('should treat null existing invoiced amount as zero when creating invoice', async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: 'contract-2',

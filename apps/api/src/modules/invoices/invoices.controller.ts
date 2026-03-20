@@ -106,6 +106,11 @@ export class InvoicesController {
       type: 'object',
       properties: {
         contractId: { type: 'string', description: '默认关联合同ID（可选）' },
+        expectedDirection: {
+          type: 'string',
+          enum: ['INBOUND', 'OUTBOUND'],
+          description: '期望发票方向（用于校验关联合同类型）',
+        },
         files: {
           type: 'array',
           items: { type: 'string', format: 'binary' },
@@ -118,6 +123,7 @@ export class InvoicesController {
   async previewImport(
     @UploadedFiles() files: Express.Multer.File[],
     @Body('contractId') contractId?: string,
+    @Body('expectedDirection') expectedDirection?: 'INBOUND' | 'OUTBOUND',
   ): Promise<any> {
     if (!files?.length) {
       throw new BadRequestException('请至少上传一个发票文件');
@@ -126,7 +132,7 @@ export class InvoicesController {
     if (invalid) {
       throw new BadRequestException(`不支持的文件类型：${invalid.originalname}`);
     }
-    return this.invoicesService.previewImportFiles(files, contractId);
+    return this.invoicesService.previewImportFiles(files, contractId, expectedDirection);
   }
 
   @Post('import')
@@ -138,6 +144,11 @@ export class InvoicesController {
       type: 'object',
       properties: {
         contractId: { type: 'string', description: '默认关联合同ID（可选）' },
+        expectedDirection: {
+          type: 'string',
+          enum: ['INBOUND', 'OUTBOUND'],
+          description: '期望发票方向（用于校验关联合同类型）',
+        },
         allowPartial: { type: 'string', example: 'false' },
         files: {
           type: 'array',
@@ -151,6 +162,7 @@ export class InvoicesController {
   async importParsedInvoices(
     @UploadedFiles() files: Express.Multer.File[],
     @Body('contractId') contractId?: string,
+    @Body('expectedDirection') expectedDirection?: 'INBOUND' | 'OUTBOUND',
     @Body('allowPartial') allowPartialRaw?: string,
   ): Promise<any> {
     if (!files?.length) {
@@ -162,7 +174,7 @@ export class InvoicesController {
     }
     const allowPartial =
       allowPartialRaw === 'true' || allowPartialRaw === '1' || allowPartialRaw === 'yes';
-    return this.invoicesService.importFiles(files, { allowPartial, contractId });
+    return this.invoicesService.importFiles(files, { allowPartial, contractId, expectedDirection });
   }
 
   @Patch(':id/void')

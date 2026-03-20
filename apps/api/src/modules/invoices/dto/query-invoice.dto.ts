@@ -37,7 +37,7 @@ export class QueryInvoiceDto extends PaginationDto {
   @IsIn(INVOICE_STATUS)
   status?: InvoiceStatus;
 
-  @ApiPropertyOptional({ description: '发票方向（INBOUND=供应商开给我方，OUTBOUND=我方开给客户）', enum: INVOICE_DIRECTIONS })
+  @ApiPropertyOptional({ description: '发票方向（INBOUND=进项发票，OUTBOUND=出项发票）', enum: INVOICE_DIRECTIONS })
   @IsOptional()
   @IsIn(INVOICE_DIRECTIONS)
   direction?: InvoiceDirection;

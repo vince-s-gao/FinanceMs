@@ -6,6 +6,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 // 发票类型
 const INVOICE_TYPES = ['VAT_SPECIAL', 'VAT_NORMAL', 'RECEIPT'] as const;
 type InvoiceType = typeof INVOICE_TYPES[number];
+const INVOICE_DIRECTIONS = ['INBOUND', 'OUTBOUND'] as const;
+type InvoiceDirection = typeof INVOICE_DIRECTIONS[number];
 
 export class CreateInvoiceDto {
   @ApiProperty({ description: '合同ID' })
@@ -44,4 +46,12 @@ export class CreateInvoiceDto {
   @IsOptional()
   @IsString()
   attachmentName?: string;
+
+  @ApiPropertyOptional({
+    description: '期望发票方向（用于按模块校验合同匹配，不入库）',
+    enum: INVOICE_DIRECTIONS,
+  })
+  @IsOptional()
+  @IsIn(INVOICE_DIRECTIONS)
+  expectedDirection?: InvoiceDirection;
 }

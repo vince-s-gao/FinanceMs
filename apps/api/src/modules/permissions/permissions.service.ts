@@ -7,9 +7,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 const DEFAULT_MENU_PERMISSIONS: Record<string, string[]> = {
   EMPLOYEE: ['/dashboard', '/expenses'],
   SALES: ['/dashboard', '/customers', '/contracts', '/payments', '/expenses'],
-  FINANCE: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports'],
-  MANAGER: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports'],
-  ADMIN: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/departments', '/permissions', '/settings', '/settings/dictionaries', '/audit-logs'],
+  FINANCE: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports'],
+  MANAGER: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports'],
+  ADMIN: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports', '/departments', '/permissions', '/settings', '/settings/dictionaries', '/audit-logs'],
 };
 
 // 默认功能权限配置
@@ -53,7 +53,8 @@ const ALL_MENUS = [
   { key: '/suppliers', name: '供应商管理' },
   { key: '/contracts', name: '合同管理' },
   { key: '/payments', name: '回款管理' },
-  { key: '/invoices', name: '发票管理' },
+  { key: '/invoices/inbound', name: '进项发票管理' },
+  { key: '/invoices/outbound', name: '出项发票管理' },
   { key: '/expenses', name: '报销管理' },
   { key: '/costs', name: '费用管理' },
   { key: '/budgets', name: '预算管理' },

@@ -61,7 +61,8 @@ const ALL_MENU_ITEMS = [
     type: 'group' as const,
     children: [
       { key: '/payment-requests', icon: <MoneyCollectOutlined />, label: '付款申请' },
-      { key: '/invoices', icon: <FileProtectOutlined />, label: '发票管理' },
+      { key: '/invoices/inbound', icon: <FileProtectOutlined />, label: '进项发票' },
+      { key: '/invoices/outbound', icon: <FileProtectOutlined />, label: '出项发票' },
       { key: '/expenses', icon: <AccountBookOutlined />, label: '报销管理' },
       { key: '/costs', icon: <WalletOutlined />, label: '费用管理' },
       { key: '/budgets', icon: <WalletOutlined />, label: '预算管理' },
@@ -87,9 +88,9 @@ const ALL_MENU_ITEMS = [
 const ROLE_MENU_CONFIG: Record<string, string[]> = {
   EMPLOYEE: ['/dashboard', '/expenses'],
   SALES: ['/dashboard', '/customers', '/contracts', '/payments', '/expenses', '/projects'],
-  FINANCE: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
-  MANAGER: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
-  ADMIN: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices', '/expenses', '/costs', '/budgets', '/reports', '/projects', '/departments', '/permissions', '/settings', '/settings/dictionaries', '/audit-logs'],
+  FINANCE: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
+  MANAGER: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
+  ADMIN: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports', '/projects', '/departments', '/permissions', '/settings', '/settings/dictionaries', '/audit-logs'],
 };
 
 interface MainLayoutProps {
@@ -109,6 +110,13 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const allowedPaths = useMemo(
     () => ROLE_MENU_CONFIG[user?.role || 'EMPLOYEE'] || ROLE_MENU_CONFIG.EMPLOYEE,
     [user?.role],
+  );
+
+  const hasMenuAccess = useCallback(
+    (path: string) =>
+      allowedPaths.includes(path) ||
+      (allowedPaths.includes('/invoices') && (path === '/invoices/inbound' || path === '/invoices/outbound')),
+    [allowedPaths],
   );
 
   const prefetchRoute = useCallback(
@@ -257,7 +265,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const menuItems = ALL_MENU_ITEMS.map(group => {
     if (group.type === 'group' && group.children) {
       // 过滤该分组下的子菜单
-      const filteredChildren = group.children.filter(item => allowedPaths.includes(item.key));
+      const filteredChildren = group.children.filter((item) => hasMenuAccess(item.key));
       // 如果分组下没有可访问的菜单，则不显示该分组
       if (filteredChildren.length === 0) {
         return null;

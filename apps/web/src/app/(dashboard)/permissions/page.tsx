@@ -41,7 +41,8 @@ const MENU_PERMISSIONS = [
   { key: '/suppliers', name: '供应商管理', description: '供应商主数据维护' },
   { key: '/contracts', name: '合同管理', description: '合同全生命周期管理' },
   { key: '/payments', name: '回款管理', description: '回款计划与记录' },
-  { key: '/invoices', name: '发票管理', description: '发票开具与管理' },
+  { key: '/invoices/inbound', name: '进项发票管理', description: '供应商进项发票管理（采购合同）' },
+  { key: '/invoices/outbound', name: '出项发票管理', description: '客户出项发票管理（销售合同）' },
   { key: '/expenses', name: '报销管理', description: '报销申请与审批' },
   { key: '/costs', name: '费用管理', description: '费用录入与统计' },
   { key: '/budgets', name: '预算管理', description: '部门预算管理' },
@@ -115,8 +116,8 @@ export default function PermissionsPage() {
   const ROLE_MENU_MATRIX_DEFAULT: Record<string, { menus: string[]; functions: string[] }> = {
     EMPLOYEE: { menus: ['/dashboard', '/expenses'], functions: ['expense.create'] },
     SALES: { menus: ['/dashboard', '/customers', '/contracts', '/payments', '/expenses'], functions: ['expense.create', 'customer.create', 'customer.edit', 'contract.create', 'contract.edit'] },
-    FINANCE: { menus: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'expense.pay', 'invoice.create', 'invoice.void', 'budget.create', 'budget.edit', 'supplier.create', 'supplier.edit', 'supplier.delete'] },
-    MANAGER: { menus: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'customer.create', 'customer.edit', 'customer.approve', 'contract.create', 'contract.edit', 'supplier.create', 'supplier.edit'] },
+    FINANCE: { menus: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'expense.pay', 'invoice.create', 'invoice.void', 'budget.create', 'budget.edit', 'supplier.create', 'supplier.edit', 'supplier.delete'] },
+    MANAGER: { menus: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'customer.create', 'customer.edit', 'customer.approve', 'contract.create', 'contract.edit', 'supplier.create', 'supplier.edit'] },
     ADMIN: { menus: MENU_PERMISSIONS.map(m => m.key), functions: FUNCTION_PERMISSIONS.map(f => f.key) },
   };
 
