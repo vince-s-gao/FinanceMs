@@ -1,28 +1,28 @@
 // InfFinanceMs - 日志配置
 
-import { WinstonModule, utilities } from 'nest-winston';
-import * as winston from 'winston';
-import * as path from 'path';
+import { WinstonModule, utilities } from "nest-winston";
+import * as winston from "winston";
+import * as path from "path";
 
 // 日志目录
-const logDir = path.join(__dirname, '../../logs');
+const logDir = path.join(__dirname, "../../logs");
 
 // 日志格式
 const logFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
   winston.format.errors({ stack: true }),
   winston.format.splat(),
-  winston.format.json()
+  winston.format.json(),
 );
 
 // 控制台格式
 const consoleFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
   winston.format.ms(),
-  utilities.format.nestLike('InfFinanceMs', {
+  utilities.format.nestLike("InfFinanceMs", {
     colors: true,
     prettyPrint: true,
-  })
+  }),
 );
 
 // 开发环境日志配置
@@ -34,13 +34,13 @@ const devLogger = WinstonModule.createLogger({
     }),
     // 错误日志文件
     new winston.transports.File({
-      filename: path.join(logDir, 'error.log'),
-      level: 'error',
+      filename: path.join(logDir, "error.log"),
+      level: "error",
       format: logFormat,
     }),
     // 所有日志文件
     new winston.transports.File({
-      filename: path.join(logDir, 'combined.log'),
+      filename: path.join(logDir, "combined.log"),
       format: logFormat,
     }),
   ],
@@ -53,20 +53,20 @@ const prodLogger = WinstonModule.createLogger({
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.timestamp(),
-        winston.format.json()
+        winston.format.json(),
       ),
     }),
     // 错误日志文件
     new winston.transports.File({
-      filename: path.join(logDir, 'error.log'),
-      level: 'error',
+      filename: path.join(logDir, "error.log"),
+      level: "error",
       format: logFormat,
       maxsize: 5242880, // 5MB
       maxFiles: 5,
     }),
     // 所有日志文件
     new winston.transports.File({
-      filename: path.join(logDir, 'combined.log'),
+      filename: path.join(logDir, "combined.log"),
       format: logFormat,
       maxsize: 5242880, // 5MB
       maxFiles: 5,
@@ -75,4 +75,5 @@ const prodLogger = WinstonModule.createLogger({
 });
 
 // 导出日志配置
-export const logger = process.env.NODE_ENV === 'production' ? prodLogger : devLogger;
+export const logger =
+  process.env.NODE_ENV === "production" ? prodLogger : devLogger;

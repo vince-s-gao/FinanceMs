@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 合同详情页面
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Card,
@@ -133,6 +133,24 @@ export default function ContractDetailPage() {
     return `http://127.0.0.1:3001/api/contracts/${id}/attachment/download`;
   };
 
+  const resolveAttachmentPreviewUrl = (id: string) => {
+    const configured = process.env.NEXT_PUBLIC_API_URL;
+    if (configured) {
+      try {
+        const parsed = new URL(configured);
+        const basePath = parsed.pathname.replace(/\/$/, '');
+        const apiPath = basePath.endsWith('/api') ? basePath : `${basePath}/api`;
+        return `${parsed.protocol}//${parsed.host}${apiPath}/contracts/${id}/attachment/preview`;
+      } catch {
+        // ignore invalid configured url
+      }
+    }
+    if (typeof window !== 'undefined') {
+      return `${window.location.protocol}//${window.location.hostname}:3001/api/contracts/${id}/attachment/preview`;
+    }
+    return `http://127.0.0.1:3001/api/contracts/${id}/attachment/preview`;
+  };
+
   const resolveInvoiceAttachmentUrl = (url?: string | null) => {
     if (!url) return '';
     if (/^https?:\/\//i.test(url)) return url;
@@ -220,8 +238,13 @@ export default function ContractDetailPage() {
     return noPaymentTypes.has(compact) || compact.includes('保密');
   };
 
+  const isPdfAttachment = (name?: string | null, url?: string | null) => {
+    const source = `${name || ''} ${url || ''}`.toLowerCase();
+    return source.includes('.pdf');
+  };
+
   // 加载合同详情
-  const fetchContract = async () => {
+  const fetchContract = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get<Contract>(`/contracts/${contractId}`);
@@ -231,9 +254,9 @@ export default function ContractDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [contractId]);
 
-  const fetchContractTypes = async () => {
+  const fetchContractTypes = useCallback(async () => {
     try {
       const types = await api.get<DictionaryItem[]>('/dictionaries/by-type/CONTRACT_TYPE');
       const map = types.reduce<Record<string, string>>((acc, item) => {
@@ -249,14 +272,14 @@ export default function ContractDetailPage() {
         OTHER: '其他',
       });
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchContractTypes();
     if (contractId) {
       fetchContract();
     }
-  }, [contractId]);
+  }, [contractId, fetchContract, fetchContractTypes]);
 
   // 计算回款进度
   const toNumber = (value: number | string | null | undefined) => {
@@ -575,6 +598,17 @@ export default function ContractDetailPage() {
                 <Tag icon={<PaperClipOutlined />} color="blue">
                   {contract.attachmentName || '合同附件'}
                 </Tag>
+                {isPdfAttachment(contract.attachmentName, contract.attachmentUrl) && (
+                  <Button
+                    type="link"
+                    icon={<EyeOutlined />}
+                    href={resolveAttachmentPreviewUrl(contract.id)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    预览PDF
+                  </Button>
+                )}
                 <Button
                   type="link"
                   icon={<DownloadOutlined />}

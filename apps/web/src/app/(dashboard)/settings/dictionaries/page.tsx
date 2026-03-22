@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 数据字典管理页面
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Table,
@@ -84,7 +84,7 @@ export default function DictionariesPage() {
   const isContractTypeView = typeFilter === 'CONTRACT_TYPE';
 
   // 加载字典列表
-  const fetchDictionaries = async () => {
+  const fetchDictionaries = useCallback(async () => {
     setLoading(true);
     try {
       const params: any = {};
@@ -97,11 +97,11 @@ export default function DictionariesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [typeFilter]);
 
   useEffect(() => {
     fetchDictionaries();
-  }, [typeFilter]);
+  }, [fetchDictionaries]);
 
   // 打开新增弹窗
   const handleAdd = () => {

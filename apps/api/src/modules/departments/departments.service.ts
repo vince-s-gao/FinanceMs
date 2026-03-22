@@ -1,11 +1,20 @@
 // InfFinanceMs - 部门服务
 
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateDepartmentDto } from './dto/create-department.dto';
-import { UpdateDepartmentDto } from './dto/update-department.dto';
-import { QueryDepartmentDto } from './dto/query-department.dto';
-import { Prisma } from '@prisma/client';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CreateDepartmentDto } from "./dto/create-department.dto";
+import { UpdateDepartmentDto } from "./dto/update-department.dto";
+import { QueryDepartmentDto } from "./dto/query-department.dto";
+import {
+  createWithGeneratedCode,
+  generatePrefixedCode,
+} from "../../common/utils/code-generator.utils";
+import { isUniqueConflict as isPrismaUniqueConflict } from "../../common/utils/prisma.utils";
 
 @Injectable()
 export class DepartmentsService {
@@ -15,32 +24,17 @@ export class DepartmentsService {
    * 生成部门编号
    */
   private async generateCode(): Promise<string> {
-    const lastDepartment = await this.prisma.department.findFirst({
-      where: {
-        code: {
-          startsWith: 'DEPT',
-        },
-      },
-      orderBy: { code: 'desc' },
-      select: { code: true },
+    return generatePrefixedCode({
+      model: this.prisma.department,
+      field: "code",
+      prefix: "DEPT",
+      sequenceRegex: /^DEPT(\d{4})$/,
+      sequenceLength: 4,
     });
-
-    let sequence = 1;
-    if (lastDepartment?.code) {
-      const match = lastDepartment.code.match(/^DEPT(\d{4})$/);
-      if (match) {
-        sequence = Number(match[1]) + 1;
-      }
-    }
-
-    return `DEPT${String(sequence).padStart(4, '0')}`;
   }
 
   private isDepartmentCodeConflict(error: unknown): boolean {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
-    if (error.code !== 'P2002') return false;
-    const target = (error.meta?.target || []) as string[];
-    return target.includes('code');
+    return isPrismaUniqueConflict(error, "code");
   }
 
   /**
@@ -54,8 +48,8 @@ export class DepartmentsService {
 
     if (keyword) {
       where.OR = [
-        { code: { contains: keyword, mode: 'insensitive' } },
-        { name: { contains: keyword, mode: 'insensitive' } },
+        { code: { contains: keyword, mode: "insensitive" } },
+        { name: { contains: keyword, mode: "insensitive" } },
       ];
     }
 
@@ -68,7 +62,7 @@ export class DepartmentsService {
         where,
         skip,
         take: pageSize,
-        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
         include: {
           parent: {
             select: { id: true, name: true, code: true },
@@ -99,7 +93,7 @@ export class DepartmentsService {
   async getTree() {
     const departments = await this.prisma.department.findMany({
       where: { isActive: true },
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: {
         manager: {
           select: { id: true, name: true, email: true },
@@ -134,7 +128,7 @@ export class DepartmentsService {
       nodes.sort(
         (a, b) =>
           a.sortOrder - b.sortOrder ||
-          String(a.name).localeCompare(String(b.name), 'zh-CN'),
+          String(a.name).localeCompare(String(b.name), "zh-CN"),
       );
       nodes.forEach((child) => sortTree(child.children));
     };
@@ -155,7 +149,7 @@ export class DepartmentsService {
         name: true,
         parentId: true,
       },
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     });
   }
 
@@ -171,13 +165,13 @@ export class DepartmentsService {
         },
         children: {
           select: { id: true, name: true, code: true, isActive: true },
-          orderBy: { sortOrder: 'asc' },
+          orderBy: { sortOrder: "asc" },
         },
       },
     });
 
     if (!department) {
-      throw new NotFoundException('部门不存在');
+      throw new NotFoundException("部门不存在");
     }
 
     return department;
@@ -187,7 +181,8 @@ export class DepartmentsService {
    * 创建部门
    */
   async create(createDepartmentDto: CreateDepartmentDto) {
-    const { name, parentId, managerId, sortOrder, remark } = createDepartmentDto;
+    const { name, parentId, managerId, sortOrder, remark } =
+      createDepartmentDto;
 
     // 检查名称是否重复
     const existing = await this.prisma.department.findFirst({
@@ -195,7 +190,7 @@ export class DepartmentsService {
     });
 
     if (existing) {
-      throw new ConflictException('同级部门下已存在相同名称的部门');
+      throw new ConflictException("同级部门下已存在相同名称的部门");
     }
 
     // 如果有上级部门，检查是否存在
@@ -204,14 +199,14 @@ export class DepartmentsService {
         where: { id: parentId },
       });
       if (!parent) {
-        throw new BadRequestException('上级部门不存在');
+        throw new BadRequestException("上级部门不存在");
       }
     }
 
-    for (let i = 0; i < 8; i++) {
-      const code = await this.generateCode();
-      try {
-        return await this.prisma.department.create({
+    return createWithGeneratedCode({
+      generateCode: () => this.generateCode(),
+      create: (code: string) =>
+        this.prisma.department.create({
           data: {
             code,
             name,
@@ -220,19 +215,10 @@ export class DepartmentsService {
             sortOrder: sortOrder || 0,
             remark,
           },
-        });
-      } catch (error) {
-        if (this.isDepartmentCodeConflict(error)) {
-          if (i < 7) {
-            continue;
-          }
-          break;
-        }
-        throw error;
-      }
-    }
-
-    throw new ConflictException('部门编号生成失败，请重试');
+        }),
+      isCodeConflict: (error) => this.isDepartmentCodeConflict(error),
+      exhaustedError: () => new ConflictException("部门编号生成失败，请重试"),
+    });
   }
 
   /**
@@ -254,20 +240,20 @@ export class DepartmentsService {
       });
 
       if (existing) {
-        throw new ConflictException('同级部门下已存在相同名称的部门');
+        throw new ConflictException("同级部门下已存在相同名称的部门");
       }
     }
 
     // 不能将自己设为上级部门
     if (parentId === id) {
-      throw new BadRequestException('不能将自己设为上级部门');
+      throw new BadRequestException("不能将自己设为上级部门");
     }
 
     // 不能将子部门设为上级部门
     if (parentId) {
       const isChild = await this.isChildDepartment(id, parentId);
       if (isChild) {
-        throw new BadRequestException('不能将子部门设为上级部门');
+        throw new BadRequestException("不能将子部门设为上级部门");
       }
     }
 
@@ -280,7 +266,10 @@ export class DepartmentsService {
   /**
    * 检查是否是子部门
    */
-  private async isChildDepartment(parentId: string, targetId: string): Promise<boolean> {
+  private async isChildDepartment(
+    parentId: string,
+    targetId: string,
+  ): Promise<boolean> {
     const children = await this.prisma.department.findMany({
       where: { parentId },
       select: { id: true },
@@ -307,7 +296,7 @@ export class DepartmentsService {
 
     // 检查是否有子部门
     if (department.children && department.children.length > 0) {
-      throw new BadRequestException('该部门下有子部门，不能删除');
+      throw new BadRequestException("该部门下有子部门，不能删除");
     }
 
     return this.prisma.department.delete({
@@ -343,7 +332,7 @@ export class DepartmentsService {
         role: true,
         isActive: true,
       },
-      orderBy: { name: 'asc' },
+      orderBy: { name: "asc" },
     });
   }
 
@@ -358,7 +347,7 @@ export class DepartmentsService {
     });
 
     if (!user) {
-      throw new NotFoundException('用户不存在');
+      throw new NotFoundException("用户不存在");
     }
 
     return this.prisma.user.update({
@@ -378,7 +367,7 @@ export class DepartmentsService {
     });
 
     if (!user || user.departmentId !== departmentId) {
-      throw new BadRequestException('该用户不属于此部门');
+      throw new BadRequestException("该用户不属于此部门");
     }
 
     return this.prisma.user.update({
@@ -399,7 +388,7 @@ export class DepartmentsService {
       });
 
       if (!user) {
-        throw new NotFoundException('用户不存在');
+        throw new NotFoundException("用户不存在");
       }
 
       // 确保用户在该部门
@@ -435,7 +424,7 @@ export class DepartmentsService {
         },
         children: {
           select: { id: true, name: true, code: true, isActive: true },
-          orderBy: { sortOrder: 'asc' },
+          orderBy: { sortOrder: "asc" },
         },
         manager: {
           select: { id: true, name: true, email: true, phone: true },
@@ -449,7 +438,7 @@ export class DepartmentsService {
             role: true,
             isActive: true,
           },
-          orderBy: { name: 'asc' },
+          orderBy: { name: "asc" },
         },
         _count: {
           select: { members: true },
@@ -458,7 +447,7 @@ export class DepartmentsService {
     });
 
     if (!department) {
-      throw new NotFoundException('部门不存在');
+      throw new NotFoundException("部门不存在");
     }
 
     return department;

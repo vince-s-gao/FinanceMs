@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 客户管理页面
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Table,
   Button,
@@ -33,6 +33,10 @@ import {
 } from '@ant-design/icons';
 import { api } from '@/lib/api';
 import { APPROVAL_STATUS_LABELS, APPROVAL_STATUS_COLORS } from '@/lib/constants';
+import { useExport } from '@/hooks/useExport';
+import { useEntityDelete } from '@/hooks/useEntityDelete';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { getErrorMessage } from '@/lib/error';
 import type { UploadProps } from 'antd';
 
 const { Title } = Typography;
@@ -79,6 +83,18 @@ interface CustomerDetail extends Customer {
   }>;
 }
 
+interface CustomerListResponse {
+  items: Customer[];
+  total: number;
+}
+
+interface ImportResult {
+  total: number;
+  success: number;
+  failed: number;
+  errors: Array<{ row: number; message: string }>;
+}
+
 export default function CustomersPage() {
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -87,6 +103,7 @@ export default function CustomersPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [keyword, setKeyword] = useState('');
+  const debouncedKeyword = useDebouncedValue(keyword, 300);
   const [typeFilter, setTypeFilter] = useState<string | undefined>();
 
   // 客户类型字典
@@ -99,13 +116,14 @@ export default function CustomersPage() {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState<CustomerDetail | null>(null);
+  const { exporting, handleExport: triggerExport } = useExport('/customers', 'customers');
+  const { deleteOne, deleteBatch, batchDeleting } = useEntityDelete('/customers', '客户');
 
   // 加载客户类型字典
-  const fetchCustomerTypes = async () => {
+  const fetchCustomerTypes = useCallback(async () => {
     try {
       const res = await api.get<DictionaryItem[]>('/dictionaries/by-type/CUSTOMER_TYPE');
       setCustomerTypes(res);
@@ -117,7 +135,7 @@ export default function CustomersPage() {
         { id: '2', code: 'INDIVIDUAL', name: '个人', color: 'green' },
       ]);
     }
-  };
+  }, []);
 
   // 根据code获取客户类型信息
   const getCustomerType = (code: string) => {
@@ -125,30 +143,30 @@ export default function CustomersPage() {
   };
 
   // 加载客户列表
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     setLoading(true);
     try {
-      const params: any = { page, pageSize };
-      if (keyword) params.keyword = keyword;
+      const params: Record<string, unknown> = { page, pageSize };
+      if (debouncedKeyword) params.keyword = debouncedKeyword;
       if (typeFilter) params.type = typeFilter;
 
-      const res = await api.get<any>('/customers', { params });
+      const res = await api.get<CustomerListResponse>('/customers', { params });
       setCustomers(res.items);
       setTotal(res.total);
-    } catch (error: any) {
-      message.error(error.message || '加载失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '加载失败'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, debouncedKeyword, typeFilter]);
 
   useEffect(() => {
     fetchCustomerTypes();
-  }, []);
+  }, [fetchCustomerTypes]);
 
   useEffect(() => {
     fetchCustomers();
-  }, [page, pageSize, keyword, typeFilter]);
+  }, [fetchCustomers]);
 
   // 打开新增弹窗
   const handleAdd = () => {
@@ -158,34 +176,11 @@ export default function CustomersPage() {
     setModalVisible(true);
   };
 
-  const downloadBlob = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleExport = async () => {
-    setExporting(true);
-    try {
-      const params: Record<string, unknown> = {};
-      if (keyword) params.keyword = keyword;
-      if (typeFilter) params.type = typeFilter;
-      const blob = await api.get<Blob>('/customers/export/excel', {
-        params,
-        responseType: 'blob' as any,
-      });
-      const now = new Date();
-      const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-      downloadBlob(blob, `customers-${datePart}.xlsx`);
-      message.success('导出成功');
-    } catch (error: any) {
-      message.error(error.message || '导出失败');
-    } finally {
-      setExporting(false);
-    }
+    const params: Record<string, unknown> = {};
+    if (keyword) params.keyword = keyword;
+    if (typeFilter) params.type = typeFilter;
+    await triggerExport(params);
   };
 
   const uploadProps: UploadProps = {
@@ -197,12 +192,7 @@ export default function CustomersPage() {
       try {
         const formData = new FormData();
         formData.append('file', current);
-        const result = await api.post<{
-          total: number;
-          success: number;
-          failed: number;
-          errors: Array<{ row: number; message: string }>;
-        }>('/customers/import', formData, {
+        const result = await api.post<ImportResult>('/customers/import', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
         if (result.failed > 0) {
@@ -212,10 +202,10 @@ export default function CustomersPage() {
           message.success(`导入成功：共 ${result.success} 条`);
         }
         await fetchCustomers();
-        onSuccess?.(result as any);
-      } catch (error: any) {
-        message.error(error.response?.data?.message || error.message || '导入失败');
-        onError?.(error);
+        onSuccess?.(result);
+      } catch (error: unknown) {
+        message.error(getErrorMessage(error, '导入失败'));
+        onError?.(error as Error);
       } finally {
         setImporting(false);
       }
@@ -247,8 +237,8 @@ export default function CustomersPage() {
       setModalVisible(false);
       fetchCustomers();
       setSelectedRowKeys([]);
-    } catch (error: any) {
-      message.error(error.response?.data?.message || error.message || '操作失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '操作失败'));
     } finally {
       setSubmitting(false);
     }
@@ -256,34 +246,15 @@ export default function CustomersPage() {
 
   // 删除客户
   const handleDelete = async (id: string) => {
-    try {
-      await api.delete(`/customers/${id}`);
-      message.success('删除成功');
+    const success = await deleteOne(id);
+    if (success) {
       setSelectedRowKeys((prev) => prev.filter((key) => key !== id));
       fetchCustomers();
-    } catch (error: any) {
-      message.error(error.response?.data?.message || '删除失败');
     }
   };
 
   const handleBatchDelete = async () => {
-    if (selectedRowKeys.length === 0) {
-      message.info('请先选择要删除的客户');
-      return;
-    }
-
-    const results = await Promise.allSettled(
-      selectedRowKeys.map((id) => api.delete(`/customers/${id}`)),
-    );
-    const success = results.filter((result) => result.status === 'fulfilled').length;
-    const failed = selectedRowKeys.length - success;
-
-    if (success > 0) {
-      message.success(`批量删除完成：成功 ${success} 条${failed > 0 ? `，失败 ${failed} 条` : ''}`);
-    } else {
-      message.error('批量删除失败');
-    }
-
+    await deleteBatch(selectedRowKeys);
     setSelectedRowKeys([]);
     fetchCustomers();
   };
@@ -296,8 +267,8 @@ export default function CustomersPage() {
       });
       message.success(approved ? '审批通过' : '已驳回');
       fetchCustomers();
-    } catch (error: any) {
-      message.error(error.response?.data?.message || '审批失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '审批失败'));
     }
   };
 
@@ -307,8 +278,8 @@ export default function CustomersPage() {
     try {
       const res = await api.get<CustomerDetail>(`/customers/${id}`);
       setDetailData(res);
-    } catch (error: any) {
-      message.error(error.response?.data?.message || error.message || '加载客户详情失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '加载客户详情失败'));
       setDetailVisible(false);
       setDetailData(null);
     } finally {
@@ -379,7 +350,7 @@ export default function CustomersPage() {
       title: '操作',
       key: 'action',
       width: 200,
-      render: (_: any, record: Customer) => (
+      render: (_: unknown, record: Customer) => (
         <Space size="small">
           <Button
             type="link"
@@ -461,7 +432,12 @@ export default function CustomersPage() {
             cancelText="取消"
             disabled={selectedRowKeys.length === 0}
           >
-            <Button danger icon={<DeleteOutlined />} disabled={selectedRowKeys.length === 0}>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              loading={batchDeleting}
+              disabled={selectedRowKeys.length === 0}
+            >
               批量删除
             </Button>
           </Popconfirm>
@@ -478,14 +454,20 @@ export default function CustomersPage() {
             placeholder="搜索客户名称/编号/联系人"
             prefix={<SearchOutlined />}
             value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setKeyword(e.target.value);
+            }}
             style={{ width: 250 }}
             allowClear
           />
           <Select
             placeholder="客户类型"
             value={typeFilter}
-            onChange={setTypeFilter}
+            onChange={(value) => {
+              setPage(1);
+              setTypeFilter(value);
+            }}
             style={{ width: 120 }}
             allowClear
           >

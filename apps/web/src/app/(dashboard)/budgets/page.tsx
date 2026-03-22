@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 预算管理页面
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Table,
   Button,
@@ -87,7 +87,7 @@ export default function BudgetsPage() {
   const [summary, setSummary] = useState<any>(null);
 
   // 加载预算列表
-  const fetchBudgets = async () => {
+  const fetchBudgets = useCallback(async () => {
     setLoading(true);
     try {
       const params: any = { page, pageSize };
@@ -102,20 +102,20 @@ export default function BudgetsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, yearFilter, departmentFilter]);
 
   // 加载部门列表
-  const fetchDepartments = async () => {
+  const fetchDepartments = useCallback(async () => {
     try {
       const res = await api.get<string[]>('/budgets/departments');
       setDepartments(res);
     } catch (error) {
       console.error('加载部门列表失败', error);
     }
-  };
+  }, []);
 
   // 加载汇总数据
-  const fetchSummary = async () => {
+  const fetchSummary = useCallback(async () => {
     if (!departmentFilter || !yearFilter) {
       setSummary(null);
       return;
@@ -126,16 +126,16 @@ export default function BudgetsPage() {
     } catch (error) {
       console.error('加载汇总失败', error);
     }
-  };
+  }, [departmentFilter, yearFilter]);
 
   useEffect(() => {
     fetchBudgets();
     fetchDepartments();
-  }, [page, pageSize, yearFilter, departmentFilter]);
+  }, [fetchBudgets, fetchDepartments]);
 
   useEffect(() => {
     fetchSummary();
-  }, [yearFilter, departmentFilter]);
+  }, [fetchSummary]);
 
   // 打开新增弹窗
   const handleAdd = () => {

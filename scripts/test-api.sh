@@ -5,6 +5,10 @@
 
 BASE_URL="http://localhost:3001/api"
 TOKEN=""
+COOKIE_FILE="/tmp/inffinancems_test_api.cookies"
+CSRF_TOKEN=""
+TEST_EMAIL="${TEST_EMAIL:-admin@inffinancems.com}"
+TEST_PASSWORD="${TEST_PASSWORD:-${ADMIN_INITIAL_PASSWORD:-${SEED_DEFAULT_PASSWORD:-}}}"
 
 echo "=========================================="
 echo "  InfFinanceMs API 测试脚本"
@@ -34,19 +38,45 @@ print_result() {
 
 # 1. 测试登录
 echo "1. 测试用户登录..."
-LOGIN_RESPONSE=$(curl -s -X POST "${BASE_URL}/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email": "admin@inffinancems.com", "password": "admin123"}')
 
-# 尝试两种可能的token字段名
+if [ -z "${TEST_PASSWORD}" ]; then
+  echo -e "${RED}✗ FAIL${NC}: 缺少测试密码"
+  echo "   请设置 TEST_PASSWORD 或 ADMIN_INITIAL_PASSWORD 或 SEED_DEFAULT_PASSWORD 环境变量"
+  exit 1
+fi
+
+# 1.1 先获取 CSRF Token
+curl -s -c "${COOKIE_FILE}" "${BASE_URL}/auth/csrf" > /dev/null
+CSRF_TOKEN=$(awk '/csrfToken/ {print $7}' "${COOKIE_FILE}" | tail -n 1)
+
+if [ -z "$CSRF_TOKEN" ]; then
+  print_result 1 "获取 CSRF Token 失败"
+  echo "   提示: 请检查 /auth/csrf 接口是否可用"
+  exit 1
+fi
+
+LOGIN_RESPONSE=$(curl -s -X POST "${BASE_URL}/auth/login" \
+  -b "${COOKIE_FILE}" -c "${COOKIE_FILE}" \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
+  -d "{\"email\": \"${TEST_EMAIL}\", \"password\": \"${TEST_PASSWORD}\"}")
+
+# 尝试两种可能的token字段名（兼容老接口）
 TOKEN=$(echo $LOGIN_RESPONSE | grep -o '"accessToken":"[^"]*"' | cut -d'"' -f4)
 if [ -z "$TOKEN" ]; then
   TOKEN=$(echo $LOGIN_RESPONSE | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 fi
 
-if [ -n "$TOKEN" ]; then
+# 登录成功后，服务端会下发新的 csrfToken（用于后续写操作）
+CSRF_TOKEN=$(awk '/csrfToken/ {print $7}' "${COOKIE_FILE}" | tail -n 1)
+
+if echo "$LOGIN_RESPONSE" | grep -q '"user"'; then
   print_result 0 "用户登录成功"
-  echo "   Token: ${TOKEN:0:50}..."
+  if [ -n "$TOKEN" ]; then
+    echo "   Token: ${TOKEN:0:50}..."
+  else
+    echo "   使用 HttpOnly Cookie 会话"
+  fi
 else
   print_result 1 "用户登录失败"
   echo "   响应: $LOGIN_RESPONSE"
@@ -59,7 +89,7 @@ echo ""
 # 2. 测试获取当前用户信息
 echo "2. 测试获取当前用户信息..."
 USER_RESPONSE=$(curl -s -X GET "${BASE_URL}/auth/me" \
-  -H "Authorization: Bearer $TOKEN")
+  -b "${COOKIE_FILE}")
 
 if echo "$USER_RESPONSE" | grep -q '"email"'; then
   print_result 0 "获取用户信息成功"
@@ -73,7 +103,7 @@ echo ""
 # 3. 测试项目列表
 echo "3. 测试获取项目列表..."
 PROJECTS_RESPONSE=$(curl -s -X GET "${BASE_URL}/projects" \
-  -H "Authorization: Bearer $TOKEN")
+  -b "${COOKIE_FILE}")
 
 if echo "$PROJECTS_RESPONSE" | grep -q '"items"'; then
   print_result 0 "获取项目列表成功"
@@ -88,8 +118,9 @@ echo ""
 # 4. 测试创建项目
 echo "4. 测试创建项目..."
 CREATE_PROJECT_RESPONSE=$(curl -s -X POST "${BASE_URL}/projects" \
-  -H "Authorization: Bearer $TOKEN" \
+  -b "${COOKIE_FILE}" \
   -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: ${CSRF_TOKEN}" \
   -d '{
     "name": "测试项目-API测试",
     "description": "这是一个通过API测试脚本创建的项目",
@@ -113,7 +144,7 @@ echo ""
 if [ -n "$PROJECT_ID" ]; then
   echo "5. 测试获取项目详情..."
   PROJECT_DETAIL=$(curl -s -X GET "${BASE_URL}/projects/${PROJECT_ID}" \
-    -H "Authorization: Bearer $TOKEN")
+    -b "${COOKIE_FILE}")
 
   if echo "$PROJECT_DETAIL" | grep -q '"name"'; then
     print_result 0 "获取项目详情成功"
@@ -127,8 +158,9 @@ fi
 if [ -n "$PROJECT_ID" ]; then
   echo "6. 测试更新项目..."
   UPDATE_PROJECT_RESPONSE=$(curl -s -X PUT "${BASE_URL}/projects/${PROJECT_ID}" \
-    -H "Authorization: Bearer $TOKEN" \
+    -b "${COOKIE_FILE}" \
     -H "Content-Type: application/json" \
+    -H "X-CSRF-Token: ${CSRF_TOKEN}" \
     -d '{
       "name": "测试项目-已更新",
       "description": "项目描述已更新"
@@ -145,7 +177,7 @@ fi
 # 7. 测试报销类型字典
 echo "7. 测试获取报销类型字典..."
 EXPENSE_TYPES=$(curl -s -X GET "${BASE_URL}/dictionaries/by-type/EXPENSE_TYPE" \
-  -H "Authorization: Bearer $TOKEN")
+  -b "${COOKIE_FILE}")
 
 if echo "$EXPENSE_TYPES" | grep -q '"差旅费"'; then
   print_result 0 "获取报销类型字典成功"
@@ -159,7 +191,7 @@ echo ""
 # 8. 测试报销列表
 echo "8. 测试获取报销列表..."
 EXPENSES_RESPONSE=$(curl -s -X GET "${BASE_URL}/expenses" \
-  -H "Authorization: Bearer $TOKEN")
+  -b "${COOKIE_FILE}")
 
 if echo "$EXPENSES_RESPONSE" | grep -q '"items"'; then
   print_result 0 "获取报销列表成功"
@@ -174,7 +206,8 @@ echo ""
 if [ -n "$PROJECT_ID" ]; then
   echo "9. 测试删除项目（清理测试数据）..."
   DELETE_RESPONSE=$(curl -s -X DELETE "${BASE_URL}/projects/${PROJECT_ID}" \
-    -H "Authorization: Bearer $TOKEN")
+    -b "${COOKIE_FILE}" \
+    -H "X-CSRF-Token: ${CSRF_TOKEN}")
 
   if echo "$DELETE_RESPONSE" | grep -q '"isDeleted":true'; then
     print_result 0 "删除项目成功"
@@ -187,7 +220,7 @@ fi
 # 10. 测试客户列表
 echo "10. 测试获取客户列表..."
 CUSTOMERS_RESPONSE=$(curl -s -X GET "${BASE_URL}/customers" \
-  -H "Authorization: Bearer $TOKEN")
+  -b "${COOKIE_FILE}")
 
 if echo "$CUSTOMERS_RESPONSE" | grep -q '"items"'; then
   print_result 0 "获取客户列表成功"
@@ -199,7 +232,7 @@ echo ""
 # 11. 测试合同列表
 echo "11. 测试获取合同列表..."
 CONTRACTS_RESPONSE=$(curl -s -X GET "${BASE_URL}/contracts" \
-  -H "Authorization: Bearer $TOKEN")
+  -b "${COOKIE_FILE}")
 
 if echo "$CONTRACTS_RESPONSE" | grep -q '"items"'; then
   print_result 0 "获取合同列表成功"

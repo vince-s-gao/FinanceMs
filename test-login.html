@@ -7,21 +7,40 @@
 </head>
 <body>
     <h1>测试登录功能</h1>
+    <p>请输入管理员密码后测试（不会保存到本地存储）。</p>
+    <label>
+      密码：
+      <input id="password" type="password" placeholder="请输入密码" />
+    </label>
+    <button onclick="testLogin()">开始测试</button>
     <div id="result"></div>
 
     <script>
         async function testLogin() {
             const resultDiv = document.getElementById('result');
+            const passwordInput = document.getElementById('password');
+            const password = passwordInput?.value?.trim();
+
+            if (!password) {
+                resultDiv.innerHTML = '<h2>❌ 请输入密码</h2>';
+                return;
+            }
             
             try {
+                await fetch('http://localhost:3001/api/auth/csrf', {
+                    method: 'GET',
+                    credentials: 'include',
+                });
+
                 const response = await fetch('http://localhost:3001/api/auth/login', {
                     method: 'POST',
+                    credentials: 'include',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
                         email: 'admin@inffinancems.com',
-                        password: 'Admin@123'
+                        password
                     })
                 });
 
@@ -31,15 +50,10 @@
                     resultDiv.innerHTML = `
                         <h2>✅ 登录成功！</h2>
                         <pre>${JSON.stringify(data, null, 2)}</pre>
-                        <p>Access Token: ${data.accessToken.substring(0, 50)}...</p>
                     `;
-                    
-                    // 保存token到localStorage
-                    localStorage.setItem('accessToken', data.accessToken);
-                    localStorage.setItem('user', JSON.stringify(data.user));
-                    
-                    // 测试访问受保护的API
-                    testProtectedAPI(data.accessToken);
+
+                    // 使用 httpOnly Cookie 测试访问受保护 API
+                    testProtectedAPI();
                 } else {
                     resultDiv.innerHTML = `
                         <h2>❌ 登录失败</h2>
@@ -54,13 +68,11 @@
             }
         }
 
-        async function testProtectedAPI(token) {
+        async function testProtectedAPI() {
             try {
                 const response = await fetch('http://localhost:3001/api/auth/me', {
                     method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                    }
+                    credentials: 'include',
                 });
 
                 const data = await response.json();
@@ -78,9 +90,6 @@
                 `;
             }
         }
-
-        // 页面加载后自动测试
-        window.onload = testLogin;
     </script>
 </body>
 </html>

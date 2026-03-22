@@ -2,25 +2,60 @@
 
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 
+function trimTrailingSlash(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value;
+}
+
+function normalizeConfiguredApiBase(
+  configured: string | undefined,
+  runtime?: { protocol: string; hostname: string },
+): string | null {
+  if (!configured) return null;
+  const raw = configured.trim();
+  if (!raw) return null;
+
+  if (runtime && raw.startsWith('/')) {
+    return `${runtime.protocol}//${runtime.hostname}:3001/api`;
+  }
+
+  let adjusted = raw;
+  if (runtime) {
+    // 避免 localhost/127.0.0.1 不一致导致跨站 Cookie 问题
+    if (runtime.hostname === '127.0.0.1' && adjusted.includes('://localhost')) {
+      adjusted = adjusted.replace('://localhost', '://127.0.0.1');
+    }
+    if (runtime.hostname === 'localhost' && adjusted.includes('://127.0.0.1')) {
+      adjusted = adjusted.replace('://127.0.0.1', '://localhost');
+    }
+  }
+
+  try {
+    const parsed = new URL(adjusted);
+    if (parsed.pathname === '' || parsed.pathname === '/') {
+      parsed.pathname = '/api';
+    }
+    return trimTrailingSlash(parsed.toString());
+  } catch {
+    return trimTrailingSlash(adjusted);
+  }
+}
+
 const API_BASE_URL = (() => {
   if (typeof window !== 'undefined') {
-    const configured = process.env.NEXT_PUBLIC_API_URL;
-    if (configured) {
-      // 避免 localhost/127.0.0.1 不一致导致跨站 Cookie 问题
-      if (window.location.hostname === '127.0.0.1' && configured.includes('://localhost')) {
-        return configured.replace('://localhost', '://127.0.0.1');
-      }
-      if (window.location.hostname === 'localhost' && configured.includes('://127.0.0.1')) {
-        return configured.replace('://127.0.0.1', '://localhost');
-      }
-      return configured;
-    }
     const protocol = window.location.protocol || 'http:';
     const hostname = window.location.hostname || '127.0.0.1';
+    const normalizedConfigured = normalizeConfiguredApiBase(process.env.NEXT_PUBLIC_API_URL, {
+      protocol,
+      hostname,
+    });
+    if (normalizedConfigured) {
+      return normalizedConfigured;
+    }
     return `${protocol}//${hostname}:3001/api`;
   }
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
+  const normalizedServerConfigured = normalizeConfiguredApiBase(process.env.NEXT_PUBLIC_API_URL);
+  if (normalizedServerConfigured) {
+    return normalizedServerConfigured;
   }
   return 'http://127.0.0.1:3001/api';
 })();

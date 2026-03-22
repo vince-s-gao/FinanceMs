@@ -1,55 +1,63 @@
 // InfFinanceMs - 报销服务
 
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CostsService } from '../costs/costs.service';
-import { CreateExpenseDto } from './dto/create-expense.dto';
-import { UpdateExpenseDto } from './dto/update-expense.dto';
-import { QueryExpenseDto } from './dto/query-expense.dto';
-import { ApproveExpenseDto } from './dto/approve-expense.dto';
-import { BudgetsService } from '../budgets/budgets.service';
-import { Decimal } from '@prisma/client/runtime/library';
-import { Prisma } from '@prisma/client';
-import { parseDateRangeEnd, parseDateRangeStart, resolveSortField } from '../../common/utils/query.utils';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  ConflictException,
+} from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CostsService } from "../costs/costs.service";
+import { CreateExpenseDto } from "./dto/create-expense.dto";
+import { UpdateExpenseDto } from "./dto/update-expense.dto";
+import { QueryExpenseDto } from "./dto/query-expense.dto";
+import { ApproveExpenseDto } from "./dto/approve-expense.dto";
+import { BudgetsService } from "../budgets/budgets.service";
+import { Decimal } from "@prisma/client/runtime/library";
+import {
+  parseDateRangeEnd,
+  parseDateRangeStart,
+  resolveSortField,
+} from "../../common/utils/query.utils";
+import {
+  createWithGeneratedCode,
+  generatePrefixedCode,
+} from "../../common/utils/code-generator.utils";
+import { isUniqueConflict as isPrismaUniqueConflict } from "../../common/utils/prisma.utils";
+import { generateExpenseNo as formatExpenseNo } from "@inffinancems/shared";
 
 // 导入 Prisma 生成的枚举类型
-import { ExpenseStatus as PrismaExpenseStatus } from '@prisma/client';
+import { ExpenseStatus as PrismaExpenseStatus } from "@prisma/client";
 
 // 报销状态常量（使用 Prisma 枚举）
 const ExpenseStatus = PrismaExpenseStatus;
 
 // 角色常量
 const Role = {
-  EMPLOYEE: 'EMPLOYEE',
-  FINANCE: 'FINANCE',
-  MANAGER: 'MANAGER',
-  ADMIN: 'ADMIN',
+  EMPLOYEE: "EMPLOYEE",
+  FINANCE: "FINANCE",
+  MANAGER: "MANAGER",
+  ADMIN: "ADMIN",
 };
 type RoleType = string;
 
 // 费用来源常量
 const CostSource = {
-  DIRECT: 'DIRECT',
-  REIMBURSEMENT: 'REIMBURSEMENT',
+  DIRECT: "DIRECT",
+  REIMBURSEMENT: "REIMBURSEMENT",
 } as const;
 
 const ALLOWED_EXPENSE_SORT_FIELDS = [
-  'expenseNo',
-  'totalAmount',
-  'status',
-  'submitDate',
-  'approveDate',
-  'paymentDate',
-  'createdAt',
-  'updatedAt',
+  "expenseNo",
+  "totalAmount",
+  "status",
+  "submitDate",
+  "approveDate",
+  "paymentDate",
+  "createdAt",
+  "updatedAt",
 ] as const;
-
-// 生成报销单号
-function generateExpenseNo(date: Date, sequence: number): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `BX${year}${month}-${String(sequence).padStart(4, '0')}`;
-}
 
 @Injectable()
 export class ExpensesService {
@@ -64,32 +72,22 @@ export class ExpensesService {
    */
   private async generateExpenseNo(now: Date): Promise<string> {
     const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, "0");
     const prefix = `BX${year}${month}-`;
-    const lastExpense = await this.prisma.expense.findFirst({
-      where: {
-        expenseNo: { startsWith: prefix },
-      },
-      orderBy: { expenseNo: 'desc' },
-      select: { expenseNo: true },
+    const next = await generatePrefixedCode({
+      model: this.prisma.expense,
+      field: "expenseNo",
+      prefix,
+      sequenceRegex: /-(\d{4})$/,
+      sequenceLength: 4,
     });
-
-    let sequence = 1;
-    if (lastExpense?.expenseNo) {
-      const match = lastExpense.expenseNo.match(/-(\d{4})$/);
-      if (match) {
-        sequence = Number(match[1]) + 1;
-      }
-    }
-
-    return generateExpenseNo(now, sequence);
+    const sequenceText = next.slice(prefix.length);
+    const sequence = Number(sequenceText);
+    return formatExpenseNo(now, Number.isNaN(sequence) ? 1 : sequence);
   }
 
   private isExpenseNoConflict(error: unknown): boolean {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
-    if (error.code !== 'P2002') return false;
-    const target = (error.meta?.target || []) as string[];
-    return target.includes('expenseNo');
+    return isPrismaUniqueConflict(error, "expenseNo");
   }
 
   /**
@@ -103,11 +101,15 @@ export class ExpensesService {
       status,
       startDate,
       endDate,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = query;
     const skip = (page - 1) * pageSize;
-    const safeSortBy = resolveSortField(sortBy, ALLOWED_EXPENSE_SORT_FIELDS, 'createdAt');
+    const safeSortBy = resolveSortField(
+      sortBy,
+      ALLOWED_EXPENSE_SORT_FIELDS,
+      "createdAt",
+    );
 
     const where: any = {};
 
@@ -119,8 +121,8 @@ export class ExpensesService {
     // 关键词搜索
     if (keyword) {
       where.OR = [
-        { expenseNo: { contains: keyword, mode: 'insensitive' } },
-        { applicant: { name: { contains: keyword, mode: 'insensitive' } } },
+        { expenseNo: { contains: keyword, mode: "insensitive" } },
+        { applicant: { name: { contains: keyword, mode: "insensitive" } } },
       ];
     }
 
@@ -186,18 +188,18 @@ export class ExpensesService {
           select: { id: true, contractNo: true, name: true },
         },
         details: {
-          orderBy: { occurDate: 'asc' },
+          orderBy: { occurDate: "asc" },
         },
       },
     });
 
     if (!expense) {
-      throw new NotFoundException('报销单不存在');
+      throw new NotFoundException("报销单不存在");
     }
 
     // 员工只能查看自己的报销
     if (userRole === Role.EMPLOYEE && expense.applicantId !== userId) {
-      throw new ForbiddenException('无权查看此报销单');
+      throw new ForbiddenException("无权查看此报销单");
     }
 
     return expense;
@@ -206,7 +208,11 @@ export class ExpensesService {
   /**
    * 创建报销单
    */
-  async create(createExpenseDto: CreateExpenseDto, userId: string, department: string) {
+  async create(
+    createExpenseDto: CreateExpenseDto,
+    userId: string,
+    department: string,
+  ) {
     const { projectId, contractId, reason, details } = createExpenseDto;
 
     // 验证项目（必填）
@@ -214,7 +220,7 @@ export class ExpensesService {
       where: { id: projectId, isDeleted: false },
     });
     if (!project) {
-      throw new BadRequestException('关联项目不存在');
+      throw new BadRequestException("关联项目不存在");
     }
 
     // 验证合同（如果有）
@@ -223,7 +229,7 @@ export class ExpensesService {
         where: { id: contractId, isDeleted: false },
       });
       if (!contract) {
-        throw new BadRequestException('关联合同不存在');
+        throw new BadRequestException("关联合同不存在");
       }
     }
 
@@ -234,10 +240,10 @@ export class ExpensesService {
     );
 
     // 并发场景下单号可能冲突，依赖唯一索引冲突自动重试
-    for (let i = 0; i < 8; i++) {
-      const expenseNo = await this.generateExpenseNo(new Date());
-      try {
-        return await this.prisma.expense.create({
+    return createWithGeneratedCode({
+      generateCode: () => this.generateExpenseNo(new Date()),
+      create: (expenseNo: string) =>
+        this.prisma.expense.create({
           data: {
             expenseNo,
             applicantId: userId,
@@ -262,32 +268,34 @@ export class ExpensesService {
             },
             details: true,
           },
-        });
-      } catch (error) {
-        if (this.isExpenseNoConflict(error) && i < 7) {
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    throw new ConflictException('报销单号生成失败，请重试');
+        }),
+      isCodeConflict: (error) => this.isExpenseNoConflict(error),
+      exhaustedError: () => new ConflictException("报销单号生成失败，请重试"),
+    });
   }
 
   /**
    * 更新报销单
    */
-  async update(id: string, updateExpenseDto: UpdateExpenseDto, userId: string, userRole: RoleType) {
+  async update(
+    id: string,
+    updateExpenseDto: UpdateExpenseDto,
+    userId: string,
+    userRole: RoleType,
+  ) {
     const expense = await this.findOne(id, userId, userRole);
 
     // 只有草稿和驳回状态可以编辑
-    if (expense.status !== ExpenseStatus.DRAFT && expense.status !== ExpenseStatus.REJECTED) {
-      throw new BadRequestException('当前状态不允许编辑');
+    if (
+      expense.status !== ExpenseStatus.DRAFT &&
+      expense.status !== ExpenseStatus.REJECTED
+    ) {
+      throw new BadRequestException("当前状态不允许编辑");
     }
 
     // 员工只能编辑自己的报销
     if (userRole === Role.EMPLOYEE && expense.applicantId !== userId) {
-      throw new ForbiddenException('无权编辑此报销单');
+      throw new ForbiddenException("无权编辑此报销单");
     }
 
     const { details, ...expenseData } = updateExpenseDto;
@@ -342,18 +350,21 @@ export class ExpensesService {
     const expense = await this.findOne(id, userId, userRole);
 
     // 只有草稿和驳回状态可以提交
-    if (expense.status !== ExpenseStatus.DRAFT && expense.status !== ExpenseStatus.REJECTED) {
-      throw new BadRequestException('当前状态不允许提交');
+    if (
+      expense.status !== ExpenseStatus.DRAFT &&
+      expense.status !== ExpenseStatus.REJECTED
+    ) {
+      throw new BadRequestException("当前状态不允许提交");
     }
 
     // 员工只能提交自己的报销
     if (userRole === Role.EMPLOYEE && expense.applicantId !== userId) {
-      throw new ForbiddenException('无权提交此报销单');
+      throw new ForbiddenException("无权提交此报销单");
     }
 
     // 检查是否有明细
     if (expense.details.length === 0) {
-      throw new BadRequestException('报销单没有明细，无法提交');
+      throw new BadRequestException("报销单没有明细，无法提交");
     }
 
     return this.prisma.expense.update({
@@ -375,12 +386,12 @@ export class ExpensesService {
     });
 
     if (!expense) {
-      throw new NotFoundException('报销单不存在');
+      throw new NotFoundException("报销单不存在");
     }
 
     // 只有审批中状态可以审批
     if (expense.status !== ExpenseStatus.PENDING) {
-      throw new BadRequestException('当前状态不允许审批');
+      throw new BadRequestException("当前状态不允许审批");
     }
 
     const { approved, rejectReason } = approveDto;
@@ -395,7 +406,7 @@ export class ExpensesService {
       });
     } else {
       if (!rejectReason) {
-        throw new BadRequestException('驳回时必须填写原因');
+        throw new BadRequestException("驳回时必须填写原因");
       }
       return this.prisma.expense.update({
         where: { id },
@@ -417,12 +428,12 @@ export class ExpensesService {
     });
 
     if (!expense) {
-      throw new NotFoundException('报销单不存在');
+      throw new NotFoundException("报销单不存在");
     }
 
     // 只有已批准状态可以打款
     if (expense.status !== ExpenseStatus.APPROVED) {
-      throw new BadRequestException('当前状态不允许打款');
+      throw new BadRequestException("当前状态不允许打款");
     }
 
     // 使用事务：更新状态并生成费用记录
@@ -446,14 +457,14 @@ export class ExpensesService {
         });
 
         if (!latest) {
-          throw new NotFoundException('报销单不存在');
+          throw new NotFoundException("报销单不存在");
         }
 
         if (latest.status === ExpenseStatus.PAID) {
-          throw new BadRequestException('该报销单已打款');
+          throw new BadRequestException("该报销单已打款");
         }
 
-        throw new BadRequestException('当前状态不允许打款');
+        throw new BadRequestException("当前状态不允许打款");
       }
 
       const existingGeneratedCosts = await tx.cost.count({
@@ -464,7 +475,7 @@ export class ExpensesService {
       });
 
       if (existingGeneratedCosts > 0) {
-        throw new ConflictException('该报销单已生成费用记录，请勿重复打款');
+        throw new ConflictException("该报销单已生成费用记录，请勿重复打款");
       }
 
       // 为每个明细生成费用记录
@@ -505,12 +516,12 @@ export class ExpensesService {
 
     // 只有草稿状态可以删除
     if (expense.status !== ExpenseStatus.DRAFT) {
-      throw new BadRequestException('只有草稿状态的报销单可以删除');
+      throw new BadRequestException("只有草稿状态的报销单可以删除");
     }
 
     // 员工只能删除自己的报销
     if (userRole === Role.EMPLOYEE && expense.applicantId !== userId) {
-      throw new ForbiddenException('无权删除此报销单');
+      throw new ForbiddenException("无权删除此报销单");
     }
 
     return this.prisma.expense.delete({

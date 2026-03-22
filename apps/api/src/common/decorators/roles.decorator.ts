@@ -1,19 +1,19 @@
 // InfFinanceMs - 角色装饰器
 
-import { SetMetadata } from '@nestjs/common';
+import { SetMetadata } from "@nestjs/common";
 
-export const ROLES_KEY = 'roles';
+export const ROLES_KEY = "roles";
 
 // 角色类型
-export type RoleType = 'EMPLOYEE' | 'SALES' | 'FINANCE' | 'MANAGER' | 'ADMIN';
+export type RoleType = "EMPLOYEE" | "SALES" | "FINANCE" | "MANAGER" | "ADMIN";
 
 // 角色常量对象
 export const Role = {
-  EMPLOYEE: 'EMPLOYEE' as RoleType,
-  SALES: 'SALES' as RoleType,
-  FINANCE: 'FINANCE' as RoleType,
-  MANAGER: 'MANAGER' as RoleType,
-  ADMIN: 'ADMIN' as RoleType,
+  EMPLOYEE: "EMPLOYEE" as RoleType,
+  SALES: "SALES" as RoleType,
+  FINANCE: "FINANCE" as RoleType,
+  MANAGER: "MANAGER" as RoleType,
+  ADMIN: "ADMIN" as RoleType,
 };
 
 /**

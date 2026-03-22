@@ -1,10 +1,10 @@
 // InfFinanceMs - 飞书认证服务
 
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../../prisma/prisma.service';
-import { randomUUID } from 'crypto';
+import { Injectable, UnauthorizedException, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
+import { PrismaService } from "../../prisma/prisma.service";
+import { randomUUID } from "crypto";
 
 // 飞书用户信息接口
 interface FeishuUserInfo {
@@ -63,7 +63,7 @@ export class FeishuService {
     string,
     { expiresAt: number; payload: FeishuLoginResult }
   >();
-  
+
   // 飞书应用配置
   private readonly appId: string;
   private readonly appSecret: string;
@@ -74,21 +74,24 @@ export class FeishuService {
     private prisma: PrismaService,
     private jwtService: JwtService,
   ) {
-    this.appId = this.configService.get<string>('FEISHU_APP_ID', '');
-    this.appSecret = this.configService.get<string>('FEISHU_APP_SECRET', '');
-    this.redirectUri = this.configService.get<string>('FEISHU_REDIRECT_URI', '');
+    this.appId = this.configService.get<string>("FEISHU_APP_ID", "");
+    this.appSecret = this.configService.get<string>("FEISHU_APP_SECRET", "");
+    this.redirectUri = this.configService.get<string>(
+      "FEISHU_REDIRECT_URI",
+      "",
+    );
   }
 
   /**
    * 获取飞书授权登录URL
    */
   getAuthUrl(state: string): string {
-    const baseUrl = 'https://open.feishu.cn/open-apis/authen/v1/authorize';
+    const baseUrl = "https://open.feishu.cn/open-apis/authen/v1/authorize";
     const params = new URLSearchParams({
       app_id: this.appId,
       redirect_uri: this.redirectUri,
       state,
-      scope: 'contact:user.email:readonly contact:user.phone:readonly',
+      scope: "contact:user.email:readonly contact:user.phone:readonly",
     });
     return `${baseUrl}?${params.toString()}`;
   }
@@ -110,13 +113,13 @@ export class FeishuService {
   exchangeLoginTicket(ticket: string): FeishuLoginResult {
     const entry = this.loginTickets.get(ticket);
     if (!entry) {
-      throw new UnauthorizedException('登录票据无效或已失效');
+      throw new UnauthorizedException("登录票据无效或已失效");
     }
 
     this.loginTickets.delete(ticket);
 
     if (entry.expiresAt < Date.now()) {
-      throw new UnauthorizedException('登录票据已过期');
+      throw new UnauthorizedException("登录票据已过期");
     }
 
     return entry.payload;
@@ -138,11 +141,12 @@ export class FeishuService {
    * 获取飞书应用访问令牌 (app_access_token)
    */
   private async getAppAccessToken(): Promise<string> {
-    const url = 'https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal';
-    
+    const url =
+      "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal";
+
     const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         app_id: this.appId,
         app_secret: this.appSecret,
@@ -150,10 +154,10 @@ export class FeishuService {
     });
 
     const data = await response.json();
-    
+
     if (data.code !== 0) {
-      this.logger.error('获取飞书 app_access_token 失败', data);
-      throw new UnauthorizedException('飞书认证失败');
+      this.logger.error("获取飞书 app_access_token 失败", data);
+      throw new UnauthorizedException("飞书认证失败");
     }
 
     return data.app_access_token;
@@ -162,28 +166,30 @@ export class FeishuService {
   /**
    * 使用授权码获取用户访问令牌
    */
-  private async getUserAccessToken(code: string): Promise<FeishuTokenResponse['data']> {
+  private async getUserAccessToken(
+    code: string,
+  ): Promise<FeishuTokenResponse["data"]> {
     const appAccessToken = await this.getAppAccessToken();
-    
-    const url = 'https://open.feishu.cn/open-apis/authen/v1/oidc/access_token';
-    
+
+    const url = "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token";
+
     const response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${appAccessToken}`,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${appAccessToken}`,
       },
       body: JSON.stringify({
-        grant_type: 'authorization_code',
+        grant_type: "authorization_code",
         code,
       }),
     });
 
     const data: FeishuTokenResponse = await response.json();
-    
+
     if (data.code !== 0 || !data.data) {
-      this.logger.error('获取飞书用户令牌失败', data);
-      throw new UnauthorizedException('飞书授权失败');
+      this.logger.error("获取飞书用户令牌失败", data);
+      throw new UnauthorizedException("飞书授权失败");
     }
 
     return data.data;
@@ -192,21 +198,23 @@ export class FeishuService {
   /**
    * 获取飞书用户信息
    */
-  private async getFeishuUserInfo(accessToken: string): Promise<FeishuUserInfo> {
-    const url = 'https://open.feishu.cn/open-apis/authen/v1/user_info';
-    
+  private async getFeishuUserInfo(
+    accessToken: string,
+  ): Promise<FeishuUserInfo> {
+    const url = "https://open.feishu.cn/open-apis/authen/v1/user_info";
+
     const response = await fetch(url, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
       },
     });
 
     const data: FeishuUserResponse = await response.json();
-    
+
     if (data.code !== 0 || !data.data?.user) {
-      this.logger.error('获取飞书用户信息失败', data);
-      throw new UnauthorizedException('获取用户信息失败');
+      this.logger.error("获取飞书用户信息失败", data);
+      throw new UnauthorizedException("获取用户信息失败");
     }
 
     return data.data.user;
@@ -219,10 +227,10 @@ export class FeishuService {
   async loginWithFeishu(code: string): Promise<FeishuLoginResult> {
     // 1. 获取用户访问令牌
     const tokenData = await this.getUserAccessToken(code);
-    
+
     // 2. 获取飞书用户信息
     const feishuUser = await this.getFeishuUserInfo(tokenData.access_token);
-    
+
     this.logger.log(`飞书用户登录: ${feishuUser.name} (${feishuUser.open_id})`);
 
     // 3. 查找或创建本地用户
@@ -247,7 +255,7 @@ export class FeishuService {
           feishuUserId: feishuUser.user_id,
           feishuOpenId: feishuUser.open_id,
           feishuUnionId: feishuUser.union_id,
-          role: 'EMPLOYEE', // 默认角色
+          role: "EMPLOYEE", // 默认角色
           isActive: true,
         },
       });
@@ -269,7 +277,7 @@ export class FeishuService {
 
     // 4. 检查用户状态
     if (!user.isActive) {
-      throw new UnauthorizedException('账号已被禁用');
+      throw new UnauthorizedException("账号已被禁用");
     }
 
     // 5. 生成JWT令牌
@@ -281,15 +289,18 @@ export class FeishuService {
 
     const accessToken = this.jwtService.sign({
       ...payload,
-      type: 'access',
+      type: "access",
     });
     const refreshToken = this.jwtService.sign(
       {
         ...payload,
-        type: 'refresh',
+        type: "refresh",
       },
       {
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '30d'),
+        expiresIn:
+          this.configService.get<string>("JWT_REFRESH_EXPIRES_IN") ||
+          this.configService.get<string>("JWT_REFRESH_TOKEN_EXPIRES_IN") ||
+          "30d",
       },
     );
 
@@ -325,7 +336,7 @@ export class FeishuService {
     });
 
     if (existingUser) {
-      throw new UnauthorizedException('该飞书账号已被其他用户绑定');
+      throw new UnauthorizedException("该飞书账号已被其他用户绑定");
     }
 
     // 3. 绑定飞书账号
@@ -339,7 +350,7 @@ export class FeishuService {
     });
 
     return {
-      message: '飞书账号绑定成功',
+      message: "飞书账号绑定成功",
       feishuUserId: user.feishuUserId,
     };
   }
@@ -353,12 +364,12 @@ export class FeishuService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('用户不存在');
+      throw new UnauthorizedException("用户不存在");
     }
 
     // 如果用户没有密码，不允许解绑（否则无法登录）
     if (!user.password) {
-      throw new UnauthorizedException('请先设置密码后再解绑飞书账号');
+      throw new UnauthorizedException("请先设置密码后再解绑飞书账号");
     }
 
     await this.prisma.user.update({
@@ -370,6 +381,6 @@ export class FeishuService {
       },
     });
 
-    return { message: '飞书账号解绑成功' };
+    return { message: "飞书账号解绑成功" };
   }
 }

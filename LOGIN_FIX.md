@@ -11,14 +11,14 @@
 ## 修复内容
 
 ### 1. 更新种子数据密码
-将所有测试账号的密码更新为符合复杂度要求的格式：
+将所有测试账号密码改为通过环境变量注入，避免在仓库中硬编码：
 
-| 角色 | 邮箱 | 新密码 |
+| 角色 | 邮箱 | 密码来源 |
 |------|------|--------|
-| 管理员 | admin@inffinancems.com | Admin@123 |
-| 财务 | finance@inffinancems.com | Finance@123 |
-| 管理层 | manager@inffinancems.com | Manager@123 |
-| 员工 | employee@inffinancems.com | Employee@123 |
+| 管理员 | admin@inffinancems.com | `ADMIN_INITIAL_PASSWORD` / `SEED_DEFAULT_PASSWORD` |
+| 财务 | finance@inffinancems.com | `FINANCE_INITIAL_PASSWORD` / `SEED_DEFAULT_PASSWORD` |
+| 管理层 | manager@inffinancems.com | `MANAGER_INITIAL_PASSWORD` / `SEED_DEFAULT_PASSWORD` |
+| 员工 | employee@inffinancems.com | `EMPLOYEE_INITIAL_PASSWORD` / `SEED_DEFAULT_PASSWORD` |
 
 ### 2. 更新前端验证规则
 将登录页面的密码最小长度要求从6位改为8位，与后端保持一致
@@ -42,11 +42,11 @@
 
 ### 2. 测试登录
 1. 访问 http://localhost:3000/login
-2. 使用以下任一测试账号登录：
-   - 管理员：admin@inffinancems.com / Admin@123
-   - 财务：finance@inffinancems.com / Finance@123
-   - 管理层：manager@inffinancems.com / Manager@123
-   - 员工：employee@inffinancems.com / Employee@123
+2. 使用以下任一测试账号登录（密码以你本地环境变量为准）：
+   - 管理员：admin@inffinancems.com / `$ADMIN_INITIAL_PASSWORD`
+   - 财务：finance@inffinancems.com / `$FINANCE_INITIAL_PASSWORD`
+   - 管理层：manager@inffinancems.com / `$MANAGER_INITIAL_PASSWORD`
+   - 员工：employee@inffinancems.com / `$EMPLOYEE_INITIAL_PASSWORD`
 3. 登录成功后应自动跳转到 http://localhost:3000/dashboard
 
 ### 3. 验证功能
@@ -66,8 +66,8 @@
 
 ### 密码验证测试
 通过测试脚本验证：
-- 旧密码 `admin123`：❌ 错误
-- 新密码 `Admin@123`：✅ 正确
+- 弱密码（如 `admin123`）：❌ 错误
+- 符合复杂度规则的密码：✅ 正确
 
 ### 种子数据更新
 修改了 `packages/database/prisma/seed.ts` 文件，将所有用户的 `upsert` 操作从：
@@ -97,7 +97,7 @@ update: { password: newPassword },
 ```bash
 curl -X POST http://localhost:3001/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@inffinancems.com","password":"Admin@123"}'
+  -d '{"email":"admin@inffinancems.com","password":"<your-admin-password>"}'
 ```
 
 预期返回：

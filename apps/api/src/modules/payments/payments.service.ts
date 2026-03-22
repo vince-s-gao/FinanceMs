@@ -1,23 +1,27 @@
 // InfFinanceMs - 回款服务
 
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { ContractsService } from '../contracts/contracts.service';
-import { CreatePaymentPlanDto } from './dto/create-payment-plan.dto';
-import { CreatePaymentRecordDto } from './dto/create-payment-record.dto';
-import { Decimal } from '@prisma/client/runtime/library';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { ContractsService } from "../contracts/contracts.service";
+import { CreatePaymentPlanDto } from "./dto/create-payment-plan.dto";
+import { CreatePaymentRecordDto } from "./dto/create-payment-record.dto";
+import { Decimal } from "@prisma/client/runtime/library";
 
 // 合同状态常量
 const ContractStatus = {
-  DRAFT: 'DRAFT',
-  EXECUTING: 'EXECUTING',
-  COMPLETED: 'COMPLETED',
-  TERMINATED: 'TERMINATED',
+  DRAFT: "DRAFT",
+  EXECUTING: "EXECUTING",
+  COMPLETED: "COMPLETED",
+  TERMINATED: "TERMINATED",
 } as const;
 
 // 导入 Prisma 生成的枚举类型
-import { PaymentPlanStatus as PrismaPaymentPlanStatus } from '@prisma/client';
-import { Prisma } from '@prisma/client';
+import { PaymentPlanStatus as PrismaPaymentPlanStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 // 回款计划状态常量（使用 Prisma 枚举）
 const PaymentPlanStatus = PrismaPaymentPlanStatus;
@@ -107,12 +111,17 @@ export class PaymentsService {
       // 计算逾期金额（计划日期已过但未完成的回款计划）
       let contractOverdue = new Decimal(0);
       contract.paymentPlans.forEach((plan) => {
-        if (plan.status !== PaymentPlanStatus.COMPLETED && new Date(plan.planDate) < today) {
+        if (
+          plan.status !== PaymentPlanStatus.COMPLETED &&
+          new Date(plan.planDate) < today
+        ) {
           const planPaid = plan.paymentRecords.reduce(
             (sum, r) => sum.plus(r.amount),
             new Decimal(0),
           );
-          contractOverdue = contractOverdue.plus(new Decimal(plan.planAmount.toString()).minus(planPaid));
+          contractOverdue = contractOverdue.plus(
+            new Decimal(plan.planAmount.toString()).minus(planPaid),
+          );
         }
       });
       overdueAmount = overdueAmount.plus(contractOverdue);
@@ -142,7 +151,9 @@ export class PaymentsService {
         overdueAmount,
         contractCount: contracts.length,
         completionRate: totalContractAmount.gt(0)
-          ? Math.round(totalPaidAmount.div(totalContractAmount).mul(100).toNumber())
+          ? Math.round(
+              totalPaidAmount.div(totalContractAmount).mul(100).toNumber(),
+            )
           : 0,
       },
       contracts: contractStats,
@@ -155,7 +166,7 @@ export class PaymentsService {
   async findPlansByContract(contractId: string) {
     const plans = await this.prisma.paymentPlan.findMany({
       where: { contractId },
-      orderBy: { period: 'asc' },
+      orderBy: { period: "asc" },
       include: {
         paymentRecords: true,
       },
@@ -170,7 +181,9 @@ export class PaymentsService {
       return {
         ...plan,
         paidAmount,
-        remainingAmount: new Decimal(plan.planAmount.toString()).minus(paidAmount),
+        remainingAmount: new Decimal(plan.planAmount.toString()).minus(
+          paidAmount,
+        ),
       };
     });
   }
@@ -181,7 +194,7 @@ export class PaymentsService {
   async findRecordsByContract(contractId: string) {
     return this.prisma.paymentRecord.findMany({
       where: { contractId },
-      orderBy: { paymentDate: 'desc' },
+      orderBy: { paymentDate: "desc" },
       include: {
         plan: true,
       },
@@ -199,7 +212,7 @@ export class PaymentsService {
       where: { id: contractId, isDeleted: false },
     });
     if (!contract) {
-      throw new NotFoundException('合同不存在');
+      throw new NotFoundException("合同不存在");
     }
 
     // 检查期数是否重复
@@ -215,9 +228,11 @@ export class PaymentsService {
       where: { contractId },
       _sum: { planAmount: true },
     });
-    const totalPlanAmount = (existingPlans._sum.planAmount || new Decimal(0)).plus(planAmount);
+    const totalPlanAmount = (
+      existingPlans._sum.planAmount || new Decimal(0)
+    ).plus(planAmount);
     if (totalPlanAmount.gt(contract.amountWithTax)) {
-      throw new BadRequestException('回款计划总金额不能超过合同金额');
+      throw new BadRequestException("回款计划总金额不能超过合同金额");
     }
 
     return this.prisma.paymentPlan.create({
@@ -239,7 +254,7 @@ export class PaymentsService {
       where: { id: contractId, isDeleted: false },
     });
     if (!contract) {
-      throw new NotFoundException('合同不存在');
+      throw new NotFoundException("合同不存在");
     }
 
     // 检查计划总金额
@@ -248,7 +263,7 @@ export class PaymentsService {
       new Decimal(0),
     );
     if (totalPlanAmount.gt(contract.amountWithTax)) {
-      throw new BadRequestException('回款计划总金额不能超过合同金额');
+      throw new BadRequestException("回款计划总金额不能超过合同金额");
     }
 
     // 删除现有计划
@@ -271,19 +286,20 @@ export class PaymentsService {
    * 创建回款记录
    */
   async createRecord(createRecordDto: CreatePaymentRecordDto) {
-    const { contractId, planId, amount, paymentDate, paymentMethod, remark } = createRecordDto;
+    const { contractId, planId, amount, paymentDate, paymentMethod, remark } =
+      createRecordDto;
 
     // 验证合同
     const contract = await this.prisma.contract.findFirst({
       where: { id: contractId, isDeleted: false },
     });
     if (!contract) {
-      throw new NotFoundException('合同不存在');
+      throw new NotFoundException("合同不存在");
     }
 
     // 合同必须是执行中状态
     if (contract.status !== ContractStatus.EXECUTING) {
-      throw new BadRequestException('只有执行中的合同可以录入回款');
+      throw new BadRequestException("只有执行中的合同可以录入回款");
     }
 
     // 验证回款计划（如果有），并确认与合同匹配
@@ -293,10 +309,10 @@ export class PaymentsService {
         select: { id: true, contractId: true },
       });
       if (!plan) {
-        throw new NotFoundException('回款计划不存在');
+        throw new NotFoundException("回款计划不存在");
       }
       if (plan.contractId !== contractId) {
-        throw new BadRequestException('回款计划与合同不匹配');
+        throw new BadRequestException("回款计划与合同不匹配");
       }
     }
 
@@ -309,7 +325,7 @@ export class PaymentsService {
     const newTotalPaid = paidAmount.plus(amount);
 
     if (newTotalPaid.gt(contract.amountWithTax)) {
-      throw new BadRequestException('回款金额超出应收余额');
+      throw new BadRequestException("回款金额超出应收余额");
     }
 
     // 使用事务创建回款记录并更新相关状态
@@ -350,11 +366,11 @@ export class PaymentsService {
     });
 
     if (!plan) {
-      throw new NotFoundException('回款计划不存在');
+      throw new NotFoundException("回款计划不存在");
     }
 
     if (plan.paymentRecords.length > 0) {
-      throw new BadRequestException('该计划已有回款记录，无法删除');
+      throw new BadRequestException("该计划已有回款记录，无法删除");
     }
 
     return this.prisma.paymentPlan.delete({
@@ -372,7 +388,7 @@ export class PaymentsService {
     });
 
     if (!record) {
-      throw new NotFoundException('回款记录不存在');
+      throw new NotFoundException("回款记录不存在");
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -386,6 +402,6 @@ export class PaymentsService {
     });
 
     await this.contractsService.reconcileContractStatus(record.contractId);
-    return { message: '回款记录删除成功' };
+    return { message: "回款记录删除成功" };
   }
 }

@@ -5,105 +5,46 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Table,
   Button,
   Input,
   Space,
-  Tag,
   Select,
   message,
   Typography,
   Card,
   DatePicker,
   Upload,
-  Modal,
-  Alert,
-  Checkbox,
   Popconfirm,
 } from 'antd';
 import {
   PlusOutlined,
   SearchOutlined,
-  EyeOutlined,
   ReloadOutlined,
   UploadOutlined,
-  EditOutlined,
-  DeleteOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
-import { api } from '@/lib/api';
 import apiClient from '@/lib/api';
+import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
-import { CONTRACT_STATUS_LABELS, CONTRACT_STATUS_COLORS, formatAmount, formatDate } from '@/lib/constants';
-import type { UploadProps } from 'antd/es/upload/interface';
+import { useExport } from '@/hooks/useExport';
+import { useEntityDelete } from '@/hooks/useEntityDelete';
+import { getErrorMessage } from '@/lib/error';
+import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
+import ContractsTable from '@/components/contracts/ContractsTable';
+import ContractImportPreviewModal from '@/components/contracts/ContractImportPreviewModal';
+import ContractAttachmentBatchModal from '@/components/contracts/ContractAttachmentBatchModal';
+import ContractImportHistoryModal from '@/components/contracts/ContractImportHistoryModal';
+import type {
+  BatchAttachmentBindResult,
+  Contract,
+  DictionaryItem,
+  ImportHistoryItem,
+  ImportPreviewResult,
+  SearchFilters,
+} from '@/components/contracts/types';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
-
-interface DictionaryItem {
-  id: string;
-  code: string;
-  name: string;
-  color?: string;
-}
-
-interface Contract {
-  id: string;
-  contractNo: string;
-  name: string;
-  customer: {
-    id: string;
-    name: string;
-    code: string;
-  };
-  signingEntity?: string | null;
-  contractType?: string | null;
-  amountWithTax: number;
-  status: string;
-  signDate: string;
-  endDate?: string | null;
-}
-
-interface SearchFilters {
-  keyword?: string;
-  customerKeyword?: string;
-  signYear?: number;
-  contractType?: string;
-  startDate?: string;
-  endDate?: string;
-}
-
-interface ImportPreviewResult {
-  total: number;
-  valid: number;
-  invalid: number;
-  errors: Array<{ row: number; message: string }>;
-  samples: Array<{
-    row: number;
-    contractNo: string;
-    name: string;
-    customerName: string;
-    contractType: string;
-    amount: number;
-    signDate: string;
-  }>;
-}
-
-interface ImportHistoryItem {
-  id: string;
-  fileName: string;
-  total: number;
-  success: number;
-  failed: number;
-  allowPartial: boolean;
-  createdAt: string;
-  errors: Array<{ row: number; message: string }>;
-  operator?: {
-    id: string;
-    name: string;
-    email: string;
-  } | null;
-}
 
 const IMPORT_HISTORY_LIMIT = 10;
 
@@ -134,11 +75,20 @@ export default function ContractsPage() {
   const [importHistoryOpen, setImportHistoryOpen] = useState(false);
   const [importHistory, setImportHistory] = useState<ImportHistoryItem[]>([]);
   const [importHistoryLoading, setImportHistoryLoading] = useState(false);
+  const [attachmentBatchOpen, setAttachmentBatchOpen] = useState(false);
+  const [attachmentBatchFileList, setAttachmentBatchFileList] = useState<UploadFile[]>([]);
+  const [attachmentBatchFiles, setAttachmentBatchFiles] = useState<File[]>([]);
+  const [attachmentAllowOverwrite, setAttachmentAllowOverwrite] = useState(true);
+  const [bindingAttachments, setBindingAttachments] = useState(false);
+  const [attachmentBatchResult, setAttachmentBatchResult] = useState<BatchAttachmentBindResult | null>(null);
+  const { exporting, handleExport: triggerExport } = useExport('/contracts', 'contracts');
+  const { deleteOne, deleteBatch, batchDeleting } = useEntityDelete('/contracts', '合同');
 
-  const normalizeImportErrorMessage = (error: any, fallback: string) => {
+  const normalizeImportErrorMessage = (error: unknown, fallback: string) => {
+    const payload = error as { message?: string; data?: { message?: string } };
     const rawMessage =
-      error?.message ||
-      (typeof error?.data?.message === 'string' ? error.data.message : '') ||
+      payload?.message ||
+      (typeof payload?.data?.message === 'string' ? payload.data.message : '') ||
       fallback;
     if (typeof rawMessage === 'string' && rawMessage.includes('仅支持 CSV 文件')) {
       return '后端服务仍在旧版本（仅支持CSV），请重启 API 服务后再上传 Excel，或先上传 CSV。';
@@ -170,7 +120,7 @@ export default function ContractsPage() {
     };
   };
 
-  const fetchContractTypes = async () => {
+  const fetchContractTypes = useCallback(async () => {
     try {
       const res = await api.get<DictionaryItem[]>('/dictionaries/by-type/CONTRACT_TYPE');
       setContractTypes(res);
@@ -182,10 +132,10 @@ export default function ContractsPage() {
         { id: '4', code: 'OTHER', name: '其他', color: 'default' },
       ]);
     }
-  };
+  }, []);
 
   // 加载合同列表
-  const fetchContracts = async () => {
+  const fetchContracts = useCallback(async () => {
     setLoading(true);
     try {
       const params: Record<string, string | number> = { page, pageSize };
@@ -199,20 +149,20 @@ export default function ContractsPage() {
       const res = await api.get<{ items: Contract[]; total: number }>('/contracts', { params });
       setContracts(res.items);
       setTotal(res.total);
-    } catch (error: any) {
-      message.error(error.message || '加载失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '加载失败'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, filters]);
 
   useEffect(() => {
     fetchContractTypes();
-  }, []);
+  }, [fetchContractTypes]);
 
   useEffect(() => {
     fetchContracts();
-  }, [page, pageSize, filters]);
+  }, [fetchContracts]);
 
   const handleSearch = () => {
     setPage(1);
@@ -238,62 +188,26 @@ export default function ContractsPage() {
   };
 
   const handleExport = async () => {
-    try {
-      const params: Record<string, string | number> = {};
-      if (filters.keyword) params.keyword = filters.keyword;
-      if (filters.customerKeyword) params.customerKeyword = filters.customerKeyword;
-      if (filters.signYear) params.signYear = filters.signYear;
-      if (filters.contractType) params.contractType = filters.contractType;
-      if (filters.startDate) params.startDate = filters.startDate;
-      if (filters.endDate) params.endDate = filters.endDate;
-
-      const response = await apiClient.get('/contracts/export/excel', {
-        params,
-        responseType: 'blob',
-      });
-
-      const now = dayjs().format('YYYYMMDD');
-      const blob = new Blob([response.data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-      const link = document.createElement('a');
-      const url = window.URL.createObjectURL(blob);
-      link.href = url;
-      link.download = `contracts-${now}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      message.success('导出成功');
-    } catch (error: any) {
-      message.error(error?.message || '导出失败');
-    }
+    const params: Record<string, string | number> = {};
+    if (filters.keyword) params.keyword = filters.keyword;
+    if (filters.customerKeyword) params.customerKeyword = filters.customerKeyword;
+    if (filters.signYear) params.signYear = filters.signYear;
+    if (filters.contractType) params.contractType = filters.contractType;
+    if (filters.startDate) params.startDate = filters.startDate;
+    if (filters.endDate) params.endDate = filters.endDate;
+    await triggerExport(params);
   };
 
   const handleDeleteOne = async (id: string) => {
-    try {
-      await api.delete(`/contracts/${id}`);
-      message.success('删除成功');
+    const success = await deleteOne(id);
+    if (success) {
       setSelectedRowKeys((prev) => prev.filter((key) => key !== id));
       await fetchContracts();
-    } catch (error: any) {
-      message.error(error?.message || '删除失败');
     }
   };
 
   const handleBatchDeleteSelected = async () => {
-    if (selectedRowKeys.length === 0) {
-      message.info('请先选择要删除的合同');
-      return;
-    }
-    const results = await Promise.allSettled(selectedRowKeys.map((id) => api.delete(`/contracts/${id}`)));
-    const success = results.filter((item) => item.status === 'fulfilled').length;
-    const failed = results.length - success;
-    if (success > 0) {
-      message.success(`批量删除完成：成功 ${success} 条${failed ? `，失败 ${failed} 条` : ''}`);
-    } else {
-      message.error('批量删除失败');
-    }
+    await deleteBatch(selectedRowKeys);
     setSelectedRowKeys([]);
     await fetchContracts();
   };
@@ -314,7 +228,7 @@ export default function ContractsPage() {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-    } catch (error: any) {
+    } catch (error: unknown) {
       message.error(normalizeImportErrorMessage(error, '下载导入模板失败'));
     }
   };
@@ -358,8 +272,8 @@ export default function ContractsPage() {
         params: { limit: IMPORT_HISTORY_LIMIT },
       });
       setImportHistory(Array.isArray(items) ? items : []);
-    } catch (error: any) {
-      message.error(error?.message || '加载导入历史失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '加载导入历史失败'));
       setImportHistory([]);
     } finally {
       setImportHistoryLoading(false);
@@ -376,8 +290,8 @@ export default function ContractsPage() {
       await api.delete('/contracts/import/history');
       setImportHistory([]);
       message.success('导入历史已清空');
-    } catch (error: any) {
-      message.error(error?.message || '清空导入历史失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '清空导入历史失败'));
     }
   };
 
@@ -399,11 +313,80 @@ export default function ContractsPage() {
         setAllowPartialImport(false);
         setImportPreviewOpen(true);
         onSuccess?.(res.data);
-      } catch (error: any) {
+      } catch (error: unknown) {
         message.error(normalizeImportErrorMessage(error, '导入预校验失败'));
-        onError?.(error);
+        onError?.(error as Error);
       }
     },
+  };
+
+  const attachmentBatchUploadProps: UploadProps = {
+    multiple: true,
+    accept: '.pdf,.jpg,.jpeg,.png,.doc,.docx',
+    fileList: attachmentBatchFileList,
+    beforeUpload: () => false,
+    onChange(info) {
+      setAttachmentBatchFileList(info.fileList);
+      const selected = info.fileList
+        .map((item) => item.originFileObj)
+        .filter(Boolean) as File[];
+      setAttachmentBatchFiles(selected);
+    },
+    onRemove(file) {
+      const nextList = attachmentBatchFileList.filter((item) => item.uid !== file.uid);
+      setAttachmentBatchFileList(nextList);
+      setAttachmentBatchFiles(nextList.map((item) => item.originFileObj).filter(Boolean) as File[]);
+      return true;
+    },
+  };
+
+  const resetAttachmentBatchState = () => {
+    setAttachmentBatchFileList([]);
+    setAttachmentBatchFiles([]);
+    setAttachmentAllowOverwrite(true);
+    setAttachmentBatchResult(null);
+    setBindingAttachments(false);
+  };
+
+  const handleOpenAttachmentBatch = () => {
+    resetAttachmentBatchState();
+    setAttachmentBatchOpen(true);
+  };
+
+  const handleConfirmAttachmentBatch = async () => {
+    if (!attachmentBatchFiles.length) {
+      message.warning('请先选择要上传的附件文件');
+      return;
+    }
+
+    setBindingAttachments(true);
+    try {
+      const formData = new FormData();
+      formData.append('allowOverwrite', attachmentAllowOverwrite ? 'true' : 'false');
+      attachmentBatchFiles.forEach((file) => formData.append('files', file));
+
+      const res = await apiClient.post('/contracts/attachments/batch', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const result = res.data as BatchAttachmentBindResult;
+      setAttachmentBatchResult(result);
+
+      if (result.failed === 0) {
+        message.success(`附件绑定成功：共 ${result.success} 个合同`);
+        setAttachmentBatchOpen(false);
+        resetAttachmentBatchState();
+      } else if (result.success > 0) {
+        message.warning(`附件绑定完成：成功 ${result.success} 个，失败 ${result.failed} 个`);
+      } else {
+        message.error(`附件绑定失败：${result.failed} 个文件未匹配成功`);
+      }
+
+      await fetchContracts();
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '批量绑定附件失败'));
+    } finally {
+      setBindingAttachments(false);
+    }
   };
 
   const handleConfirmImport = async () => {
@@ -446,10 +429,11 @@ export default function ContractsPage() {
         setAllowPartialImport(false);
       }
       await fetchContracts();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorPayload = error as { details?: { errors?: Array<{ row: number; message: string }> }; data?: { details?: { errors?: Array<{ row: number; message: string }> } } };
       const detailedErrors =
-        (Array.isArray(error?.details?.errors) ? error.details.errors : undefined) ||
-        (Array.isArray(error?.data?.details?.errors) ? error.data.details.errors : undefined) ||
+        (Array.isArray(errorPayload?.details?.errors) ? errorPayload.details.errors : undefined) ||
+        (Array.isArray(errorPayload?.data?.details?.errors) ? errorPayload.data.details.errors : undefined) ||
         [];
       if (detailedErrors.length > 0 && importPreview) {
         setImportPreview({
@@ -481,130 +465,10 @@ export default function ContractsPage() {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       message.success('错误报告下载成功');
-    } catch (error: any) {
-      message.error(error?.message || '下载错误报告失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '下载错误报告失败'));
     }
   };
-
-  // 表格列定义
-  const columns = [
-    {
-      title: '合同编号',
-      dataIndex: 'contractNo',
-      key: 'contractNo',
-      width: 150,
-      render: (v: string, record: Contract) => (
-        <a onClick={() => router.push(`/contracts/${record.id}`)}>{v}</a>
-      ),
-    },
-    {
-      title: '签约年份',
-      key: 'signYear',
-      width: 100,
-      render: (_: unknown, record: Contract) => dayjs(record.signDate).year(),
-    },
-    {
-      title: '合同名称',
-      dataIndex: 'name',
-      key: 'name',
-      ellipsis: true,
-      width: 260,
-    },
-    {
-      title: '对方签约主体',
-      dataIndex: ['customer', 'name'],
-      key: 'customer',
-      width: 220,
-      ellipsis: true,
-    },
-    {
-      title: '公司签约主体',
-      dataIndex: 'signingEntity',
-      key: 'signingEntity',
-      width: 220,
-      ellipsis: true,
-      render: (v?: string | null) => v || '-',
-    },
-    {
-      title: '合同类型',
-      dataIndex: 'contractType',
-      key: 'contractType',
-      width: 120,
-      render: (code?: string | null) => {
-        const typeInfo = getContractTypeInfo(code);
-        return <Tag color={typeInfo.color}>{typeInfo.name}</Tag>;
-      },
-    },
-    {
-      title: '合同金额',
-      dataIndex: 'amountWithTax',
-      key: 'amountWithTax',
-      width: 140,
-      render: (v: number) => <Text strong>¥{formatAmount(v)}</Text>,
-    },
-    {
-      title: '签署日期',
-      dataIndex: 'signDate',
-      key: 'signDate',
-      width: 120,
-      render: (v: string) => formatDate(v),
-    },
-    {
-      title: '结束日期',
-      dataIndex: 'endDate',
-      key: 'endDate',
-      width: 120,
-      render: (v?: string | null) => (v ? formatDate(v) : '-'),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (status: string) => <Tag color={CONTRACT_STATUS_COLORS[status]}>{CONTRACT_STATUS_LABELS[status]}</Tag>,
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 200,
-      fixed: 'right' as const,
-      render: (_: unknown, record: Contract) => (
-        <Space size={4}>
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => router.push(`/contracts/${record.id}`)}
-          >
-            查看
-          </Button>
-          {isAdmin && (
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => router.push(`/contracts/${record.id}/edit`)}
-            >
-              编辑
-            </Button>
-          )}
-          {isAdmin && (
-            <Popconfirm
-              title="确定删除该合同吗？"
-              description="删除后将不可恢复"
-              onConfirm={() => handleDeleteOne(record.id)}
-              okText="确定"
-              cancelText="取消"
-            >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-                删除
-              </Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
-  ];
 
   return (
     <div>
@@ -627,9 +491,14 @@ export default function ContractsPage() {
             <Upload {...uploadProps}>
               <Button icon={<UploadOutlined />}>批量上传（CSV/Excel）</Button>
             </Upload>
+            <Button icon={<UploadOutlined />} onClick={handleOpenAttachmentBatch}>
+              批量上传附件
+            </Button>
             <Button onClick={() => setImportHistoryOpen(true)}>导入历史</Button>
             <Button onClick={handleDownloadImportTemplate}>下载Excel模板</Button>
-            <Button onClick={handleExport}>导出合同（Excel）</Button>
+            <Button onClick={handleExport} loading={exporting}>
+              导出合同（Excel）
+            </Button>
             <Button onClick={() => router.push('/settings/dictionaries?type=CONTRACT_TYPE')}>
               合同类型管理
             </Button>
@@ -642,7 +511,7 @@ export default function ContractsPage() {
                 cancelText="取消"
                 disabled={selectedRowKeys.length === 0}
               >
-                <Button danger disabled={selectedRowKeys.length === 0}>
+                <Button danger loading={batchDeleting} disabled={selectedRowKeys.length === 0}>
                   批量删除
                 </Button>
               </Popconfirm>
@@ -712,40 +581,31 @@ export default function ContractsPage() {
         </Space>
       </Card>
 
-      {/* 表格 */}
-      <Table
-        columns={columns}
-        dataSource={contracts}
-        rowKey="id"
-        rowSelection={
-          isAdmin
-            ? {
-                selectedRowKeys,
-                onChange: (keys) => setSelectedRowKeys(keys as string[]),
-              }
-            : undefined
-        }
+      <ContractsTable
+        data={contracts}
         loading={loading}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (t) => `共 ${t} 条`,
-          onChange: (p, ps) => {
-            setPage(p);
-            setPageSize(ps);
-          },
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        isAdmin={isAdmin}
+        selectedRowKeys={selectedRowKeys}
+        onSelectedRowKeysChange={setSelectedRowKeys}
+        onPageChange={(nextPage, nextPageSize) => {
+          setPage(nextPage);
+          setPageSize(nextPageSize);
         }}
-        scroll={{ x: 1900 }}
+        onView={(contractId) => router.push(`/contracts/${contractId}`)}
+        onEdit={(contractId) => router.push(`/contracts/${contractId}/edit`)}
+        onDelete={handleDeleteOne}
+        getContractTypeInfo={getContractTypeInfo}
       />
 
-      <Modal
-        title="批量导入预校验结果"
+      <ContractImportPreviewModal
         open={importPreviewOpen}
-        width={980}
-        styles={{ body: { maxHeight: '70vh', overflow: 'auto' } }}
+        importing={importing}
+        importPreview={importPreview}
+        allowPartialImport={allowPartialImport}
+        onAllowPartialImportChange={setAllowPartialImport}
         onCancel={() => {
           if (importing) return;
           setImportPreviewOpen(false);
@@ -753,141 +613,34 @@ export default function ContractsPage() {
           setPendingImportFile(null);
           setAllowPartialImport(false);
         }}
-        onOk={handleConfirmImport}
-        okText={importPreview?.invalid ? '导入有效行' : '确认导入'}
-        cancelText="取消"
-        okButtonProps={{
-          disabled:
-            !importPreview ||
-            importPreview.valid === 0 ||
-            (importPreview.invalid > 0 && !allowPartialImport),
-        }}
-        confirmLoading={importing}
-      >
-        {importPreview && (
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Alert
-              type={importPreview.invalid > 0 ? 'warning' : 'success'}
-              message={`总计 ${importPreview.total} 行，可导入 ${importPreview.valid} 行，异常 ${importPreview.invalid} 行`}
-              showIcon
-            />
-            {importPreview.invalid > 0 && (
-              <Checkbox
-                checked={allowPartialImport}
-                onChange={(e) => setAllowPartialImport(e.target.checked)}
-              >
-                忽略错误并仅导入有效行
-              </Checkbox>
-            )}
-            {importPreview.errors.length > 0 && (
-              <>
-                <Button size="small" onClick={handleDownloadImportErrorReport}>
-                  下载错误报告
-                </Button>
-                <div className="max-h-56 overflow-auto border rounded px-3 py-2 bg-gray-50 text-sm">
-                  {importPreview.errors.slice(0, 20).map((item, index) => (
-                    <div key={`${item.row}-${index}`}>
-                      第 {item.row} 行：{item.message}
-                    </div>
-                  ))}
-                  {importPreview.errors.length > 20 && (
-                    <div>仅展示前 20 条错误，请下载错误报告查看全部。</div>
-                  )}
-                </div>
-              </>
-            )}
-            {importPreview.samples.length > 0 && (
-              <Table
-                size="small"
-                rowKey="row"
-                pagination={false}
-                dataSource={importPreview.samples}
-                scroll={{ x: 980 }}
-                columns={[
-                  { title: '行号', dataIndex: 'row', width: 70 },
-                  { title: '合同编号', dataIndex: 'contractNo', width: 160 },
-                  { title: '合同名称', dataIndex: 'name', width: 220, ellipsis: true },
-                  { title: '对方签约主体', dataIndex: 'customerName', width: 220, ellipsis: true },
-                  { title: '合同类型', dataIndex: 'contractType', width: 120 },
-                  {
-                    title: '金额',
-                    dataIndex: 'amount',
-                    width: 120,
-                    render: (v: number) => `¥${formatAmount(v)}`,
-                  },
-                  { title: '签署日期', dataIndex: 'signDate', width: 120 },
-                ]}
-              />
-            )}
-          </Space>
-        )}
-      </Modal>
+        onConfirm={handleConfirmImport}
+        onDownloadErrorReport={handleDownloadImportErrorReport}
+      />
 
-      <Modal
-        title="导入历史（最近10次）"
+      <ContractAttachmentBatchModal
+        open={attachmentBatchOpen}
+        bindingAttachments={bindingAttachments}
+        attachmentAllowOverwrite={attachmentAllowOverwrite}
+        attachmentBatchFilesCount={attachmentBatchFiles.length}
+        attachmentBatchUploadProps={attachmentBatchUploadProps}
+        attachmentBatchResult={attachmentBatchResult}
+        onCancel={() => {
+          if (bindingAttachments) return;
+          setAttachmentBatchOpen(false);
+          resetAttachmentBatchState();
+        }}
+        onConfirm={handleConfirmAttachmentBatch}
+        onAttachmentAllowOverwriteChange={setAttachmentAllowOverwrite}
+      />
+
+      <ContractImportHistoryModal
         open={importHistoryOpen}
-        onCancel={() => setImportHistoryOpen(false)}
-        footer={[
-          <Button key="clear" danger onClick={clearImportHistory}>
-            清空历史
-          </Button>,
-          <Button key="close" type="primary" onClick={() => setImportHistoryOpen(false)}>
-            关闭
-          </Button>,
-        ]}
-        width={880}
-      >
-        <Table
-          size="small"
-          rowKey="id"
-          loading={importHistoryLoading}
-          pagination={false}
-          dataSource={importHistory}
-          locale={{ emptyText: '暂无导入历史' }}
-          columns={[
-            {
-              title: '导入时间',
-              dataIndex: 'createdAt',
-              width: 170,
-              render: (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm:ss'),
-            },
-            {
-              title: '文件名',
-              dataIndex: 'fileName',
-              ellipsis: true,
-            },
-            {
-              title: '总行',
-              dataIndex: 'total',
-              width: 70,
-            },
-            {
-              title: '成功',
-              dataIndex: 'success',
-              width: 70,
-            },
-            {
-              title: '失败',
-              dataIndex: 'failed',
-              width: 70,
-            },
-            {
-              title: '操作',
-              key: 'action',
-              width: 130,
-              render: (_: unknown, record: ImportHistoryItem) => (
-                <Button
-                  size="small"
-                  disabled={!record.errors.length}
-                  onClick={() => handleDownloadHistoryErrorReport(record)}
-                >
-                  下载错误报告
-                </Button>
-              ),
-            },
-          ]}
-        />
-      </Modal>
+        loading={importHistoryLoading}
+        data={importHistory}
+        onClose={() => setImportHistoryOpen(false)}
+        onClear={clearImportHistory}
+        onDownloadErrorReport={handleDownloadHistoryErrorReport}
+      />
     </div>
   );
 }

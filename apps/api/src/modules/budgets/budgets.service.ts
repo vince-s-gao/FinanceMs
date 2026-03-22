@@ -1,18 +1,23 @@
 // InfFinanceMs - 预算服务
 
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateBudgetDto } from './dto/create-budget.dto';
-import { UpdateBudgetDto } from './dto/update-budget.dto';
-import { QueryBudgetDto } from './dto/query-budget.dto';
-import { Prisma } from '@prisma/client';
-import { Decimal } from '@prisma/client/runtime/library';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CreateBudgetDto } from "./dto/create-budget.dto";
+import { UpdateBudgetDto } from "./dto/update-budget.dto";
+import { QueryBudgetDto } from "./dto/query-budget.dto";
+import { Prisma } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 
 // 预算状态常量
 const BudgetStatus = {
-  ACTIVE: 'ACTIVE',
-  FROZEN: 'FROZEN',
-  CLOSED: 'CLOSED',
+  ACTIVE: "ACTIVE",
+  FROZEN: "FROZEN",
+  CLOSED: "CLOSED",
 };
 
 @Injectable()
@@ -47,7 +52,7 @@ export class BudgetsService {
         where,
         skip,
         take: pageSize,
-        orderBy: [{ year: 'desc' }, { month: 'desc' }, { department: 'asc' }],
+        orderBy: [{ year: "desc" }, { month: "desc" }, { department: "asc" }],
       }),
       this.prisma.budget.count({ where }),
     ]);
@@ -87,7 +92,7 @@ export class BudgetsService {
     });
 
     if (!budget) {
-      throw new NotFoundException('预算不存在');
+      throw new NotFoundException("预算不存在");
     }
 
     const budgetAmount = new Decimal(budget.budgetAmount.toString());
@@ -108,7 +113,8 @@ export class BudgetsService {
    * 创建预算
    */
   async create(createBudgetDto: CreateBudgetDto) {
-    const { year, month, department, feeType, budgetAmount, remark } = createBudgetDto;
+    const { year, month, department, feeType, budgetAmount, remark } =
+      createBudgetDto;
 
     // 检查是否已存在相同预算
     const existing = await this.prisma.budget.findFirst({
@@ -121,7 +127,7 @@ export class BudgetsService {
     });
 
     if (existing) {
-      throw new ConflictException('该部门在此时间段已存在相同费用类型的预算');
+      throw new ConflictException("该部门在此时间段已存在相同费用类型的预算");
     }
 
     return this.prisma.budget.create({
@@ -144,7 +150,7 @@ export class BudgetsService {
 
     // 如果预算已关闭，不允许修改
     if (budget.status === BudgetStatus.CLOSED) {
-      throw new BadRequestException('已关闭的预算不能修改');
+      throw new BadRequestException("已关闭的预算不能修改");
     }
 
     return this.prisma.budget.update({
@@ -161,7 +167,7 @@ export class BudgetsService {
 
     // 如果已有使用金额，不允许删除
     if (new Decimal(budget.usedAmount.toString()).gt(0)) {
-      throw new BadRequestException('已有使用记录的预算不能删除');
+      throw new BadRequestException("已有使用记录的预算不能删除");
     }
 
     return this.prisma.budget.delete({
@@ -176,7 +182,7 @@ export class BudgetsService {
     const budget = await this.findOne(id);
 
     if (budget.status === BudgetStatus.CLOSED) {
-      throw new BadRequestException('已关闭的预算不能操作');
+      throw new BadRequestException("已关闭的预算不能操作");
     }
 
     const newStatus =
@@ -197,7 +203,7 @@ export class BudgetsService {
     const budget = await this.findOne(id);
 
     if (budget.status === BudgetStatus.CLOSED) {
-      throw new BadRequestException('预算已关闭');
+      throw new BadRequestException("预算已关闭");
     }
 
     return this.prisma.budget.update({
@@ -217,7 +223,10 @@ export class BudgetsService {
     let totalBudget = new Decimal(0);
     let totalUsed = new Decimal(0);
 
-    const byFeeType: Record<string, { budget: number; used: number; rate: number }> = {};
+    const byFeeType: Record<
+      string,
+      { budget: number; used: number; rate: number }
+    > = {};
 
     for (const budget of budgets) {
       const budgetAmount = new Decimal(budget.budgetAmount.toString());
@@ -236,7 +245,10 @@ export class BudgetsService {
     // 计算各费用类型使用率
     for (const key of Object.keys(byFeeType)) {
       const item = byFeeType[key];
-      item.rate = item.budget > 0 ? Number(((item.used / item.budget) * 100).toFixed(2)) : 0;
+      item.rate =
+        item.budget > 0
+          ? Number(((item.used / item.budget) * 100).toFixed(2))
+          : 0;
     }
 
     return {
@@ -258,8 +270,8 @@ export class BudgetsService {
   async getDepartments() {
     const result = await this.prisma.budget.findMany({
       select: { department: true },
-      distinct: ['department'],
-      orderBy: { department: 'asc' },
+      distinct: ["department"],
+      orderBy: { department: "asc" },
     });
 
     return result.map((r) => r.department);

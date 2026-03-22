@@ -173,7 +173,7 @@ function LoginPageContent() {
 
         <div className="text-center mt-6">
           <Text type="secondary" className="text-xs">
-            测试账号：admin@inffinancems.com / Admin@123
+            测试账号密码由环境变量初始化，请联系管理员获取
           </Text>
         </div>
       </Card>

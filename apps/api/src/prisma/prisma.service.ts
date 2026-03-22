@@ -1,23 +1,29 @@
 // InfFinanceMs - Prisma服务
 
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Injectable, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
+import { PrismaClient } from "@prisma/client";
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor() {
     super({
-      log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+      log:
+        process.env.NODE_ENV === "development"
+          ? ["query", "error", "warn"]
+          : ["error"],
     });
   }
 
   async onModuleInit() {
     await this.$connect();
-    console.log('📦 数据库连接成功');
+    console.log("📦 数据库连接成功");
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
-    console.log('📦 数据库连接已断开');
+    console.log("📦 数据库连接已断开");
   }
 }

@@ -1,12 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { QueryNotificationDto } from './dto/query-notification.dto';
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { QueryNotificationDto } from "./dto/query-notification.dto";
 
 interface CreateNotificationInput {
   userId: string;
   title: string;
   content: string;
-  type?: 'SYSTEM' | 'APPROVAL' | 'PAYMENT' | 'ALERT';
+  type?: "SYSTEM" | "APPROVAL" | "PAYMENT" | "ALERT";
   link?: string;
   metadata?: unknown;
 }
@@ -21,14 +21,17 @@ export class NotificationsService {
         userId: input.userId,
         title: input.title,
         content: input.content,
-        type: input.type || 'SYSTEM',
+        type: input.type || "SYSTEM",
         link: input.link,
         metadata: input.metadata as any,
       },
     });
   }
 
-  async createForUsers(userIds: string[], payload: Omit<CreateNotificationInput, 'userId'>) {
+  async createForUsers(
+    userIds: string[],
+    payload: Omit<CreateNotificationInput, "userId">,
+  ) {
     const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
     if (uniqueIds.length === 0) return { count: 0 };
     return this.prisma.notification.createMany({
@@ -36,7 +39,7 @@ export class NotificationsService {
         userId,
         title: payload.title,
         content: payload.content,
-        type: payload.type || 'SYSTEM',
+        type: payload.type || "SYSTEM",
         link: payload.link,
         metadata: payload.metadata as any,
       })),
@@ -46,7 +49,7 @@ export class NotificationsService {
   async findMine(userId: string, query: QueryNotificationDto) {
     const page = query.page || 1;
     const pageSize = query.pageSize || 20;
-    const unreadOnly = query.unreadOnly === 'true';
+    const unreadOnly = query.unreadOnly === "true";
     const where = {
       userId,
       ...(unreadOnly ? { isRead: false } : {}),
@@ -56,7 +59,7 @@ export class NotificationsService {
       this.prisma.notification.count({ where }),
       this.prisma.notification.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -87,7 +90,7 @@ export class NotificationsService {
       select: { id: true, isRead: true },
     });
     if (!item) {
-      throw new NotFoundException('通知不存在');
+      throw new NotFoundException("通知不存在");
     }
     if (item.isRead) {
       return this.prisma.notification.findUnique({ where: { id } });

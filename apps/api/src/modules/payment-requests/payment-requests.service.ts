@@ -1,13 +1,21 @@
 // InfFinanceMs - 付款申请服务
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreatePaymentRequestDto } from './dto/create-payment-request.dto';
-import { UpdatePaymentRequestDto } from './dto/update-payment-request.dto';
-import { QueryPaymentRequestDto } from './dto/query-payment-request.dto';
-import { ApprovePaymentRequestDto } from './dto/approve-payment-request.dto';
-import { Prisma } from '@prisma/client';
-import { parseDateRangeEnd, parseDateRangeStart } from '../../common/utils/query.utils';
-import { NotificationsService } from '../notifications/notifications.service';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
+import { UpdatePaymentRequestDto } from "./dto/update-payment-request.dto";
+import { QueryPaymentRequestDto } from "./dto/query-payment-request.dto";
+import { ApprovePaymentRequestDto } from "./dto/approve-payment-request.dto";
+import { Prisma } from "@prisma/client";
+import {
+  parseDateRangeEnd,
+  parseDateRangeStart,
+} from "../../common/utils/query.utils";
+import { NotificationsService } from "../notifications/notifications.service";
 
 @Injectable()
 export class PaymentRequestsService {
@@ -17,9 +25,9 @@ export class PaymentRequestsService {
   ) {}
 
   private isPurchaseContractType(contractType?: string | null): boolean {
-    const raw = (contractType || '').trim();
+    const raw = (contractType || "").trim();
     const normalized = raw.toUpperCase();
-    return normalized.includes('PURCHASE') || raw.includes('采购');
+    return normalized.includes("PURCHASE") || raw.includes("采购");
   }
 
   private async validatePurchaseContract(contractId: string) {
@@ -34,11 +42,11 @@ export class PaymentRequestsService {
     });
 
     if (!contract) {
-      throw new BadRequestException('关联合同不存在');
+      throw new BadRequestException("关联合同不存在");
     }
 
     if (!this.isPurchaseContractType(contract.contractType)) {
-      throw new BadRequestException('付款申请仅支持关联采购合同');
+      throw new BadRequestException("付款申请仅支持关联采购合同");
     }
 
     return contract;
@@ -48,14 +56,16 @@ export class PaymentRequestsService {
     const approvers = await this.prisma.user.findMany({
       where: {
         isActive: true,
-        role: { in: ['MANAGER', 'ADMIN'] },
+        role: { in: ["MANAGER", "ADMIN"] },
       },
       select: { id: true },
     });
-    const approverIds = approvers.map((item) => item.id).filter((id) => id !== request.applicantId);
+    const approverIds = approvers
+      .map((item) => item.id)
+      .filter((id) => id !== request.applicantId);
     await this.notificationsService.createForUsers(approverIds, {
-      type: 'APPROVAL',
-      title: '新的付款申请待审批',
+      type: "APPROVAL",
+      title: "新的付款申请待审批",
       content: `付款申请 ${request.requestNo} 已提交，等待审批`,
       link: `/payment-requests/${request.id}`,
       metadata: {
@@ -69,7 +79,7 @@ export class PaymentRequestsService {
     request: any,
     title: string,
     content: string,
-    type: 'SYSTEM' | 'APPROVAL' | 'PAYMENT' | 'ALERT',
+    type: "SYSTEM" | "APPROVAL" | "PAYMENT" | "ALERT",
   ) {
     if (!request.applicantId) return;
     await this.notificationsService.createNotification({
@@ -91,8 +101,8 @@ export class PaymentRequestsService {
    */
   private async generateRequestNo(today: Date): Promise<string> {
     const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
     const dateStr = `${year}${month}${day}`;
     const prefix = `FK${dateStr}`;
 
@@ -101,7 +111,7 @@ export class PaymentRequestsService {
       where: {
         requestNo: { startsWith: prefix },
       },
-      orderBy: { requestNo: 'desc' },
+      orderBy: { requestNo: "desc" },
     });
 
     let sequence = 1;
@@ -110,14 +120,14 @@ export class PaymentRequestsService {
       sequence = lastSequence + 1;
     }
 
-    return `${prefix}${sequence.toString().padStart(4, '0')}`;
+    return `${prefix}${sequence.toString().padStart(4, "0")}`;
   }
 
   private isRequestNoConflict(error: unknown): boolean {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
-    if (error.code !== 'P2002') return false;
+    if (error.code !== "P2002") return false;
     const target = (error.meta?.target || []) as string[];
-    return target.includes('requestNo');
+    return target.includes("requestNo");
   }
 
   /**
@@ -129,7 +139,7 @@ export class PaymentRequestsService {
       where: { id: createDto.projectId, isDeleted: false },
     });
     if (!project) {
-      throw new BadRequestException('关联项目不存在');
+      throw new BadRequestException("关联项目不存在");
     }
     await this.validatePurchaseContract(createDto.contractId);
 
@@ -138,7 +148,7 @@ export class PaymentRequestsService {
       where: { id: createDto.bankAccountId },
     });
     if (!bankAccount) {
-      throw new BadRequestException('银行账户不存在');
+      throw new BadRequestException("银行账户不存在");
     }
 
     for (let i = 0; i < 8; i++) {
@@ -149,7 +159,7 @@ export class PaymentRequestsService {
             requestNo,
             reason: createDto.reason,
             amount: createDto.amount,
-            currency: createDto.currency || 'CNY',
+            currency: createDto.currency || "CNY",
             paymentMethod: createDto.paymentMethod,
             paymentDate: new Date(createDto.paymentDate),
             project: { connect: { id: createDto.projectId } },
@@ -158,17 +168,24 @@ export class PaymentRequestsService {
             payeeName: createDto.payeeName,
             payeeAccount: createDto.payeeAccount,
             payeeBank: createDto.payeeBank,
-            attachments: createDto.attachments ? JSON.parse(JSON.stringify(createDto.attachments)) : undefined,
+            attachments: createDto.attachments
+              ? JSON.parse(JSON.stringify(createDto.attachments))
+              : undefined,
             applicant: { connect: { id: applicantId } },
             remark: createDto.remark,
-            status: 'DRAFT',
+            status: "DRAFT",
           },
           include: {
             project: {
               select: { id: true, code: true, name: true },
             },
             contract: {
-              select: { id: true, contractNo: true, name: true, contractType: true },
+              select: {
+                id: true,
+                contractNo: true,
+                name: true,
+                contractType: true,
+              },
             },
             bankAccount: true,
             applicant: {
@@ -184,7 +201,7 @@ export class PaymentRequestsService {
       }
     }
 
-    throw new ConflictException('付款申请编号生成失败，请重试');
+    throw new ConflictException("付款申请编号生成失败，请重试");
   }
 
   /**
@@ -253,7 +270,12 @@ export class PaymentRequestsService {
             select: { id: true, code: true, name: true },
           },
           contract: {
-            select: { id: true, contractNo: true, name: true, contractType: true },
+            select: {
+              id: true,
+              contractNo: true,
+              name: true,
+              contractType: true,
+            },
           },
           bankAccount: true,
           applicant: {
@@ -263,7 +285,7 @@ export class PaymentRequestsService {
             select: { id: true, name: true, email: true },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -289,7 +311,12 @@ export class PaymentRequestsService {
           select: { id: true, code: true, name: true },
         },
         contract: {
-          select: { id: true, contractNo: true, name: true, contractType: true },
+          select: {
+            id: true,
+            contractNo: true,
+            name: true,
+            contractType: true,
+          },
         },
         bankAccount: true,
         applicant: {
@@ -302,7 +329,7 @@ export class PaymentRequestsService {
     });
 
     if (!request || request.isDeleted) {
-      throw new NotFoundException('付款申请不存在');
+      throw new NotFoundException("付款申请不存在");
     }
 
     return request;
@@ -314,8 +341,8 @@ export class PaymentRequestsService {
   async update(id: string, updateDto: UpdatePaymentRequestDto) {
     const request = await this.findOne(id);
 
-    if (request.status !== 'DRAFT') {
-      throw new BadRequestException('只有草稿状态的申请可以修改');
+    if (request.status !== "DRAFT") {
+      throw new BadRequestException("只有草稿状态的申请可以修改");
     }
 
     // 如果更新银行账户，验证是否存在
@@ -324,7 +351,7 @@ export class PaymentRequestsService {
         where: { id: updateDto.bankAccountId },
       });
       if (!bankAccount) {
-        throw new BadRequestException('银行账户不存在');
+        throw new BadRequestException("银行账户不存在");
       }
     }
     // 如果更新项目，验证是否存在
@@ -333,7 +360,7 @@ export class PaymentRequestsService {
         where: { id: updateDto.projectId, isDeleted: false },
       });
       if (!project) {
-        throw new BadRequestException('关联项目不存在');
+        throw new BadRequestException("关联项目不存在");
       }
     }
     if (updateDto.contractId) {
@@ -367,11 +394,13 @@ export class PaymentRequestsService {
     }
 
     if (updateDto.attachments) {
-      updateData.attachments = JSON.parse(JSON.stringify(updateDto.attachments));
+      updateData.attachments = JSON.parse(
+        JSON.stringify(updateDto.attachments),
+      );
     }
 
     // 移除 undefined 值
-    Object.keys(updateData).forEach(key => {
+    Object.keys(updateData).forEach((key) => {
       if (updateData[key] === undefined) {
         delete updateData[key];
       }
@@ -385,7 +414,12 @@ export class PaymentRequestsService {
           select: { id: true, code: true, name: true },
         },
         contract: {
-          select: { id: true, contractNo: true, name: true, contractType: true },
+          select: {
+            id: true,
+            contractNo: true,
+            name: true,
+            contractType: true,
+          },
         },
         bankAccount: true,
         applicant: {
@@ -401,14 +435,14 @@ export class PaymentRequestsService {
   async submit(id: string) {
     const request = await this.findOne(id);
 
-    if (request.status !== 'DRAFT') {
-      throw new BadRequestException('只有草稿状态的申请可以提交');
+    if (request.status !== "DRAFT") {
+      throw new BadRequestException("只有草稿状态的申请可以提交");
     }
 
     const updated = await this.prisma.paymentRequest.update({
       where: { id },
       data: {
-        status: 'PENDING',
+        status: "PENDING",
         submitDate: new Date(),
       },
       include: {
@@ -426,11 +460,15 @@ export class PaymentRequestsService {
   /**
    * 审批付款申请
    */
-  async approve(id: string, approveDto: ApprovePaymentRequestDto, approverId: string) {
+  async approve(
+    id: string,
+    approveDto: ApprovePaymentRequestDto,
+    approverId: string,
+  ) {
     const request = await this.findOne(id);
 
-    if (request.status !== 'PENDING') {
-      throw new BadRequestException('只有待审批状态的申请可以审批');
+    if (request.status !== "PENDING") {
+      throw new BadRequestException("只有待审批状态的申请可以审批");
     }
 
     const updated = await this.prisma.paymentRequest.update({
@@ -452,14 +490,14 @@ export class PaymentRequestsService {
       },
     });
 
-    const isApproved = approveDto.status === 'APPROVED';
+    const isApproved = approveDto.status === "APPROVED";
     await this.notifyApplicant(
       request,
-      isApproved ? '付款申请已审批通过' : '付款申请已被驳回',
+      isApproved ? "付款申请已审批通过" : "付款申请已被驳回",
       isApproved
         ? `付款申请 ${request.requestNo} 已审批通过`
         : `付款申请 ${request.requestNo} 已被驳回`,
-      'APPROVAL',
+      "APPROVAL",
     );
 
     return updated;
@@ -471,14 +509,14 @@ export class PaymentRequestsService {
   async confirmPayment(id: string, remark?: string) {
     const request = await this.findOne(id);
 
-    if (request.status !== 'APPROVED') {
-      throw new BadRequestException('只有已通过的申请可以确认付款');
+    if (request.status !== "APPROVED") {
+      throw new BadRequestException("只有已通过的申请可以确认付款");
     }
 
     const updated = await this.prisma.paymentRequest.update({
       where: { id },
       data: {
-        status: 'PAID',
+        status: "PAID",
         remark: remark || request.remark,
       },
       include: {
@@ -494,9 +532,9 @@ export class PaymentRequestsService {
 
     await this.notifyApplicant(
       request,
-      '付款申请已完成付款',
+      "付款申请已完成付款",
       `付款申请 ${request.requestNo} 已完成付款处理`,
-      'PAYMENT',
+      "PAYMENT",
     );
 
     return updated;
@@ -508,14 +546,14 @@ export class PaymentRequestsService {
   async cancel(id: string) {
     const request = await this.findOne(id);
 
-    if (!['DRAFT', 'PENDING'].includes(request.status)) {
-      throw new BadRequestException('只有草稿或待审批状态的申请可以取消');
+    if (!["DRAFT", "PENDING"].includes(request.status)) {
+      throw new BadRequestException("只有草稿或待审批状态的申请可以取消");
     }
 
     return this.prisma.paymentRequest.update({
       where: { id },
       data: {
-        status: 'CANCELLED',
+        status: "CANCELLED",
       },
     });
   }
@@ -526,8 +564,8 @@ export class PaymentRequestsService {
   async remove(id: string) {
     const request = await this.findOne(id);
 
-    if (request.status !== 'DRAFT') {
-      throw new BadRequestException('只有草稿状态的申请可以删除');
+    if (request.status !== "DRAFT") {
+      throw new BadRequestException("只有草稿状态的申请可以删除");
     }
 
     return this.prisma.paymentRequest.update({
@@ -552,22 +590,32 @@ export class PaymentRequestsService {
       payableAmount,
     ] = await Promise.all([
       this.prisma.paymentRequest.count({ where: { isDeleted: false } }),
-      this.prisma.paymentRequest.count({ where: { isDeleted: false, status: 'DRAFT' } }),
-      this.prisma.paymentRequest.count({ where: { isDeleted: false, status: 'PENDING' } }),
-      this.prisma.paymentRequest.count({ where: { isDeleted: false, status: 'APPROVED' } }),
-      this.prisma.paymentRequest.count({ where: { isDeleted: false, status: 'REJECTED' } }),
-      this.prisma.paymentRequest.count({ where: { isDeleted: false, status: 'PAID' } }),
+      this.prisma.paymentRequest.count({
+        where: { isDeleted: false, status: "DRAFT" },
+      }),
+      this.prisma.paymentRequest.count({
+        where: { isDeleted: false, status: "PENDING" },
+      }),
+      this.prisma.paymentRequest.count({
+        where: { isDeleted: false, status: "APPROVED" },
+      }),
+      this.prisma.paymentRequest.count({
+        where: { isDeleted: false, status: "REJECTED" },
+      }),
+      this.prisma.paymentRequest.count({
+        where: { isDeleted: false, status: "PAID" },
+      }),
       this.prisma.paymentRequest.aggregate({
         where: { isDeleted: false },
         _sum: { amount: true },
       }),
       this.prisma.paymentRequest.aggregate({
-        where: { isDeleted: false, status: 'PAID' },
+        where: { isDeleted: false, status: "PAID" },
         _sum: { amount: true },
       }),
       // 应付款金额：待审批与已通过但未付款
       this.prisma.paymentRequest.aggregate({
-        where: { isDeleted: false, status: { in: ['PENDING', 'APPROVED'] } },
+        where: { isDeleted: false, status: { in: ["PENDING", "APPROVED"] } },
         _sum: { amount: true },
       }),
     ]);
@@ -592,9 +640,9 @@ export class PaymentRequestsService {
 
     if (keyword) {
       where.OR = [
-        { contractNo: { contains: keyword, mode: 'insensitive' } },
-        { name: { contains: keyword, mode: 'insensitive' } },
-        { customer: { name: { contains: keyword, mode: 'insensitive' } } },
+        { contractNo: { contains: keyword, mode: "insensitive" } },
+        { name: { contains: keyword, mode: "insensitive" } },
+        { customer: { name: { contains: keyword, mode: "insensitive" } } },
       ];
     }
 
@@ -613,10 +661,12 @@ export class PaymentRequestsService {
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: 300,
     });
 
-    return contracts.filter((contract) => this.isPurchaseContractType(contract.contractType));
+    return contracts.filter((contract) =>
+      this.isPurchaseContractType(contract.contractType),
+    );
   }
 }

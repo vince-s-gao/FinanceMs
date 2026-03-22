@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 新增合同页面
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -53,16 +53,16 @@ export default function ContractNewPage() {
   const [uploadedFile, setUploadedFile] = useState<{ url: string; filename: string } | null>(null);
 
   // 加载客户选项
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
       const res = await api.get<CustomerOption[]>('/customers/options');
       setCustomers(res);
     } catch (error) {
       console.error('加载客户列表失败', error);
     }
-  };
+  }, []);
 
-  const fetchContractTypes = async () => {
+  const fetchContractTypes = useCallback(async () => {
     try {
       const res = await api.get<DictionaryItem[]>('/dictionaries/by-type/CONTRACT_TYPE');
       setContractTypes(res);
@@ -74,7 +74,7 @@ export default function ContractNewPage() {
         { id: '4', code: 'OTHER', name: '其他' },
       ]);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchCustomers();
@@ -85,7 +85,7 @@ export default function ContractNewPage() {
       serviceTaxRate: 6,
       signingEntity: 'InfFinanceMs',
     });
-  }, []);
+  }, [fetchContractTypes, fetchCustomers, form]);
 
   // 计算金额
   const calculateAmounts = () => {

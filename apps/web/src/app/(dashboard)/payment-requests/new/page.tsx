@@ -1,7 +1,7 @@
 'use client';
 
 // InfFinanceMs - 新建付款申请页面
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import {
@@ -180,17 +180,17 @@ export default function NewPaymentRequestPage() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   // 加载项目列表
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     try {
       const res = await api.get<any>('/projects', { params: { pageSize: 100, status: 'ACTIVE' } });
       setProjects(res.items || res || []);
     } catch (error) {
       console.error('加载项目列表失败', error);
     }
-  };
+  }, []);
 
   // 加载采购合同列表
-  const loadPurchaseContracts = async () => {
+  const loadPurchaseContracts = useCallback(async () => {
     try {
       const contracts = await api.get<PurchaseContract[]>('/payment-requests/purchase-contract-options');
       setPurchaseContracts(contracts || []);
@@ -198,10 +198,10 @@ export default function NewPaymentRequestPage() {
       console.error('加载采购合同失败', error);
       message.error({ key: 'payment-contract-options-load', content: '加载采购合同失败' });
     }
-  };
+  }, []);
 
   // 加载银行账户列表
-  const loadBankAccounts = async () => {
+  const loadBankAccounts = useCallback(async () => {
     try {
       const accounts = await api.get<BankAccount[]>('/bank-accounts');
       setBankAccounts(accounts);
@@ -213,13 +213,13 @@ export default function NewPaymentRequestPage() {
     } catch (error: any) {
       message.error('加载银行账户失败');
     }
-  };
+  }, [form]);
 
   useEffect(() => {
     loadProjects();
     loadPurchaseContracts();
     loadBankAccounts();
-  }, [form]);
+  }, [loadBankAccounts, loadProjects, loadPurchaseContracts]);
 
   // 根据搜索关键词过滤银行账户
   const filteredBankAccounts = useMemo(() => {

@@ -7,8 +7,8 @@ import {
   HttpException,
   HttpStatus,
   Logger,
-} from '@nestjs/common';
-import { Request, Response } from 'express';
+} from "@nestjs/common";
+import { Request, Response } from "express";
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -24,16 +24,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    let message: string | string[] = '服务器内部错误';
-    let error = 'Internal Server Error';
+    let message: string | string[] = "服务器内部错误";
+    let error = "Internal Server Error";
     let code = `HTTP_${status}`;
     let details: unknown;
 
     if (exception instanceof HttpException) {
       const exceptionResponse = exception.getResponse();
-      if (typeof exceptionResponse === 'string') {
+      if (typeof exceptionResponse === "string") {
         message = exceptionResponse;
-      } else if (typeof exceptionResponse === 'object') {
+      } else if (typeof exceptionResponse === "object") {
         const responseObj = exceptionResponse as any;
         message = responseObj.message || message;
         error = responseObj.error || error;
@@ -43,20 +43,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else if (exception instanceof Error) {
       const errnoException = exception as NodeJS.ErrnoException;
       // 静态附件缺失属于资源不存在，返回 404，避免误报 500
-      if (errnoException.code === 'ENOENT' && request.url.startsWith('/uploads/')) {
+      if (
+        errnoException.code === "ENOENT" &&
+        request.url.startsWith("/uploads/")
+      ) {
         status = HttpStatus.NOT_FOUND;
-        error = 'Not Found';
+        error = "Not Found";
         code = `HTTP_${status}`;
-        message = '附件不存在或已被删除';
+        message = "附件不存在或已被删除";
       } else {
         message = exception.message;
       }
     }
 
     // 生产环境下隐藏详细错误信息
-    const isProduction = process.env.NODE_ENV === 'production';
+    const isProduction = process.env.NODE_ENV === "production";
     if (isProduction && status === HttpStatus.INTERNAL_SERVER_ERROR) {
-      message = '服务器内部错误，请稍后重试';
+      message = "服务器内部错误，请稍后重试";
       details = undefined;
     }
 
@@ -79,7 +82,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
       path: request.url,
       ...errorResponse,
-      ...(isProduction ? {} : { stack: exception instanceof Error ? exception.stack : undefined }),
+      ...(isProduction
+        ? {}
+        : { stack: exception instanceof Error ? exception.stack : undefined }),
     });
   }
 }

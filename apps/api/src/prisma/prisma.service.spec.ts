@@ -2,7 +2,7 @@ const connectMock = jest.fn();
 const disconnectMock = jest.fn();
 const prismaCtorMock = jest.fn();
 
-jest.mock('@prisma/client', () => {
+jest.mock("@prisma/client", () => {
   class PrismaClientMock {
     $connect = connectMock;
     $disconnect = disconnectMock;
@@ -17,9 +17,9 @@ jest.mock('@prisma/client', () => {
   };
 });
 
-import { PrismaService } from './prisma.service';
+import { PrismaService } from "./prisma.service";
 
-describe('PrismaService', () => {
+describe("PrismaService", () => {
   const originalNodeEnv = process.env.NODE_ENV;
 
   beforeEach(() => {
@@ -32,48 +32,52 @@ describe('PrismaService', () => {
     process.env.NODE_ENV = originalNodeEnv;
   });
 
-  it('should use development log options when NODE_ENV is development', () => {
-    process.env.NODE_ENV = 'development';
+  it("should use development log options when NODE_ENV is development", () => {
+    process.env.NODE_ENV = "development";
 
     new PrismaService();
 
     expect(prismaCtorMock).toHaveBeenCalledWith({
-      log: ['query', 'error', 'warn'],
+      log: ["query", "error", "warn"],
     });
   });
 
-  it('should use error-only log options when NODE_ENV is not development', () => {
-    process.env.NODE_ENV = 'test';
+  it("should use error-only log options when NODE_ENV is not development", () => {
+    process.env.NODE_ENV = "test";
 
     new PrismaService();
 
     expect(prismaCtorMock).toHaveBeenCalledWith({
-      log: ['error'],
+      log: ["error"],
     });
   });
 
-  it('should connect and log on module init', async () => {
-    process.env.NODE_ENV = 'test';
+  it("should connect and log on module init", async () => {
+    process.env.NODE_ENV = "test";
     const service = new PrismaService();
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const logSpy = jest
+      .spyOn(console, "log")
+      .mockImplementation(() => undefined);
 
     await service.onModuleInit();
 
     expect(connectMock).toHaveBeenCalledTimes(1);
-    expect(logSpy).toHaveBeenCalledWith('📦 数据库连接成功');
+    expect(logSpy).toHaveBeenCalledWith("📦 数据库连接成功");
 
     logSpy.mockRestore();
   });
 
-  it('should disconnect and log on module destroy', async () => {
-    process.env.NODE_ENV = 'test';
+  it("should disconnect and log on module destroy", async () => {
+    process.env.NODE_ENV = "test";
     const service = new PrismaService();
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const logSpy = jest
+      .spyOn(console, "log")
+      .mockImplementation(() => undefined);
 
     await service.onModuleDestroy();
 
     expect(disconnectMock).toHaveBeenCalledTimes(1);
-    expect(logSpy).toHaveBeenCalledWith('📦 数据库连接已断开');
+    expect(logSpy).toHaveBeenCalledWith("📦 数据库连接已断开");
 
     logSpy.mockRestore();
   });

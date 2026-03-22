@@ -1,8 +1,12 @@
 // InfFinanceMs - 银行账户服务
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateBankAccountDto } from './dto/create-bank-account.dto';
-import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CreateBankAccountDto } from "./dto/create-bank-account.dto";
+import { UpdateBankAccountDto } from "./dto/update-bank-account.dto";
 
 @Injectable()
 export class BankAccountsService {
@@ -17,7 +21,7 @@ export class BankAccountsService {
       where: { accountNo: createDto.accountNo },
     });
     if (existing) {
-      throw new BadRequestException('该银行账号已存在');
+      throw new BadRequestException("该银行账号已存在");
     }
 
     // 如果设置为默认账户，先取消其他默认账户
@@ -30,14 +34,14 @@ export class BankAccountsService {
 
     return this.prisma.bankAccount.create({
       data: {
-        accountType: createDto.accountType || 'PERSONAL',
+        accountType: createDto.accountType || "PERSONAL",
         accountName: createDto.accountName,
         accountNo: createDto.accountNo,
         bankCode: createDto.bankCode,
         bankName: createDto.bankName,
         region: createDto.region,
         bankBranch: createDto.bankBranch,
-        currency: createDto.currency || 'CNY',
+        currency: createDto.currency || "CNY",
         isDefault: createDto.isDefault || false,
         remark: createDto.remark,
       },
@@ -55,7 +59,7 @@ export class BankAccountsService {
 
     return this.prisma.bankAccount.findMany({
       where,
-      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
     });
   }
 
@@ -68,7 +72,7 @@ export class BankAccountsService {
     });
 
     if (!account) {
-      throw new NotFoundException('银行账户不存在');
+      throw new NotFoundException("银行账户不存在");
     }
 
     return account;
@@ -89,7 +93,7 @@ export class BankAccountsService {
         },
       });
       if (existing) {
-        throw new BadRequestException('该银行账号已存在');
+        throw new BadRequestException("该银行账号已存在");
       }
     }
 

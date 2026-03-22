@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 系统设置页面
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Table,
   Button,
@@ -61,7 +61,7 @@ export default function SettingsPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // 加载用户列表
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       const isActive =
@@ -74,11 +74,11 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, statusFilter]);
 
   useEffect(() => {
     fetchUsers();
-  }, [page, pageSize, statusFilter]);
+  }, [fetchUsers]);
 
   // 打开新增弹窗
   const handleAdd = () => {

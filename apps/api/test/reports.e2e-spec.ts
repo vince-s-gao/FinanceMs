@@ -1,8 +1,8 @@
-import { Test } from '@nestjs/testing';
-import { ReportsController } from '../src/modules/reports/reports.controller';
-import { ReportsService } from '../src/modules/reports/reports.service';
+import { Test } from "@nestjs/testing";
+import { ReportsController } from "../src/modules/reports/reports.controller";
+import { ReportsService } from "../src/modules/reports/reports.service";
 
-describe('ReportsController Flow (e2e-like)', () => {
+describe("ReportsController Flow (e2e-like)", () => {
   let controller: ReportsController;
 
   const serviceMock = {
@@ -29,9 +29,13 @@ describe('ReportsController Flow (e2e-like)', () => {
     jest.clearAllMocks();
   });
 
-  it('should route overview report endpoints', async () => {
-    serviceMock.getReceivablesOverview.mockResolvedValueOnce({ totalReceivable: 1000 });
-    serviceMock.getCustomerReport.mockResolvedValueOnce([{ customerId: 'c1', customerName: '客户A' }]);
+  it("should route overview report endpoints", async () => {
+    serviceMock.getReceivablesOverview.mockResolvedValueOnce({
+      totalReceivable: 1000,
+    });
+    serviceMock.getCustomerReport.mockResolvedValueOnce([
+      { customerId: "c1", customerName: "客户A" },
+    ]);
     serviceMock.getExpenseAnalysis.mockResolvedValueOnce({ monthlyTotal: 500 });
     serviceMock.getContractDashboard.mockResolvedValue({ executingCount: 10 });
 
@@ -46,25 +50,27 @@ describe('ReportsController Flow (e2e-like)', () => {
     expect(serviceMock.getExpenseAnalysis).toHaveBeenCalledTimes(1);
     expect(serviceMock.getContractDashboard).toHaveBeenCalledTimes(2);
     expect(receivables.totalReceivable).toBe(1000);
-    expect(customers[0].customerName).toBe('客户A');
+    expect(customers[0].customerName).toBe("客户A");
     expect(expenses.monthlyTotal).toBe(500);
     expect(dashboard.executingCount).toBe(10);
     expect(compatDashboard.executingCount).toBe(10);
   });
 
-  it('should pass contractId to profit analysis', async () => {
-    serviceMock.getContractProfitAnalysis.mockResolvedValueOnce([{ contractId: 'ct-1' }]);
+  it("should pass contractId to profit analysis", async () => {
+    serviceMock.getContractProfitAnalysis.mockResolvedValueOnce([
+      { contractId: "ct-1" },
+    ]);
 
-    const result = await controller.getContractProfitAnalysis('ct-1');
+    const result = await controller.getContractProfitAnalysis("ct-1");
 
-    expect(serviceMock.getContractProfitAnalysis).toHaveBeenCalledWith('ct-1');
-    expect(result[0].contractId).toBe('ct-1');
+    expect(serviceMock.getContractProfitAnalysis).toHaveBeenCalledWith("ct-1");
+    expect(result[0].contractId).toBe("ct-1");
   });
 
-  it('should export csv responses with attachment headers', async () => {
-    serviceMock.exportReceivablesOverviewCsv.mockResolvedValueOnce('h1,h2');
-    serviceMock.exportCustomerReportCsv.mockResolvedValueOnce('h1,h2');
-    serviceMock.exportContractProfitCsv.mockResolvedValueOnce('h1,h2');
+  it("should export csv responses with attachment headers", async () => {
+    serviceMock.exportReceivablesOverviewCsv.mockResolvedValueOnce("h1,h2");
+    serviceMock.exportCustomerReportCsv.mockResolvedValueOnce("h1,h2");
+    serviceMock.exportContractProfitCsv.mockResolvedValueOnce("h1,h2");
 
     const buildRes = () =>
       ({
@@ -78,19 +84,30 @@ describe('ReportsController Flow (e2e-like)', () => {
 
     await controller.exportReceivablesCsv(receivablesRes);
     await controller.exportCustomerCsv(customersRes);
-    await controller.exportContractProfitCsv(profitRes, 'ct-2');
+    await controller.exportContractProfitCsv(profitRes, "ct-2");
 
     expect(serviceMock.exportReceivablesOverviewCsv).toHaveBeenCalledTimes(1);
     expect(serviceMock.exportCustomerReportCsv).toHaveBeenCalledTimes(1);
-    expect(serviceMock.exportContractProfitCsv).toHaveBeenCalledWith('ct-2');
+    expect(serviceMock.exportContractProfitCsv).toHaveBeenCalledWith("ct-2");
 
-    expect(receivablesRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
     expect(receivablesRes.setHeader).toHaveBeenCalledWith(
-      'Content-Disposition',
-      expect.stringMatching(/^attachment; filename="receivables-overview-\d{8}\.csv"; filename\*=UTF-8''receivables-overview-\d{8}\.csv$/),
+      "Content-Type",
+      "text/csv; charset=utf-8",
     );
-    expect(receivablesRes.send).toHaveBeenCalledWith(expect.stringContaining('h1,h2'));
-    expect(customersRes.send).toHaveBeenCalledWith(expect.stringContaining('h1,h2'));
-    expect(profitRes.send).toHaveBeenCalledWith(expect.stringContaining('h1,h2'));
+    expect(receivablesRes.setHeader).toHaveBeenCalledWith(
+      "Content-Disposition",
+      expect.stringMatching(
+        /^attachment; filename="receivables-overview-\d{8}\.csv"; filename\*=UTF-8''receivables-overview-\d{8}\.csv$/,
+      ),
+    );
+    expect(receivablesRes.send).toHaveBeenCalledWith(
+      expect.stringContaining("h1,h2"),
+    );
+    expect(customersRes.send).toHaveBeenCalledWith(
+      expect.stringContaining("h1,h2"),
+    );
+    expect(profitRes.send).toHaveBeenCalledWith(
+      expect.stringContaining("h1,h2"),
+    );
   });
 });

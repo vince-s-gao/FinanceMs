@@ -1,6 +1,6 @@
 // InfFinanceMs - 更新合同DTO
 
-import { PartialType } from '@nestjs/swagger';
-import { CreateContractDto } from './create-contract.dto';
+import { PartialType } from "@nestjs/swagger";
+import { CreateContractDto } from "./create-contract.dto";
 
 export class UpdateContractDto extends PartialType(CreateContractDto) {}

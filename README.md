@@ -87,12 +87,14 @@ npm run dev
 
 ## 🔐 测试账号
 
-| 角色   | 邮箱                      | 密码         |
-| ------ | ------------------------- | ------------ |
-| 管理员 | admin@inffinancems.com    | Admin@123    |
-| 财务   | finance@inffinancems.com  | Finance@123  |
-| 管理层 | manager@inffinancems.com  | Manager@123  |
-| 员工   | employee@inffinancems.com | Employee@123 |
+| 角色   | 邮箱                      | 密码来源 |
+| ------ | ------------------------- | -------- |
+| 管理员 | admin@inffinancems.com    | 由 `ADMIN_INITIAL_PASSWORD` 或 `SEED_DEFAULT_PASSWORD` 决定 |
+| 财务   | finance@inffinancems.com  | 由 `FINANCE_INITIAL_PASSWORD` 或 `SEED_DEFAULT_PASSWORD` 决定 |
+| 管理层 | manager@inffinancems.com  | 由 `MANAGER_INITIAL_PASSWORD` 或 `SEED_DEFAULT_PASSWORD` 决定 |
+| 员工   | employee@inffinancems.com | 由 `EMPLOYEE_INITIAL_PASSWORD` 或 `SEED_DEFAULT_PASSWORD` 决定 |
+
+说明：开发环境未配置上述环境变量时，`db:seed` 会为每个账号自动生成强随机临时密码，并在控制台输出。
 
 ## 📚 API 文档
 

@@ -1,10 +1,14 @@
 // InfFinanceMs - 用户服务
 
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import * as bcrypt from 'bcryptjs';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from "@nestjs/common";
+import * as bcrypt from "bcryptjs";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CreateUserDto } from "./dto/create-user.dto";
+import { UpdateUserDto } from "./dto/update-user.dto";
 
 @Injectable()
 export class UsersService {
@@ -49,7 +53,7 @@ export class UsersService {
         where,
         skip,
         take: pageSize,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         select: {
           id: true,
           email: true,
@@ -83,7 +87,7 @@ export class UsersService {
     // 检查邮箱是否已存在
     const existingUser = await this.findByEmail(createUserDto.email);
     if (existingUser) {
-      throw new ConflictException('该邮箱已被注册');
+      throw new ConflictException("该邮箱已被注册");
     }
 
     // 加密密码
@@ -118,7 +122,7 @@ export class UsersService {
   async update(id: string, updateUserDto: UpdateUserDto) {
     const user = await this.findById(id);
     if (!user) {
-      throw new NotFoundException('用户不存在');
+      throw new NotFoundException("用户不存在");
     }
 
     // 如果更新密码，需要加密
@@ -131,7 +135,9 @@ export class UsersService {
       where: { id },
       data: {
         ...rest,
-        ...(departmentId !== undefined && { departmentId: departmentId || null }),
+        ...(departmentId !== undefined && {
+          departmentId: departmentId || null,
+        }),
       },
       select: {
         id: true,
@@ -155,20 +161,20 @@ export class UsersService {
   async remove(id: string, operatorId?: string) {
     const user = await this.findById(id);
     if (!user) {
-      throw new NotFoundException('用户不存在');
+      throw new NotFoundException("用户不存在");
     }
 
     if (operatorId && operatorId === id) {
-      throw new ConflictException('不允许删除当前登录账号');
+      throw new ConflictException("不允许删除当前登录账号");
     }
 
-    if (user.role === 'ADMIN' && user.isActive) {
+    if (user.role === "ADMIN" && user.isActive) {
       const activeAdminCount = await this.prisma.user.count({
-        where: { role: 'ADMIN', isActive: true },
+        where: { role: "ADMIN", isActive: true },
       });
 
       if (activeAdminCount <= 1) {
-        throw new ConflictException('系统至少需要保留一个启用状态的管理员');
+        throw new ConflictException("系统至少需要保留一个启用状态的管理员");
       }
     }
 
@@ -194,7 +200,7 @@ export class UsersService {
           select: { id: true, name: true },
         },
       },
-      orderBy: { name: 'asc' },
+      orderBy: { name: "asc" },
     });
 
     return users;

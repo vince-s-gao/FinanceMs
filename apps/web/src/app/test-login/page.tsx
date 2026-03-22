@@ -7,8 +7,8 @@ const { Title, Text } = Typography;
 
 export default function TestLoginPage() {
   const [email, setEmail] = useState('admin@inffinancems.com');
-  const [password, setPassword] = useState('Admin@123');
-  const [result, setResult] = useState<any>(null);
+  const [password, setPassword] = useState('');
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
   const testLogin = async () => {
@@ -44,16 +44,16 @@ export default function TestLoginPage() {
 
       const meData = await meResponse.json();
 
-      setResult((prev: any) => ({
-        ...prev,
+      setResult((prev) => ({
+        ...(prev || {}),
         step: '获取用户信息成功',
         meData,
       }));
 
       // 4. 检查cookie
       const cookies = document.cookie;
-      setResult((prev: any) => ({
-        ...prev,
+      setResult((prev) => ({
+        ...(prev || {}),
         step: 'Cookie设置成功',
         cookies,
       }));
@@ -64,11 +64,12 @@ export default function TestLoginPage() {
         window.location.href = '/dashboard';
       }, 2000);
 
-    } catch (error: any) {
-      message.error(error.message || '测试失败');
+    } catch (error: unknown) {
+      const messageText = error instanceof Error ? error.message : '测试失败';
+      message.error(messageText);
       setResult({
         step: '失败',
-        error: error.message,
+        error: messageText,
       });
     } finally {
       setLoading(false);
@@ -117,7 +118,7 @@ export default function TestLoginPage() {
             <Input.Password
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Admin@123"
+              placeholder="请输入当前管理员密码"
             />
           </div>
 

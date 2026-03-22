@@ -1,7 +1,7 @@
 'use client';
 
 // InfFinanceMs - 付款申请详情页面
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import {
@@ -85,6 +85,7 @@ interface PaymentRequest {
 export default function PaymentRequestDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const requestId = params.id as string;
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<PaymentRequest | null>(null);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
@@ -92,10 +93,10 @@ export default function PaymentRequestDetailPage() {
   const [approvalRemark, setApprovalRemark] = useState('');
 
   // 加载数据
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await api.get<PaymentRequest>(`/payment-requests/${params.id}`);
+      const result = await api.get<PaymentRequest>(`/payment-requests/${requestId}`);
       setData(result);
     } catch (error: any) {
       message.error(error.message || '加载数据失败');
@@ -103,16 +104,16 @@ export default function PaymentRequestDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [requestId, router]);
 
   useEffect(() => {
     loadData();
-  }, [params.id]);
+  }, [loadData]);
 
   // 提交申请
   const handleSubmit = async () => {
     try {
-      await api.post(`/payment-requests/${params.id}/submit`);
+      await api.post(`/payment-requests/${requestId}/submit`);
       message.success('提交成功');
       loadData();
     } catch (error: any) {
@@ -123,7 +124,7 @@ export default function PaymentRequestDetailPage() {
   // 审批
   const handleApprove = async () => {
     try {
-      await api.post(`/payment-requests/${params.id}/approve`, {
+      await api.post(`/payment-requests/${requestId}/approve`, {
         status: approveAction,
         approvalRemark,
       });
@@ -143,7 +144,7 @@ export default function PaymentRequestDetailPage() {
       content: '确定要确认该付款申请已完成付款吗？',
       onOk: async () => {
         try {
-          await api.post(`/payment-requests/${params.id}/confirm-payment`);
+          await api.post(`/payment-requests/${requestId}/confirm-payment`);
           message.success('已确认付款');
           loadData();
         } catch (error: any) {
@@ -160,7 +161,7 @@ export default function PaymentRequestDetailPage() {
       content: '确定要取消该付款申请吗？',
       onOk: async () => {
         try {
-          await api.post(`/payment-requests/${params.id}/cancel`);
+          await api.post(`/payment-requests/${requestId}/cancel`);
           message.success('已取消');
           loadData();
         } catch (error: any) {

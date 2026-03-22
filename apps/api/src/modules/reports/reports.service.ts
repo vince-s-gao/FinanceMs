@@ -1,33 +1,34 @@
 // InfFinanceMs - 报表服务
 
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { Decimal } from '@prisma/client/runtime/library';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { Decimal } from "@prisma/client/runtime/library";
+import { toCsv } from "../../common/utils/tabular.utils";
 
 // 状态常量
 const ContractStatus = {
-  DRAFT: 'DRAFT',
-  EXECUTING: 'EXECUTING',
-  COMPLETED: 'COMPLETED',
-  TERMINATED: 'TERMINATED',
+  DRAFT: "DRAFT",
+  EXECUTING: "EXECUTING",
+  COMPLETED: "COMPLETED",
+  TERMINATED: "TERMINATED",
 } as const;
 
 const ExpenseStatus = {
-  DRAFT: 'DRAFT',
-  PENDING: 'PENDING',
-  APPROVED: 'APPROVED',
-  REJECTED: 'REJECTED',
-  PAID: 'PAID',
+  DRAFT: "DRAFT",
+  PENDING: "PENDING",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+  PAID: "PAID",
 } as const;
 
 const InvoiceStatus = {
-  ISSUED: 'ISSUED',
-  VOIDED: 'VOIDED',
+  ISSUED: "ISSUED",
+  VOIDED: "VOIDED",
 } as const;
 
 // 计算账龄
 function calculateAging(dueDate: Date | string): number {
-  const due = typeof dueDate === 'string' ? new Date(dueDate) : dueDate;
+  const due = typeof dueDate === "string" ? new Date(dueDate) : dueDate;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   due.setHours(0, 0, 0, 0);
@@ -36,23 +37,13 @@ function calculateAging(dueDate: Date | string): number {
 }
 
 // 获取账龄分段
-function getAgingBucket(agingDays: number): 'normal' | '0-30' | '31-90' | '90+' {
-  if (agingDays <= 0) return 'normal';
-  if (agingDays <= 30) return '0-30';
-  if (agingDays <= 90) return '31-90';
-  return '90+';
-}
-
-function formatCsvCell(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  const text = String(value).replace(/"/g, '""');
-  return `"${text}"`;
-}
-
-function toCsv(headers: string[], rows: unknown[][]): string {
-  const headerLine = headers.map((item) => formatCsvCell(item)).join(',');
-  const rowLines = rows.map((row) => row.map((cell) => formatCsvCell(cell)).join(','));
-  return [headerLine, ...rowLines].join('\n');
+function getAgingBucket(
+  agingDays: number,
+): "normal" | "0-30" | "31-90" | "90+" {
+  if (agingDays <= 0) return "normal";
+  if (agingDays <= 30) return "0-30";
+  if (agingDays <= 90) return "31-90";
+  return "90+";
 }
 
 @Injectable()
@@ -94,29 +85,42 @@ export class ReportsService {
       totalReceived = totalReceived.plus(contractReceived);
 
       // 计算账龄
-      const receivable = new Decimal(contract.amountWithTax.toString()).minus(contractReceived);
+      const receivable = new Decimal(contract.amountWithTax.toString()).minus(
+        contractReceived,
+      );
       if (receivable.gt(0)) {
         // 找到最早的逾期回款计划
         const overduePlans = contract.paymentPlans
-          .filter((plan) => plan.status !== 'COMPLETED' && new Date(plan.planDate) < new Date())
-          .sort((a, b) => new Date(a.planDate).getTime() - new Date(b.planDate).getTime());
+          .filter(
+            (plan) =>
+              plan.status !== "COMPLETED" &&
+              new Date(plan.planDate) < new Date(),
+          )
+          .sort(
+            (a, b) =>
+              new Date(a.planDate).getTime() - new Date(b.planDate).getTime(),
+          );
 
         if (overduePlans.length > 0) {
           const agingDays = calculateAging(overduePlans[0].planDate);
           const bucket = getAgingBucket(agingDays);
 
           switch (bucket) {
-            case 'normal':
-              agingDistribution.normal = agingDistribution.normal.plus(receivable);
+            case "normal":
+              agingDistribution.normal =
+                agingDistribution.normal.plus(receivable);
               break;
-            case '0-30':
-              agingDistribution.days0to30 = agingDistribution.days0to30.plus(receivable);
+            case "0-30":
+              agingDistribution.days0to30 =
+                agingDistribution.days0to30.plus(receivable);
               break;
-            case '31-90':
-              agingDistribution.days31to90 = agingDistribution.days31to90.plus(receivable);
+            case "31-90":
+              agingDistribution.days31to90 =
+                agingDistribution.days31to90.plus(receivable);
               break;
-            case '90+':
-              agingDistribution.daysOver90 = agingDistribution.daysOver90.plus(receivable);
+            case "90+":
+              agingDistribution.daysOver90 =
+                agingDistribution.daysOver90.plus(receivable);
               break;
           }
         } else {
@@ -170,11 +174,20 @@ export class ReportsService {
         receivedAmount = receivedAmount.plus(contractReceived);
 
         // 计算90天以上逾期
-        const receivable = new Decimal(contract.amountWithTax.toString()).minus(contractReceived);
+        const receivable = new Decimal(contract.amountWithTax.toString()).minus(
+          contractReceived,
+        );
         if (receivable.gt(0)) {
           const overduePlans = contract.paymentPlans
-            .filter((plan) => plan.status !== 'COMPLETED' && new Date(plan.planDate) < new Date())
-            .sort((a, b) => new Date(a.planDate).getTime() - new Date(b.planDate).getTime());
+            .filter(
+              (plan) =>
+                plan.status !== "COMPLETED" &&
+                new Date(plan.planDate) < new Date(),
+            )
+            .sort(
+              (a, b) =>
+                new Date(a.planDate).getTime() - new Date(b.planDate).getTime(),
+            );
 
           if (overduePlans.length > 0) {
             const agingDays = calculateAging(overduePlans[0].planDate);
@@ -299,7 +312,7 @@ export class ReportsService {
     // 即将到期的回款计划（7天内）
     const upcomingPayments = await this.prisma.paymentPlan.findMany({
       where: {
-        status: { not: 'COMPLETED' },
+        status: { not: "COMPLETED" },
         planDate: {
           gte: now,
           lte: sevenDaysLater,
@@ -310,14 +323,18 @@ export class ReportsService {
           select: { id: true, contractNo: true, name: true },
         },
       },
-      orderBy: { planDate: 'asc' },
+      orderBy: { planDate: "asc" },
     });
 
     return {
       executingCount,
       monthlyNewCount: monthlyNew._count,
-      monthlyNewAmount: (monthlyNew._sum.amountWithTax || new Decimal(0)).toNumber(),
-      monthlyPaymentAmount: (monthlyPayment._sum.amount || new Decimal(0)).toNumber(),
+      monthlyNewAmount: (
+        monthlyNew._sum.amountWithTax || new Decimal(0)
+      ).toNumber(),
+      monthlyPaymentAmount: (
+        monthlyPayment._sum.amount || new Decimal(0)
+      ).toNumber(),
       upcomingPayments: upcomingPayments.map((plan) => ({
         planId: plan.id,
         contractId: plan.contract.id,
@@ -327,7 +344,8 @@ export class ReportsService {
         planAmount: plan.planAmount,
         planDate: plan.planDate,
         daysUntilDue: Math.ceil(
-          (new Date(plan.planDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+          (new Date(plan.planDate).getTime() - now.getTime()) /
+            (1000 * 60 * 60 * 24),
         ),
       })),
     };
@@ -393,15 +411,15 @@ export class ReportsService {
    */
   async exportReceivablesOverviewCsv() {
     const data = await this.getReceivablesOverview();
-    const headers = ['指标', '金额'];
+    const headers = ["指标", "金额"];
     const rows: unknown[][] = [
-      ['合同总额', data.totalContractAmount],
-      ['已回款', data.totalReceived],
-      ['应收余额', data.totalReceivable],
-      ['账龄-正常', data.agingDistribution.normal],
-      ['账龄-0到30天', data.agingDistribution.days0to30],
-      ['账龄-31到90天', data.agingDistribution.days31to90],
-      ['账龄-90天以上', data.agingDistribution.daysOver90],
+      ["合同总额", data.totalContractAmount],
+      ["已回款", data.totalReceived],
+      ["应收余额", data.totalReceivable],
+      ["账龄-正常", data.agingDistribution.normal],
+      ["账龄-0到30天", data.agingDistribution.days0to30],
+      ["账龄-31到90天", data.agingDistribution.days31to90],
+      ["账龄-90天以上", data.agingDistribution.daysOver90],
     ];
     return toCsv(headers, rows);
   }
@@ -411,7 +429,14 @@ export class ReportsService {
    */
   async exportCustomerReportCsv() {
     const report = await this.getCustomerReport();
-    const headers = ['客户名称', '合同数', '合同总额', '已收款', '应收款', '90天以上逾期'];
+    const headers = [
+      "客户名称",
+      "合同数",
+      "合同总额",
+      "已收款",
+      "应收款",
+      "90天以上逾期",
+    ];
     const rows = report.map((item) => [
       item.customerName,
       item.contractCount,
@@ -428,7 +453,17 @@ export class ReportsService {
    */
   async exportContractProfitCsv(contractId?: string) {
     const report = await this.getContractProfitAnalysis(contractId);
-    const headers = ['合同编号', '合同名称', '客户', '合同金额', '已回款', '总成本', '毛利', '毛利率(%)', '是否亏损'];
+    const headers = [
+      "合同编号",
+      "合同名称",
+      "客户",
+      "合同金额",
+      "已回款",
+      "总成本",
+      "毛利",
+      "毛利率(%)",
+      "是否亏损",
+    ];
     const rows = report.map((item) => [
       item.contractNo,
       item.contractName,
@@ -438,7 +473,7 @@ export class ReportsService {
       item.totalCost,
       item.profit,
       item.profitRate,
-      item.isLoss ? '是' : '否',
+      item.isLoss ? "是" : "否",
     ]);
     return toCsv(headers, rows);
   }

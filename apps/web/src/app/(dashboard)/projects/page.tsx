@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 项目管理页面
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Table,
@@ -74,7 +74,7 @@ export default function ProjectsPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // 加载项目列表
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     setLoading(true);
     try {
       const params: any = { page, pageSize };
@@ -89,11 +89,11 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, keyword, statusFilter]);
 
   useEffect(() => {
     fetchProjects();
-  }, [page, pageSize, keyword, statusFilter]);
+  }, [fetchProjects]);
 
   // 打开新增/编辑弹窗
   const handleOpenModal = (project?: Project) => {

@@ -1,6 +1,6 @@
 // InfFinanceMs - 当前用户装饰器
 
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { createParamDecorator, ExecutionContext } from "@nestjs/common";
 
 /**
  * 当前用户装饰器

@@ -3,66 +3,124 @@
 
 import { PrismaClient, Role, ContractStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 
 const prisma = new PrismaClient();
+
+function generateStrongSeedPassword(): string {
+  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
+  const bytes = randomBytes(18);
+  let password = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    password += charset[bytes[i] % charset.length];
+  }
+  return password;
+}
+
+function resolveInitialPassword(envKey: string): { password: string; source: 'env' | 'generated' } {
+  const configured = process.env[envKey]?.trim();
+  if (configured) {
+    return { password: configured, source: 'env' };
+  }
+
+  const sharedSeedPassword = process.env.SEED_DEFAULT_PASSWORD?.trim();
+  if (sharedSeedPassword) {
+    return { password: sharedSeedPassword, source: 'env' };
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      `生产环境必须设置环境变量 ${envKey}（或 SEED_DEFAULT_PASSWORD）`,
+    );
+  }
+
+  return {
+    password: generateStrongSeedPassword(),
+    source: 'generated',
+  };
+}
+
+async function upsertSeedUser(params: {
+  email: string;
+  name: string;
+  role: Role;
+  envKey: string;
+  label: string;
+}) {
+  const resolved = resolveInitialPassword(params.envKey);
+  const passwordHash = await bcrypt.hash(resolved.password, 10);
+  const user = await prisma.user.upsert({
+    where: { email: params.email },
+    update: {
+      password: passwordHash,
+      name: params.name,
+      role: params.role,
+    },
+    create: {
+      email: params.email,
+      password: passwordHash,
+      name: params.name,
+      role: params.role,
+    },
+  });
+
+  if (resolved.source === 'generated') {
+    console.warn(
+      `⚠️ ${params.label}未设置初始密码环境变量，已生成临时密码（请尽快修改）：${user.email} / ${resolved.password}`,
+    );
+  }
+
+  return {
+    user,
+    plainPassword: resolved.password,
+  };
+}
 
 async function main() {
   console.log('🌱 开始初始化种子数据...');
 
   // 1. 创建管理员用户
-  const adminPassword = await bcrypt.hash('Admin@123', 10);
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@inffinancems.com' },
-    update: { password: adminPassword },
-    create: {
-      email: 'admin@inffinancems.com',
-      password: adminPassword,
-      name: '系统管理员',
-      role: Role.ADMIN,
-    },
+  const adminSeed = await upsertSeedUser({
+    email: 'admin@inffinancems.com',
+    name: '系统管理员',
+    role: Role.ADMIN,
+    envKey: 'ADMIN_INITIAL_PASSWORD',
+    label: '管理员账号',
   });
+  const admin = adminSeed.user;
   console.log('✅ 创建管理员:', admin.email);
 
   // 2. 创建财务用户
-  const financePassword = await bcrypt.hash('Finance@123', 10);
-  const finance = await prisma.user.upsert({
-    where: { email: 'finance@inffinancems.com' },
-    update: { password: financePassword },
-    create: {
-      email: 'finance@inffinancems.com',
-      password: financePassword,
-      name: '财务小王',
-      role: Role.FINANCE,
-    },
+  const financeSeed = await upsertSeedUser({
+    email: 'finance@inffinancems.com',
+    name: '财务小王',
+    role: Role.FINANCE,
+    envKey: 'FINANCE_INITIAL_PASSWORD',
+    label: '财务账号',
   });
+  const finance = financeSeed.user;
   console.log('✅ 创建财务用户:', finance.email);
 
   // 3. 创建管理层用户
-  const managerPassword = await bcrypt.hash('Manager@123', 10);
-  const manager = await prisma.user.upsert({
-    where: { email: 'manager@inffinancems.com' },
-    update: { password: managerPassword },
-    create: {
-      email: 'manager@inffinancems.com',
-      password: managerPassword,
-      name: '张总',
-      role: Role.MANAGER,
-    },
+  const managerSeed = await upsertSeedUser({
+    email: 'manager@inffinancems.com',
+    name: '张总',
+    role: Role.MANAGER,
+    envKey: 'MANAGER_INITIAL_PASSWORD',
+    label: '管理层账号',
   });
+  const manager = managerSeed.user;
   console.log('✅ 创建管理层用户:', manager.email);
 
   // 4. 创建普通员工
-  const employeePassword = await bcrypt.hash('Employee@123', 10);
-  const employee = await prisma.user.upsert({
-    where: { email: 'employee@inffinancems.com' },
-    update: { password: employeePassword },
-    create: {
-      email: 'employee@inffinancems.com',
-      password: employeePassword,
-      name: '李员工',
-      role: Role.EMPLOYEE,
-    },
+  const employeeSeed = await upsertSeedUser({
+    email: 'employee@inffinancems.com',
+    name: '李员工',
+    role: Role.EMPLOYEE,
+    envKey: 'EMPLOYEE_INITIAL_PASSWORD',
+    label: '员工账号',
   });
+  const employee = employeeSeed.user;
   console.log('✅ 创建普通员工:', employee.email);
 
   // 5. 创建数据字典 - 客户类型
@@ -226,10 +284,14 @@ async function main() {
   console.log('🎉 种子数据初始化完成！');
   console.log('');
   console.log('📋 测试账号信息:');
-  console.log('  管理员: admin@inffinancems.com / Admin@123');
-  console.log('  财务: finance@inffinancems.com / Finance@123');
-  console.log('  管理层: manager@inffinancems.com / Manager@123');
-  console.log('  员工: employee@inffinancems.com / Employee@123');
+  if (process.env.NODE_ENV === 'production') {
+    console.log('  生产环境已初始化账号，密码信息不输出到日志');
+  } else {
+    console.log(`  管理员: admin@inffinancems.com / ${adminSeed.plainPassword}`);
+    console.log(`  财务: finance@inffinancems.com / ${financeSeed.plainPassword}`);
+    console.log(`  管理层: manager@inffinancems.com / ${managerSeed.plainPassword}`);
+    console.log(`  员工: employee@inffinancems.com / ${employeeSeed.plainPassword}`);
+  }
 }
 
 main()

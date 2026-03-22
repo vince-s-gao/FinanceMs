@@ -1,7 +1,7 @@
 'use client';
 
 // InfFinanceMs - 付款申请列表页面
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import {
@@ -79,6 +79,11 @@ export default function PaymentRequestsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PageData | null>(null);
+  const [searchForm, setSearchForm] = useState({
+    requestNo: '',
+    reason: '',
+    status: '',
+  });
   const [filters, setFilters] = useState({
     requestNo: '',
     reason: '',
@@ -88,7 +93,7 @@ export default function PaymentRequestsPage() {
   });
 
   // 加载数据
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -105,16 +110,21 @@ export default function PaymentRequestsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
   useEffect(() => {
     loadData();
-  }, [filters.page, filters.pageSize]);
+  }, [loadData]);
 
   // 搜索
   const handleSearch = () => {
-    setFilters({ ...filters, page: 1 });
-    loadData();
+    setFilters((prev) => ({
+      ...prev,
+      requestNo: searchForm.requestNo,
+      reason: searchForm.reason,
+      status: searchForm.status,
+      page: 1,
+    }));
   };
 
   // 提交申请
@@ -312,22 +322,22 @@ export default function PaymentRequestsPage() {
         <Space wrap>
           <Input
             placeholder="申请单号"
-            value={filters.requestNo}
-            onChange={(e) => setFilters({ ...filters, requestNo: e.target.value })}
+            value={searchForm.requestNo}
+            onChange={(e) => setSearchForm((prev) => ({ ...prev, requestNo: e.target.value }))}
             style={{ width: 160 }}
             allowClear
           />
           <Input
             placeholder="付款事由"
-            value={filters.reason}
-            onChange={(e) => setFilters({ ...filters, reason: e.target.value })}
+            value={searchForm.reason}
+            onChange={(e) => setSearchForm((prev) => ({ ...prev, reason: e.target.value }))}
             style={{ width: 160 }}
             allowClear
           />
           <Select
             placeholder="状态"
-            value={filters.status || undefined}
-            onChange={(value) => setFilters({ ...filters, status: value || '' })}
+            value={searchForm.status || undefined}
+            onChange={(value) => setSearchForm((prev) => ({ ...prev, status: value || '' }))}
             style={{ width: 120 }}
             allowClear
             options={[
@@ -359,7 +369,7 @@ export default function PaymentRequestsPage() {
             showQuickJumper: true,
             showTotal: (total) => `共 ${total} 条记录`,
             onChange: (page, pageSize) => {
-              setFilters({ ...filters, page, pageSize });
+              setFilters((prev) => ({ ...prev, page, pageSize }));
             },
           }}
         />

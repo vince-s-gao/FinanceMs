@@ -1,21 +1,29 @@
 // InfFinanceMs - 项目服务
 
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateProjectDto } from './dto/create-project.dto';
-import { UpdateProjectDto } from './dto/update-project.dto';
-import { QueryProjectDto } from './dto/query-project.dto';
-import { Prisma } from '@prisma/client';
-import { resolveSortField } from '../../common/utils/query.utils';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CreateProjectDto } from "./dto/create-project.dto";
+import { UpdateProjectDto } from "./dto/update-project.dto";
+import { QueryProjectDto } from "./dto/query-project.dto";
+import { resolveSortField } from "../../common/utils/query.utils";
+import {
+  createWithGeneratedCode,
+  generatePrefixedCode,
+} from "../../common/utils/code-generator.utils";
+import { isUniqueConflict as isPrismaUniqueConflict } from "../../common/utils/prisma.utils";
 
 const ALLOWED_PROJECT_SORT_FIELDS = [
-  'code',
-  'name',
-  'status',
-  'startDate',
-  'endDate',
-  'createdAt',
-  'updatedAt',
+  "code",
+  "name",
+  "status",
+  "startDate",
+  "endDate",
+  "createdAt",
+  "updatedAt",
 ] as const;
 
 @Injectable()
@@ -30,39 +38,17 @@ export class ProjectsService {
   private async generateProjectCode(): Promise<string> {
     const currentYear = new Date().getFullYear();
     const prefix = `TKFY${currentYear}`;
-    
-    // 查找当年最大的项目编号
-    const lastProject = await this.prisma.project.findFirst({
-      where: {
-        code: {
-          startsWith: prefix,
-        },
-      },
-      orderBy: {
-        code: 'desc',
-      },
-      select: {
-        code: true,
-      },
+    return generatePrefixedCode({
+      model: this.prisma.project,
+      field: "code",
+      prefix,
+      sequenceRegex: /^TKFY\d{4}(\d{4})$/,
+      sequenceLength: 4,
     });
-    
-    let sequenceNumber = 1;
-    if (lastProject && lastProject.code) {
-      // 提取顺序号部分（最后4位）
-      const lastSequence = parseInt(lastProject.code.slice(-4), 10);
-      if (!isNaN(lastSequence)) {
-        sequenceNumber = lastSequence + 1;
-      }
-    }
-    
-    return `${prefix}${String(sequenceNumber).padStart(4, '0')}`;
   }
 
   private isProjectCodeConflict(error: unknown): boolean {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
-    if (error.code !== 'P2002') return false;
-    const target = (error.meta?.target || []) as string[];
-    return target.includes('code');
+    return isPrismaUniqueConflict(error, "code");
   }
 
   /**
@@ -74,11 +60,15 @@ export class ProjectsService {
       pageSize = 20,
       keyword,
       status,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = query;
     const skip = (page - 1) * pageSize;
-    const safeSortBy = resolveSortField(sortBy, ALLOWED_PROJECT_SORT_FIELDS, 'createdAt');
+    const safeSortBy = resolveSortField(
+      sortBy,
+      ALLOWED_PROJECT_SORT_FIELDS,
+      "createdAt",
+    );
 
     const where: any = {
       isDeleted: false,
@@ -87,8 +77,8 @@ export class ProjectsService {
     // 关键词搜索
     if (keyword) {
       where.OR = [
-        { code: { contains: keyword, mode: 'insensitive' } },
-        { name: { contains: keyword, mode: 'insensitive' } },
+        { code: { contains: keyword, mode: "insensitive" } },
+        { name: { contains: keyword, mode: "insensitive" } },
       ];
     }
 
@@ -131,14 +121,14 @@ export class ProjectsService {
             status: true,
             createdAt: true,
           },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
           take: 10,
         },
       },
     });
 
     if (!project) {
-      throw new NotFoundException('项目不存在');
+      throw new NotFoundException("项目不存在");
     }
 
     return project;
@@ -151,29 +141,24 @@ export class ProjectsService {
     // 移除 createDto 中的 code 字段，使用系统生成的编号
     const { code: _, ...restDto } = createDto as any;
 
-    for (let i = 0; i < 8; i++) {
-      const code = await this.generateProjectCode();
-      try {
-        return await this.prisma.project.create({
+    return createWithGeneratedCode({
+      generateCode: () => this.generateProjectCode(),
+      create: (code: string) =>
+        this.prisma.project.create({
           data: {
             ...restDto,
             code,
-            startDate: createDto.startDate ? new Date(createDto.startDate) : undefined,
-            endDate: createDto.endDate ? new Date(createDto.endDate) : undefined,
+            startDate: createDto.startDate
+              ? new Date(createDto.startDate)
+              : undefined,
+            endDate: createDto.endDate
+              ? new Date(createDto.endDate)
+              : undefined,
           },
-        });
-      } catch (error) {
-        if (this.isProjectCodeConflict(error)) {
-          if (i < 7) {
-            continue;
-          }
-          break;
-        }
-        throw error;
-      }
-    }
-
-    throw new ConflictException('项目编号生成失败，请重试');
+        }),
+      isCodeConflict: (error) => this.isProjectCodeConflict(error),
+      exhaustedError: () => new ConflictException("项目编号生成失败，请重试"),
+    });
   }
 
   /**
@@ -189,7 +174,9 @@ export class ProjectsService {
       where: { id },
       data: {
         ...restDto,
-        startDate: updateDto.startDate ? new Date(updateDto.startDate) : undefined,
+        startDate: updateDto.startDate
+          ? new Date(updateDto.startDate)
+          : undefined,
         endDate: updateDto.endDate ? new Date(updateDto.endDate) : undefined,
       },
     });

@@ -1,20 +1,28 @@
 // InfFinanceMs - 费用服务
 
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CreateCostDto } from './dto/create-cost.dto';
-import { QueryCostDto } from './dto/query-cost.dto';
-import { parseDateRangeEnd, parseDateRangeStart, resolveSortField } from '../../common/utils/query.utils';
-import { COST_SOURCE, ERROR_CODE } from '@inffinancems/shared';
-import type { Prisma } from '@prisma/client';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import { CreateCostDto } from "./dto/create-cost.dto";
+import { QueryCostDto } from "./dto/query-cost.dto";
+import {
+  parseDateRangeEnd,
+  parseDateRangeStart,
+  resolveSortField,
+} from "../../common/utils/query.utils";
+import { COST_SOURCE, ERROR_CODE } from "@inffinancems/shared";
+import type { Prisma } from "@prisma/client";
 
 const ALLOWED_COST_SORT_FIELDS = [
-  'feeType',
-  'amount',
-  'occurDate',
-  'source',
-  'createdAt',
-  'updatedAt',
+  "feeType",
+  "amount",
+  "occurDate",
+  "source",
+  "createdAt",
+  "updatedAt",
 ] as const;
 
 @Injectable()
@@ -42,11 +50,15 @@ export class CostsService {
       contractId,
       startDate,
       endDate,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = query;
     const skip = (page - 1) * pageSize;
-    const safeSortBy = resolveSortField(sortBy, ALLOWED_COST_SORT_FIELDS, 'createdAt');
+    const safeSortBy = resolveSortField(
+      sortBy,
+      ALLOWED_COST_SORT_FIELDS,
+      "createdAt",
+    );
 
     const where: Prisma.CostWhereInput = {};
 
@@ -126,7 +138,7 @@ export class CostsService {
     });
 
     if (!cost) {
-      this.notFound(ERROR_CODE.COST_NOT_FOUND, '费用不存在');
+      this.notFound(ERROR_CODE.COST_NOT_FOUND, "费用不存在");
     }
 
     return cost;
@@ -136,7 +148,8 @@ export class CostsService {
    * 创建费用（直接录入）
    */
   async create(createCostDto: CreateCostDto) {
-    const { projectId, feeType, amount, occurDate, contractId, description } = createCostDto;
+    const { projectId, feeType, amount, occurDate, contractId, description } =
+      createCostDto;
 
     // 使用事务保证校验与创建在同一原子操作中，避免并发下出现读写不一致。
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -144,7 +157,7 @@ export class CostsService {
         where: { id: projectId, isDeleted: false },
       });
       if (!project) {
-        this.badRequest(ERROR_CODE.COST_PROJECT_NOT_FOUND, '关联项目不存在');
+        this.badRequest(ERROR_CODE.COST_PROJECT_NOT_FOUND, "关联项目不存在");
       }
 
       if (contractId) {
@@ -152,7 +165,7 @@ export class CostsService {
           where: { id: contractId, isDeleted: false },
         });
         if (!contract) {
-          this.badRequest(ERROR_CODE.COST_CONTRACT_NOT_FOUND, '关联合同不存在');
+          this.badRequest(ERROR_CODE.COST_CONTRACT_NOT_FOUND, "关联合同不存在");
         }
       }
 
@@ -186,7 +199,10 @@ export class CostsService {
 
     // 报销生成的费用不能直接删除
     if (cost.source === COST_SOURCE.REIMBURSEMENT) {
-      this.badRequest(ERROR_CODE.COST_DELETE_REIMBURSEMENT_FORBIDDEN, '报销生成的费用不能直接删除');
+      this.badRequest(
+        ERROR_CODE.COST_DELETE_REIMBURSEMENT_FORBIDDEN,
+        "报销生成的费用不能直接删除",
+      );
     }
 
     return this.prisma.cost.delete({
@@ -199,7 +215,7 @@ export class CostsService {
    */
   async getContractCostSummary(contractId: string) {
     const costs = await this.prisma.cost.groupBy({
-      by: ['feeType'],
+      by: ["feeType"],
       where: { contractId },
       _sum: { amount: true },
     });

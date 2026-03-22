@@ -1,9 +1,15 @@
 // InfFinanceMs - 审计日志服务
 
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
-import { parseDateRangeEnd, parseDateRangeStart } from '../../common/utils/query.utils';
-import { QueryAuditLogDto, AUDIT_ACTION_OPTIONS } from './dto/query-audit-log.dto';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "../../prisma/prisma.service";
+import {
+  parseDateRangeEnd,
+  parseDateRangeStart,
+} from "../../common/utils/query.utils";
+import {
+  QueryAuditLogDto,
+  AUDIT_ACTION_OPTIONS,
+} from "./dto/query-audit-log.dto";
 
 /**
  * 审计日志服务
@@ -53,7 +59,7 @@ export class AuditService {
       });
     } catch (error) {
       // 审计日志记录失败不应影响主业务流程
-      console.error('审计日志记录失败:', error);
+      console.error("审计日志记录失败:", error);
     }
   }
 
@@ -68,8 +74,8 @@ export class AuditService {
   ): Promise<void> {
     await this.log(
       userId,
-      success ? 'LOGIN_SUCCESS' : 'LOGIN_FAILED',
-      'User',
+      success ? "LOGIN_SUCCESS" : "LOGIN_FAILED",
+      "User",
       userId,
       null,
       { success, timestamp: new Date().toISOString() },
@@ -90,7 +96,7 @@ export class AuditService {
   ): Promise<void> {
     await this.log(
       userId,
-      'ACCESS_DENIED',
+      "ACCESS_DENIED",
       resource,
       userId,
       null,
@@ -114,7 +120,7 @@ export class AuditService {
   ): Promise<void> {
     await this.log(
       userId,
-      'DATA_MODIFIED',
+      "DATA_MODIFIED",
       entityType,
       entityId,
       oldValue,
@@ -158,7 +164,7 @@ export class AuditService {
       return data;
     }
 
-    if (typeof data === 'string') {
+    if (typeof data === "string") {
       return data;
     }
 
@@ -166,23 +172,27 @@ export class AuditService {
       return data.map((item) => this.sanitizeSensitiveData(item));
     }
 
-    if (typeof data === 'object') {
+    if (typeof data === "object") {
       const sanitized: any = {};
       const sensitiveFields = [
-        'password',
-        'token',
-        'secret',
-        'apiKey',
-        'accessToken',
-        'refreshToken',
-        'bankAccount',
-        'idCard',
-        'phone',
-        'email',
+        "password",
+        "token",
+        "secret",
+        "apiKey",
+        "accessToken",
+        "refreshToken",
+        "bankAccount",
+        "idCard",
+        "phone",
+        "email",
       ];
 
       for (const [key, value] of Object.entries(data)) {
-        if (sensitiveFields.some((field) => key.toLowerCase().includes(field.toLowerCase()))) {
+        if (
+          sensitiveFields.some((field) =>
+            key.toLowerCase().includes(field.toLowerCase()),
+          )
+        ) {
           // 对敏感字段进行脱敏
           sanitized[key] = this.maskSensitiveValue(key, value);
         } else {
@@ -203,15 +213,15 @@ export class AuditService {
    * @returns 掩码后的值
    */
   private maskSensitiveValue(field: string, value: any): string {
-    if (!value || typeof value !== 'string') {
-      return '***';
+    if (!value || typeof value !== "string") {
+      return "***";
     }
 
     const fieldLower = field.toLowerCase();
 
     // 邮箱脱敏：user***@example.com
-    if (fieldLower.includes('email')) {
-      const atIndex = value.indexOf('@');
+    if (fieldLower.includes("email")) {
+      const atIndex = value.indexOf("@");
       if (atIndex > 0) {
         const prefix = value.substring(0, 2);
         const suffix = value.substring(atIndex);
@@ -220,14 +230,14 @@ export class AuditService {
     }
 
     // 手机号脱敏：138****5678
-    if (fieldLower.includes('phone')) {
+    if (fieldLower.includes("phone")) {
       if (value.length >= 11) {
         return `${value.substring(0, 3)}****${value.substring(7)}`;
       }
     }
 
     // 银行账号脱敏：****1234
-    if (fieldLower.includes('bank') || fieldLower.includes('account')) {
+    if (fieldLower.includes("bank") || fieldLower.includes("account")) {
       if (value.length >= 4) {
         return `****${value.substring(value.length - 4)}`;
       }
@@ -238,7 +248,7 @@ export class AuditService {
       return `${value.substring(0, 2)}***${value.substring(value.length - 2)}`;
     }
 
-    return '***';
+    return "***";
   }
 
   /**
@@ -249,7 +259,7 @@ export class AuditService {
   async getUserAuditLogs(userId: string, limit: number = 100) {
     return this.prisma.auditLog.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: limit,
       include: {
         user: {
@@ -269,13 +279,17 @@ export class AuditService {
    * @param entityId 实体ID
    * @param limit 返回数量限制
    */
-  async getEntityAuditLogs(entityType: string, entityId: string, limit: number = 100) {
+  async getEntityAuditLogs(
+    entityType: string,
+    entityId: string,
+    limit: number = 100,
+  ) {
     return this.prisma.auditLog.findMany({
       where: {
         entityType,
         entityId,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: limit,
       include: {
         user: {
@@ -302,8 +316,8 @@ export class AuditService {
       keyword,
       startDate,
       endDate,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = query;
 
     const skip = (page - 1) * pageSize;
@@ -321,14 +335,14 @@ export class AuditService {
 
     if (keyword) {
       where.OR = [
-        { entityId: { contains: keyword, mode: 'insensitive' } },
-        { user: { is: { name: { contains: keyword, mode: 'insensitive' } } } },
-        { user: { is: { email: { contains: keyword, mode: 'insensitive' } } } },
+        { entityId: { contains: keyword, mode: "insensitive" } },
+        { user: { is: { name: { contains: keyword, mode: "insensitive" } } } },
+        { user: { is: { email: { contains: keyword, mode: "insensitive" } } } },
       ];
     }
 
-    const safeSortBy = sortBy === 'createdAt' ? 'createdAt' : 'createdAt';
-    const safeSortOrder = sortOrder === 'asc' ? 'asc' : 'desc';
+    const safeSortBy = sortBy === "createdAt" ? "createdAt" : "createdAt";
+    const safeSortOrder = sortOrder === "asc" ? "asc" : "desc";
 
     const [items, total] = await Promise.all([
       this.prisma.auditLog.findMany({
@@ -361,9 +375,9 @@ export class AuditService {
 
   async getMeta() {
     const entityTypes = await this.prisma.auditLog.findMany({
-      distinct: ['entityType'],
+      distinct: ["entityType"],
       select: { entityType: true },
-      orderBy: { entityType: 'asc' },
+      orderBy: { entityType: "asc" },
     });
 
     return {

@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 合同编辑页面
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Card,
@@ -76,7 +76,7 @@ export default function ContractEditPage() {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [uploadedFile, setUploadedFile] = useState<{ url: string; filename: string } | null>(null);
 
-  const mergeCurrentCustomerOption = (list: CustomerOption[], current?: Contract | null): CustomerOption[] => {
+  const mergeCurrentCustomerOption = useCallback((list: CustomerOption[], current?: Contract | null): CustomerOption[] => {
     const customer = current?.customer;
     if (!customer?.id || !customer?.name) return list;
     if (list.some((item) => item.id === customer.id)) return list;
@@ -88,7 +88,7 @@ export default function ContractEditPage() {
       },
       ...list,
     ];
-  };
+  }, []);
 
   const contractId = params.id as string;
 
@@ -131,16 +131,16 @@ export default function ContractEditPage() {
   };
 
   // 加载客户选项
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
       const res = await api.get<CustomerOption[]>('/customers/options');
-      setCustomers(mergeCurrentCustomerOption(res, contract));
+      setCustomers(res);
     } catch (error) {
       console.error('加载客户列表失败', error);
     }
-  };
+  }, []);
 
-  const fetchContractTypes = async () => {
+  const fetchContractTypes = useCallback(async () => {
     try {
       const res = await api.get<DictionaryItem[]>('/dictionaries/by-type/CONTRACT_TYPE');
       setContractTypes(res);
@@ -152,10 +152,10 @@ export default function ContractEditPage() {
         { id: '4', code: 'OTHER', name: '其他' },
       ]);
     }
-  };
+  }, []);
 
   // 加载合同详情
-  const fetchContract = async () => {
+  const fetchContract = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get<Contract>(`/contracts/${contractId}`);
@@ -192,7 +192,7 @@ export default function ContractEditPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [contractId, form, mergeCurrentCustomerOption]);
 
   useEffect(() => {
     fetchCustomers();
@@ -200,7 +200,7 @@ export default function ContractEditPage() {
     if (contractId) {
       fetchContract();
     }
-  }, [contractId]);
+  }, [contractId, fetchContract, fetchContractTypes, fetchCustomers]);
 
   // 提交表单
   const handleSubmit = async () => {

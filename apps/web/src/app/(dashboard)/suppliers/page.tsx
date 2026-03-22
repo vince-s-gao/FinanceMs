@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 供应商管理页面
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Table,
   Button,
@@ -30,6 +30,10 @@ import {
   DownloadOutlined,
 } from '@ant-design/icons';
 import { api } from '@/lib/api';
+import { useExport } from '@/hooks/useExport';
+import { useEntityDelete } from '@/hooks/useEntityDelete';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { getErrorMessage } from '@/lib/error';
 import type { UploadProps } from 'antd';
 
 const { Title } = Typography;
@@ -61,6 +65,18 @@ interface Supplier {
   updatedAt?: string;
 }
 
+interface SupplierListResponse {
+  items: Supplier[];
+  total: number;
+}
+
+interface ImportResult {
+  total: number;
+  success: number;
+  failed: number;
+  errors: Array<{ row: number; message: string }>;
+}
+
 export default function SuppliersPage() {
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -69,6 +85,7 @@ export default function SuppliersPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [keyword, setKeyword] = useState('');
+  const debouncedKeyword = useDebouncedValue(keyword, 300);
   const [typeFilter, setTypeFilter] = useState<string | undefined>();
 
   const [supplierTypes, setSupplierTypes] = useState<DictionaryItem[]>([]);
@@ -79,13 +96,14 @@ export default function SuppliersPage() {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const { exporting, handleExport: triggerExport } = useExport('/suppliers', 'suppliers');
+  const { deleteOne, deleteBatch, batchDeleting } = useEntityDelete('/suppliers', '供应商');
 
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState<Supplier | null>(null);
 
-  const fetchSupplierTypes = async () => {
+  const fetchSupplierTypes = useCallback(async () => {
     try {
       const res = await api.get<DictionaryItem[]>('/dictionaries/by-type/SUPPLIER_TYPE');
       setSupplierTypes(res);
@@ -95,35 +113,35 @@ export default function SuppliersPage() {
         { id: '2', code: 'PERSONAL', name: '个人', color: 'green' },
       ]);
     }
-  };
+  }, []);
 
   const getSupplierType = (code: string) => {
     return supplierTypes.find((item) => item.code === code) || { code, name: code, color: 'default' };
   };
 
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = useCallback(async () => {
     setLoading(true);
     try {
       const params: Record<string, unknown> = { page, pageSize };
-      if (keyword) params.keyword = keyword;
+      if (debouncedKeyword) params.keyword = debouncedKeyword;
       if (typeFilter) params.type = typeFilter;
-      const res = await api.get<any>('/suppliers', { params });
+      const res = await api.get<SupplierListResponse>('/suppliers', { params });
       setSuppliers(res.items || []);
       setTotal(res.total || 0);
-    } catch (error: any) {
-      message.error(error.message || '加载供应商失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '加载供应商失败'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, debouncedKeyword, typeFilter]);
 
   useEffect(() => {
     fetchSupplierTypes();
-  }, []);
+  }, [fetchSupplierTypes]);
 
   useEffect(() => {
     fetchSuppliers();
-  }, [page, pageSize, keyword, typeFilter]);
+  }, [fetchSuppliers]);
 
   const handleAdd = () => {
     setModalTitle('新增供应商');
@@ -132,34 +150,11 @@ export default function SuppliersPage() {
     setModalVisible(true);
   };
 
-  const downloadBlob = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
   const handleExport = async () => {
-    setExporting(true);
-    try {
-      const params: Record<string, unknown> = {};
-      if (keyword) params.keyword = keyword;
-      if (typeFilter) params.type = typeFilter;
-      const blob = await api.get<Blob>('/suppliers/export/excel', {
-        params,
-        responseType: 'blob' as any,
-      });
-      const now = new Date();
-      const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-      downloadBlob(blob, `suppliers-${datePart}.xlsx`);
-      message.success('导出成功');
-    } catch (error: any) {
-      message.error(error.message || '导出失败');
-    } finally {
-      setExporting(false);
-    }
+    const params: Record<string, unknown> = {};
+    if (keyword) params.keyword = keyword;
+    if (typeFilter) params.type = typeFilter;
+    await triggerExport(params);
   };
 
   const uploadProps: UploadProps = {
@@ -171,12 +166,7 @@ export default function SuppliersPage() {
       try {
         const formData = new FormData();
         formData.append('file', current);
-        const result = await api.post<{
-          total: number;
-          success: number;
-          failed: number;
-          errors: Array<{ row: number; message: string }>;
-        }>('/suppliers/import', formData, {
+        const result = await api.post<ImportResult>('/suppliers/import', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
         if (result.failed > 0) {
@@ -186,10 +176,10 @@ export default function SuppliersPage() {
           message.success(`导入成功：共 ${result.success} 条`);
         }
         await fetchSuppliers();
-        onSuccess?.(result as any);
-      } catch (error: any) {
-        message.error(error.response?.data?.message || error.message || '导入失败');
-        onError?.(error);
+        onSuccess?.(result);
+      } catch (error: unknown) {
+        message.error(getErrorMessage(error, '导入失败'));
+        onError?.(error as Error);
       } finally {
         setImporting(false);
       }
@@ -217,42 +207,23 @@ export default function SuppliersPage() {
       setModalVisible(false);
       setSelectedRowKeys([]);
       await fetchSuppliers();
-    } catch (error: any) {
-      message.error(error.response?.data?.message || error.message || '操作失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '操作失败'));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    try {
-      await api.delete(`/suppliers/${id}`);
-      message.success('删除成功');
+    const success = await deleteOne(id);
+    if (success) {
       setSelectedRowKeys((prev) => prev.filter((key) => key !== id));
       await fetchSuppliers();
-    } catch (error: any) {
-      message.error(error.response?.data?.message || error.message || '删除失败');
     }
   };
 
   const handleBatchDelete = async () => {
-    if (selectedRowKeys.length === 0) {
-      message.info('请先选择要删除的供应商');
-      return;
-    }
-
-    const results = await Promise.allSettled(
-      selectedRowKeys.map((id) => api.delete(`/suppliers/${id}`)),
-    );
-    const success = results.filter((result) => result.status === 'fulfilled').length;
-    const failed = selectedRowKeys.length - success;
-
-    if (success > 0) {
-      message.success(`批量删除完成：成功 ${success} 条${failed > 0 ? `，失败 ${failed} 条` : ''}`);
-    } else {
-      message.error('批量删除失败');
-    }
-
+    await deleteBatch(selectedRowKeys);
     setSelectedRowKeys([]);
     await fetchSuppliers();
   };
@@ -263,8 +234,8 @@ export default function SuppliersPage() {
     try {
       const res = await api.get<Supplier>(`/suppliers/${id}`);
       setDetailData(res);
-    } catch (error: any) {
-      message.error(error.response?.data?.message || error.message || '加载详情失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, '加载详情失败'));
       setDetailVisible(false);
       setDetailData(null);
     } finally {
@@ -368,7 +339,12 @@ export default function SuppliersPage() {
             cancelText="取消"
             disabled={selectedRowKeys.length === 0}
           >
-            <Button danger icon={<DeleteOutlined />} disabled={selectedRowKeys.length === 0}>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              loading={batchDeleting}
+              disabled={selectedRowKeys.length === 0}
+            >
               批量删除
             </Button>
           </Popconfirm>

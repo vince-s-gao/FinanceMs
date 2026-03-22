@@ -2,8 +2,7 @@
 
 // InfFinanceMs - 主布局组件（简化版）
 
-import { useState, useEffect } from 'react';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Layout, Menu, Avatar, Dropdown, Space, Typography, Spin, Badge, Popover, List, Button, message } from 'antd';
 import {
@@ -75,7 +74,7 @@ const ALL_MENU_ITEMS = [
     label: '系统管理',
     type: 'group' as const,
     children: [
-      { key: '/departments', icon: <ApartmentOutlined />, label: '部门管理' },
+      { key: '/departments', icon: <ApartmentOutlined />, label: '员工管理' },
       { key: '/permissions', icon: <SafetyOutlined />, label: '权限管理' },
       { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
       { key: '/settings/dictionaries', icon: <DatabaseOutlined />, label: '数据字典' },
@@ -106,6 +105,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationLoading, setNotificationLoading] = useState(false);
   const prefetchedRoutesRef = useRef<Set<string>>(new Set());
+  const userId = user?.id;
 
   const allowedPaths = useMemo(
     () => ROLE_MENU_CONFIG[user?.role || 'EMPLOYEE'] || ROLE_MENU_CONFIG.EMPLOYEE,
@@ -143,7 +143,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   }, [isHydrated, isAuthenticated, router]);
 
   useEffect(() => {
-    if (!isHydrated || !isAuthenticated || !user) return;
+    if (!isHydrated || !isAuthenticated || !userId) return;
 
     const loadNotifications = async () => {
       setNotificationLoading(true);
@@ -166,13 +166,13 @@ export default function MainLayout({ children }: MainLayoutProps) {
     loadNotifications();
     const timer = setInterval(loadNotifications, 30000);
     return () => clearInterval(timer);
-  }, [isHydrated, isAuthenticated, user?.id, pathname]);
+  }, [isHydrated, isAuthenticated, userId, pathname]);
 
   // 预取当前角色可访问页面，减少侧边栏切换时的等待时间
   useEffect(() => {
-    if (!isHydrated || !isAuthenticated || !user) return;
+    if (!isHydrated || !isAuthenticated || !userId) return;
     allowedPaths.slice(0, 5).forEach((path) => prefetchRoute(path));
-  }, [allowedPaths, isAuthenticated, isHydrated, prefetchRoute, user]);
+  }, [allowedPaths, isAuthenticated, isHydrated, prefetchRoute, userId]);
 
   // 处理菜单点击
   const handleMenuClick = ({ key }: { key: string }) => {

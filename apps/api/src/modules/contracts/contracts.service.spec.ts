@@ -1,10 +1,18 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { Decimal } from '@prisma/client/runtime/library';
-import { ContractsService } from './contracts.service';
-import { read as readWorkbook, utils as xlsxUtils, write as writeWorkbook } from 'xlsx';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
+import { ContractsService } from "./contracts.service";
+import {
+  read as readWorkbook,
+  utils as xlsxUtils,
+  write as writeWorkbook,
+} from "xlsx";
 
-describe('ContractsService', () => {
+describe("ContractsService", () => {
   let service: ContractsService;
   let prisma: any;
   let uploadService: any;
@@ -24,18 +32,22 @@ describe('ContractsService', () => {
         aggregate: jest.fn(),
       },
       customer: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'cus-existing' }),
+        findFirst: jest.fn().mockResolvedValue({ id: "cus-existing" }),
         findMany: jest.fn().mockResolvedValue([]),
-        create: jest.fn().mockResolvedValue({ id: 'cus-new' }),
+        create: jest.fn().mockResolvedValue({ id: "cus-new" }),
       },
       supplier: {
         findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({ id: 'sup-new' }),
+        create: jest.fn().mockResolvedValue({ id: "sup-new" }),
       },
       dictionary: {
         findMany: jest.fn().mockResolvedValue([]),
-        findFirst: jest.fn().mockResolvedValue({ code: 'ENTERPRISE' }),
-        create: jest.fn().mockResolvedValue({ code: 'AUTO_CT_000001', name: '自动类型', value: '自动类型' }),
+        findFirst: jest.fn().mockResolvedValue({ code: "ENTERPRISE" }),
+        create: jest.fn().mockResolvedValue({
+          code: "AUTO_CT_000001",
+          name: "自动类型",
+          value: "自动类型",
+        }),
       },
       contractImportLog: {
         create: jest.fn(),
@@ -47,35 +59,36 @@ describe('ContractsService', () => {
 
     uploadService = {
       getFilePath: jest.fn((fileUrl: string) => fileUrl),
+      saveFile: jest.fn(),
     };
 
     service = new ContractsService(prisma, uploadService);
   });
 
-  it('should fallback to createdAt when sortBy is invalid', async () => {
+  it("should fallback to createdAt when sortBy is invalid", async () => {
     await service.findAll({
-      sortBy: 'invalidField' as any,
-      sortOrder: 'desc',
+      sortBy: "invalidField" as any,
+      sortOrder: "desc",
     } as any);
 
     const findManyArg = prisma.contract.findMany.mock.calls[0][0];
-    expect(findManyArg.orderBy).toEqual({ createdAt: 'desc' });
+    expect(findManyArg.orderBy).toEqual({ createdAt: "desc" });
   });
 
-  it('should respect allowed sortBy field', async () => {
+  it("should respect allowed sortBy field", async () => {
     await service.findAll({
-      sortBy: 'signDate',
-      sortOrder: 'asc',
+      sortBy: "signDate",
+      sortOrder: "asc",
     } as any);
 
     const findManyArg = prisma.contract.findMany.mock.calls[0][0];
-    expect(findManyArg.orderBy).toEqual({ signDate: 'asc' });
+    expect(findManyArg.orderBy).toEqual({ signDate: "asc" });
   });
 
-  it('should use full-day range for date-only filters', async () => {
+  it("should use full-day range for date-only filters", async () => {
     await service.findAll({
-      startDate: '2026-03-01',
-      endDate: '2026-03-31',
+      startDate: "2026-03-01",
+      endDate: "2026-03-31",
     } as any);
 
     const where = prisma.contract.findMany.mock.calls[0][0].where;
@@ -93,16 +106,16 @@ describe('ContractsService', () => {
     expect(where.signDate.lte.getMilliseconds()).toBe(999);
   });
 
-  it('should build all optional filters in findAll', async () => {
+  it("should build all optional filters in findAll", async () => {
     await service.findAll({
-      keyword: '测试',
-      customerKeyword: '客户A',
+      keyword: "测试",
+      customerKeyword: "客户A",
       signYear: 2026,
-      contractType: 'SERVICE',
-      status: 'DRAFT',
-      customerId: 'cus-1',
-      startDate: '2026-03-01',
-      endDate: '2026-03-31',
+      contractType: "SERVICE",
+      status: "DRAFT",
+      customerId: "cus-1",
+      startDate: "2026-03-01",
+      endDate: "2026-03-31",
       page: 2,
       pageSize: 5,
     } as any);
@@ -110,30 +123,30 @@ describe('ContractsService', () => {
     const callArg = prisma.contract.findMany.mock.calls[0][0];
     expect(callArg.where.OR).toBeDefined();
     expect(callArg.where.customer).toEqual({
-      name: { contains: '客户A', mode: 'insensitive' },
+      name: { contains: "客户A", mode: "insensitive" },
     });
-    expect(callArg.where.contractType).toBe('SERVICE');
-    expect(callArg.where.status).toBe('DRAFT');
-    expect(callArg.where.customerId).toBe('cus-1');
+    expect(callArg.where.contractType).toBe("SERVICE");
+    expect(callArg.where.status).toBe("DRAFT");
+    expect(callArg.where.customerId).toBe("cus-1");
     expect(callArg.where.signDate.gte).toBeInstanceOf(Date);
     expect(callArg.where.signDate.lte).toBeInstanceOf(Date);
     expect(callArg.skip).toBe(5);
     expect(callArg.take).toBe(5);
   });
 
-  it('should aggregate payment and return receivable correctly', async () => {
+  it("should aggregate payment and return receivable correctly", async () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
-        id: 'c1',
+        id: "c1",
         amountWithTax: new Decimal(1000),
-        customer: { id: 'u1', name: '客户A', code: 'CUS000001' },
+        customer: { id: "u1", name: "客户A", code: "CUS000001" },
         _count: { paymentRecords: 1, invoices: 0 },
       },
     ]);
     prisma.contract.count.mockResolvedValueOnce(1);
     prisma.paymentRecord.groupBy.mockResolvedValueOnce([
       {
-        contractId: 'c1',
+        contractId: "c1",
         _sum: { amount: new Decimal(400) },
       },
     ]);
@@ -142,39 +155,39 @@ describe('ContractsService', () => {
 
     expect(result.total).toBe(1);
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].totalPaid.toString()).toBe('400');
-    expect(result.items[0].receivable.toString()).toBe('600');
+    expect(result.items[0].totalPaid.toString()).toBe("400");
+    expect(result.items[0].receivable.toString()).toBe("600");
   });
 
-  it('should fallback grouped null payment amount to zero in findAll', async () => {
+  it("should fallback grouped null payment amount to zero in findAll", async () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
-        id: 'c-null',
+        id: "c-null",
         amountWithTax: new Decimal(100),
-        customer: { id: 'u1', name: '客户A', code: 'CUS000001' },
+        customer: { id: "u1", name: "客户A", code: "CUS000001" },
         _count: { paymentRecords: 0, invoices: 0 },
       },
     ]);
     prisma.contract.count.mockResolvedValueOnce(1);
     prisma.paymentRecord.groupBy.mockResolvedValueOnce([
       {
-        contractId: 'c-null',
+        contractId: "c-null",
         _sum: { amount: null },
       },
     ]);
 
     const result = await service.findAll({} as any);
 
-    expect(result.items[0].totalPaid.toString()).toBe('0');
-    expect(result.items[0].receivable.toString()).toBe('100');
+    expect(result.items[0].totalPaid.toString()).toBe("0");
+    expect(result.items[0].receivable.toString()).toBe("100");
   });
 
-  it('should fallback missing grouped payment row to zero in findAll', async () => {
+  it("should fallback missing grouped payment row to zero in findAll", async () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
-        id: 'c-miss',
+        id: "c-miss",
         amountWithTax: new Decimal(300),
-        customer: { id: 'u1', name: '客户A', code: 'CUS000001' },
+        customer: { id: "u1", name: "客户A", code: "CUS000001" },
         _count: { paymentRecords: 0, invoices: 0 },
       },
     ]);
@@ -183,120 +196,134 @@ describe('ContractsService', () => {
 
     const result = await service.findAll({} as any);
 
-    expect(result.items[0].totalPaid.toString()).toBe('0');
-    expect(result.items[0].receivable.toString()).toBe('300');
+    expect(result.items[0].totalPaid.toString()).toBe("0");
+    expect(result.items[0].receivable.toString()).toBe("300");
   });
 
-  it('should throw when findOne contract does not exist', async () => {
+  it("should throw when findOne contract does not exist", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce(null);
 
-    await expect(service.findOne('missing')).rejects.toThrow(NotFoundException);
+    await expect(service.findOne("missing")).rejects.toThrow(NotFoundException);
   });
 
-  it('should calculate summary in findOne', async () => {
+  it("should calculate summary in findOne", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
-      id: 'c1',
+      id: "c1",
       amountWithTax: new Decimal(1000),
-      paymentRecords: [{ amount: new Decimal(200) }, { amount: new Decimal(300) }],
+      paymentRecords: [
+        { amount: new Decimal(200) },
+        { amount: new Decimal(300) },
+      ],
       invoices: [
-        { status: 'ISSUED', amount: new Decimal(100) },
-        { status: 'VOIDED', amount: new Decimal(20) },
+        { status: "ISSUED", amount: new Decimal(100) },
+        { status: "VOIDED", amount: new Decimal(20) },
       ],
     });
 
-    const result = await service.findOne('c1');
+    const result = await service.findOne("c1");
 
-    expect(result.summary.totalPaid.toString()).toBe('500');
-    expect(result.summary.receivable.toString()).toBe('500');
-    expect(result.summary.totalInvoiced.toString()).toBe('100');
-    expect(result.summary.uninvoiced.toString()).toBe('400');
-    expect(result.summary.paymentProgress).toBe('50.00');
+    expect(result.summary.totalPaid.toString()).toBe("500");
+    expect(result.summary.receivable.toString()).toBe("500");
+    expect(result.summary.totalInvoiced.toString()).toBe("100");
+    expect(result.summary.uninvoiced.toString()).toBe("400");
+    expect(result.summary.paymentProgress).toBe("50.00");
   });
 
-  it('should reject create when customer does not exist', async () => {
-    prisma.customer.findFirst.mockResolvedValueOnce(null);
+  it("should reject create when customer does not exist", async () => {
+    prisma.customer.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
 
     await expect(
       service.create({
-        customerId: 'missing',
-        signDate: '2026-03-01',
+        customerId: "missing",
+        signDate: "2026-03-01",
       } as any),
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('should create contract with custom contractNo', async () => {
-    prisma.customer.findFirst.mockResolvedValueOnce({ id: 'cus1', name: '测试客户' });
-    prisma.contract.create.mockResolvedValueOnce({ id: 'c1' });
+  it("should create contract with custom contractNo", async () => {
+    prisma.customer.findFirst.mockResolvedValueOnce({
+      id: "cus1",
+      name: "测试客户",
+    });
+    prisma.contract.create.mockResolvedValueOnce({ id: "c1" });
 
     await service.create({
-      contractNo: 'CUSTOM-001',
-      customerId: 'cus1',
-      name: '测试合同',
+      contractNo: "CUSTOM-001",
+      customerId: "cus1",
+      name: "测试合同",
       amountWithTax: new Decimal(1000),
-      signDate: '2026-03-01',
-      startDate: '2026-03-02',
-      endDate: '2026-12-31',
+      signDate: "2026-03-01",
+      startDate: "2026-03-02",
+      endDate: "2026-12-31",
     } as any);
 
     expect(prisma.contract.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          contractNo: 'CUSTOM-001',
-          customerId: 'cus1',
+          contractNo: "CUSTOM-001",
+          customerId: "cus1",
         }),
       }),
     );
   });
 
-  it('should sync counterparty to supplier list for non-sales contract on create', async () => {
-    prisma.customer.findFirst.mockResolvedValueOnce({ id: 'cus1', name: '对方主体A' });
-    prisma.contract.create.mockResolvedValueOnce({ id: 'c-sup-sync' });
+  it("should sync counterparty to supplier list for non-sales contract on create", async () => {
+    prisma.customer.findFirst.mockResolvedValueOnce({
+      id: "cus1",
+      name: "对方主体A",
+    });
+    prisma.contract.create.mockResolvedValueOnce({ id: "c-sup-sync" });
 
     await service.create({
-      contractNo: 'CUSTOM-SUP-001',
-      customerId: 'cus1',
-      name: '采购合同A',
-      contractType: 'PURCHASE',
+      contractNo: "CUSTOM-SUP-001",
+      customerId: "cus1",
+      name: "采购合同A",
+      contractType: "PURCHASE",
       amountWithTax: new Decimal(1000),
-      signDate: '2026-03-01',
+      signDate: "2026-03-01",
     } as any);
 
     expect(prisma.supplier.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          name: '对方主体A',
-          type: 'CORPORATE',
+          name: "对方主体A",
+          type: "CORPORATE",
         }),
       }),
     );
   });
 
-  it('should not sync supplier for sales contract on create', async () => {
-    prisma.customer.findFirst.mockResolvedValueOnce({ id: 'cus1', name: '销售客户A' });
-    prisma.contract.create.mockResolvedValueOnce({ id: 'c-sales-sync' });
+  it("should not sync supplier for sales contract on create", async () => {
+    prisma.customer.findFirst.mockResolvedValueOnce({
+      id: "cus1",
+      name: "销售客户A",
+    });
+    prisma.contract.create.mockResolvedValueOnce({ id: "c-sales-sync" });
 
     await service.create({
-      contractNo: 'CUSTOM-SALES-001',
-      customerId: 'cus1',
-      name: '销售合同A',
-      contractType: 'SALES',
+      contractNo: "CUSTOM-SALES-001",
+      customerId: "cus1",
+      name: "销售合同A",
+      contractType: "SALES",
       amountWithTax: new Decimal(1000),
-      signDate: '2026-03-01',
+      signDate: "2026-03-01",
     } as any);
 
     expect(prisma.supplier.create).not.toHaveBeenCalled();
   });
 
-  it('should create contract with null optional dates when not provided', async () => {
-    prisma.customer.findFirst.mockResolvedValueOnce({ id: 'cus1' });
-    prisma.contract.create.mockResolvedValueOnce({ id: 'c2' });
+  it("should create contract with null optional dates when not provided", async () => {
+    prisma.customer.findFirst.mockResolvedValueOnce({ id: "cus1" });
+    prisma.contract.create.mockResolvedValueOnce({ id: "c2" });
 
     await service.create({
-      contractNo: 'CUSTOM-002',
-      customerId: 'cus1',
-      name: '无可选日期合同',
+      contractNo: "CUSTOM-002",
+      customerId: "cus1",
+      name: "无可选日期合同",
       amountWithTax: new Decimal(1000),
-      signDate: '2026-03-01',
+      signDate: "2026-03-01",
     } as any);
 
     const data = prisma.contract.create.mock.calls[0][0].data;
@@ -304,90 +331,112 @@ describe('ContractsService', () => {
     expect(data.endDate).toBeNull();
   });
 
-  it('should throw conflict when contractNo already exists', async () => {
-    prisma.customer.findFirst.mockResolvedValueOnce({ id: 'cus1' });
-    const conflictError = Object.create((Prisma as any).PrismaClientKnownRequestError.prototype);
-    conflictError.code = 'P2002';
-    conflictError.meta = { target: ['contractNo'] };
+  it("should throw conflict when contractNo already exists", async () => {
+    prisma.customer.findFirst.mockResolvedValueOnce({ id: "cus1" });
+    const conflictError = Object.create(
+      (Prisma as any).PrismaClientKnownRequestError.prototype,
+    );
+    conflictError.code = "P2002";
+    conflictError.meta = { target: ["contractNo"] };
     prisma.contract.create.mockRejectedValueOnce(conflictError);
 
     await expect(
       service.create({
-        contractNo: 'CUSTOM-003',
-        customerId: 'cus1',
-        name: '重复编号合同',
+        contractNo: "CUSTOM-003",
+        customerId: "cus1",
+        name: "重复编号合同",
         amountWithTax: new Decimal(100),
-        signDate: '2026-03-01',
+        signDate: "2026-03-01",
       } as any),
-    ).rejects.toThrow('合同编号已存在');
+    ).rejects.toThrow("合同编号已存在");
   });
 
-  it('should throw original error when create fails with non-contractNo conflict', async () => {
-    prisma.customer.findFirst.mockResolvedValueOnce({ id: 'cus1' });
-    const originalError = new Error('db unavailable');
+  it("should throw original error when create fails with non-contractNo conflict", async () => {
+    prisma.customer.findFirst.mockResolvedValueOnce({ id: "cus1" });
+    const originalError = new Error("db unavailable");
     prisma.contract.create.mockRejectedValueOnce(originalError);
 
     await expect(
       service.create({
-        contractNo: 'CUSTOM-004',
-        customerId: 'cus1',
-        name: '异常合同',
+        contractNo: "CUSTOM-004",
+        customerId: "cus1",
+        name: "异常合同",
         amountWithTax: new Decimal(100),
-        signDate: '2026-03-01',
+        signDate: "2026-03-01",
       } as any),
-    ).rejects.toThrow('db unavailable');
+    ).rejects.toThrow("db unavailable");
   });
 
-  it('should evaluate isUniqueConflict helper branches', () => {
-    expect((service as any).isUniqueConflict(new Error('x'), 'contractNo')).toBe(false);
-    const wrongCodeError = Object.create((Prisma as any).PrismaClientKnownRequestError.prototype);
-    wrongCodeError.code = 'P2025';
-    wrongCodeError.meta = { target: ['contractNo'] };
-    expect((service as any).isUniqueConflict(wrongCodeError, 'contractNo')).toBe(false);
+  it("should evaluate isUniqueConflict helper branches", () => {
+    expect(
+      (service as any).isUniqueConflict(new Error("x"), "contractNo"),
+    ).toBe(false);
+    const wrongCodeError = Object.create(
+      (Prisma as any).PrismaClientKnownRequestError.prototype,
+    );
+    wrongCodeError.code = "P2025";
+    wrongCodeError.meta = { target: ["contractNo"] };
+    expect(
+      (service as any).isUniqueConflict(wrongCodeError, "contractNo"),
+    ).toBe(false);
 
-    const wrongTargetError = Object.create((Prisma as any).PrismaClientKnownRequestError.prototype);
-    wrongTargetError.code = 'P2002';
-    wrongTargetError.meta = { target: ['name'] };
-    expect((service as any).isUniqueConflict(wrongTargetError, 'contractNo')).toBe(false);
+    const wrongTargetError = Object.create(
+      (Prisma as any).PrismaClientKnownRequestError.prototype,
+    );
+    wrongTargetError.code = "P2002";
+    wrongTargetError.meta = { target: ["name"] };
+    expect(
+      (service as any).isUniqueConflict(wrongTargetError, "contractNo"),
+    ).toBe(false);
 
-    const missingMetaError = Object.create((Prisma as any).PrismaClientKnownRequestError.prototype);
-    missingMetaError.code = 'P2002';
-    expect((service as any).isUniqueConflict(missingMetaError, 'contractNo')).toBe(false);
+    const missingMetaError = Object.create(
+      (Prisma as any).PrismaClientKnownRequestError.prototype,
+    );
+    missingMetaError.code = "P2002";
+    expect(
+      (service as any).isUniqueConflict(missingMetaError, "contractNo"),
+    ).toBe(false);
 
-    const conflictError = Object.create((Prisma as any).PrismaClientKnownRequestError.prototype);
-    conflictError.code = 'P2002';
-    conflictError.meta = { target: ['contractNo'] };
-    expect((service as any).isUniqueConflict(conflictError, 'contractNo')).toBe(true);
+    const conflictError = Object.create(
+      (Prisma as any).PrismaClientKnownRequestError.prototype,
+    );
+    conflictError.code = "P2002";
+    conflictError.meta = { target: ["contractNo"] };
+    expect((service as any).isUniqueConflict(conflictError, "contractNo")).toBe(
+      true,
+    );
   });
 
-  it('should reject update when contract is not draft', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValueOnce({
-      id: 'c1',
-      status: 'EXECUTING',
+  it("should reject update when contract is not draft", async () => {
+    jest.spyOn(service, "findOne").mockResolvedValueOnce({
+      id: "c1",
+      status: "EXECUTING",
     } as any);
 
-    await expect(service.update('c1', { name: 'x' } as any)).rejects.toThrow(BadRequestException);
+    await expect(service.update("c1", { name: "x" } as any)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
-  it('should update draft contract with normalized dates', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValueOnce({
-      id: 'c1',
-      status: 'DRAFT',
+  it("should update draft contract with normalized dates", async () => {
+    jest.spyOn(service, "findOne").mockResolvedValueOnce({
+      id: "c1",
+      status: "DRAFT",
     } as any);
-    prisma.contract.update.mockResolvedValueOnce({ id: 'c1' });
+    prisma.contract.update.mockResolvedValueOnce({ id: "c1" });
 
-    await service.update('c1', {
-      name: 'updated',
-      signDate: '2026-03-01',
-      startDate: '2026-03-02',
-      endDate: '2026-12-31',
+    await service.update("c1", {
+      name: "updated",
+      signDate: "2026-03-01",
+      startDate: "2026-03-02",
+      endDate: "2026-12-31",
     } as any);
 
     expect(prisma.contract.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'c1' },
+        where: { id: "c1" },
         data: expect.objectContaining({
-          name: 'updated',
+          name: "updated",
           signDate: expect.any(Date),
           startDate: expect.any(Date),
           endDate: expect.any(Date),
@@ -396,15 +445,15 @@ describe('ContractsService', () => {
     );
   });
 
-  it('should keep dates undefined when update dto omits date fields', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValueOnce({
-      id: 'c1',
-      status: 'DRAFT',
+  it("should keep dates undefined when update dto omits date fields", async () => {
+    jest.spyOn(service, "findOne").mockResolvedValueOnce({
+      id: "c1",
+      status: "DRAFT",
     } as any);
-    prisma.contract.update.mockResolvedValueOnce({ id: 'c1' });
+    prisma.contract.update.mockResolvedValueOnce({ id: "c1" });
 
-    await service.update('c1', {
-      name: 'only-name',
+    await service.update("c1", {
+      name: "only-name",
     } as any);
 
     const data = prisma.contract.update.mock.calls[0][0].data;
@@ -413,201 +462,209 @@ describe('ContractsService', () => {
     expect(data.endDate).toBeUndefined();
   });
 
-  it('should allow admin to update non-draft contract', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValueOnce({
-      id: 'c1',
-      status: 'EXECUTING',
+  it("should allow admin to update non-draft contract", async () => {
+    jest.spyOn(service, "findOne").mockResolvedValueOnce({
+      id: "c1",
+      status: "EXECUTING",
     } as any);
-    prisma.contract.update.mockResolvedValueOnce({ id: 'c1', status: 'EXECUTING' });
+    prisma.contract.update.mockResolvedValueOnce({
+      id: "c1",
+      status: "EXECUTING",
+    });
 
-    await service.update('c1', { name: 'admin-updated' } as any, { allowNonDraft: true });
+    await service.update("c1", { name: "admin-updated" } as any, {
+      allowNonDraft: true,
+    });
 
     expect(prisma.contract.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'c1' },
-        data: expect.objectContaining({ name: 'admin-updated' }),
+        where: { id: "c1" },
+        data: expect.objectContaining({ name: "admin-updated" }),
       }),
     );
   });
 
-  it('should reject invalid status transition', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValueOnce({
-      id: 'c1',
-      status: 'DRAFT',
+  it("should reject invalid status transition", async () => {
+    jest.spyOn(service, "findOne").mockResolvedValueOnce({
+      id: "c1",
+      status: "DRAFT",
     } as any);
 
-    await expect(service.changeStatus('c1', { status: 'COMPLETED' } as any)).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      service.changeStatus("c1", { status: "COMPLETED" } as any),
+    ).rejects.toThrow(BadRequestException);
   });
 
-  it('should change status with valid transition', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValueOnce({
-      id: 'c1',
-      status: 'DRAFT',
+  it("should change status with valid transition", async () => {
+    jest.spyOn(service, "findOne").mockResolvedValueOnce({
+      id: "c1",
+      status: "DRAFT",
     } as any);
-    prisma.contract.update.mockResolvedValueOnce({ id: 'c1', status: 'EXECUTING' });
+    prisma.contract.update.mockResolvedValueOnce({
+      id: "c1",
+      status: "EXECUTING",
+    });
 
-    await service.changeStatus('c1', { status: 'EXECUTING' } as any);
+    await service.changeStatus("c1", { status: "EXECUTING" } as any);
 
     expect(prisma.contract.update).toHaveBeenCalledWith({
-      where: { id: 'c1' },
-      data: { status: 'EXECUTING' },
+      where: { id: "c1" },
+      data: { status: "EXECUTING" },
     });
   });
 
-  it('should reject remove when contract is not draft', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValueOnce({
-      id: 'c1',
-      status: 'EXECUTING',
+  it("should reject remove when contract is not draft", async () => {
+    jest.spyOn(service, "findOne").mockResolvedValueOnce({
+      id: "c1",
+      status: "EXECUTING",
     } as any);
 
-    await expect(service.remove('c1')).rejects.toThrow(BadRequestException);
+    await expect(service.remove("c1")).rejects.toThrow(BadRequestException);
   });
 
-  it('should soft delete draft contract', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValueOnce({
-      id: 'c1',
-      status: 'DRAFT',
+  it("should soft delete draft contract", async () => {
+    jest.spyOn(service, "findOne").mockResolvedValueOnce({
+      id: "c1",
+      status: "DRAFT",
     } as any);
-    prisma.contract.update.mockResolvedValueOnce({ id: 'c1', isDeleted: true });
+    prisma.contract.update.mockResolvedValueOnce({ id: "c1", isDeleted: true });
 
-    await service.remove('c1');
+    await service.remove("c1");
 
     expect(prisma.contract.update).toHaveBeenCalledWith({
-      where: { id: 'c1' },
+      where: { id: "c1" },
       data: { isDeleted: true },
     });
   });
 
-  it('should allow admin to remove non-draft contract', async () => {
-    jest.spyOn(service, 'findOne').mockResolvedValueOnce({
-      id: 'c1',
-      status: 'EXECUTING',
+  it("should allow admin to remove non-draft contract", async () => {
+    jest.spyOn(service, "findOne").mockResolvedValueOnce({
+      id: "c1",
+      status: "EXECUTING",
     } as any);
-    prisma.contract.update.mockResolvedValueOnce({ id: 'c1', isDeleted: true });
+    prisma.contract.update.mockResolvedValueOnce({ id: "c1", isDeleted: true });
 
-    await service.remove('c1', { allowNonDraft: true });
+    await service.remove("c1", { allowNonDraft: true });
 
     expect(prisma.contract.update).toHaveBeenCalledWith({
-      where: { id: 'c1' },
+      where: { id: "c1" },
       data: { isDeleted: true },
     });
   });
 
-  it('should skip reconcile when contract is missing', async () => {
+  it("should skip reconcile when contract is missing", async () => {
     prisma.contract.findUnique.mockResolvedValueOnce(null);
 
-    await service.reconcileContractStatus('c1');
+    await service.reconcileContractStatus("c1");
 
     expect(prisma.contract.update).not.toHaveBeenCalled();
   });
 
-  it('should skip reconcile when contract status is not EXECUTING/COMPLETED', async () => {
+  it("should skip reconcile when contract status is not EXECUTING/COMPLETED", async () => {
     prisma.contract.findUnique.mockResolvedValueOnce({
-      id: 'c1',
-      status: 'TERMINATED',
+      id: "c1",
+      status: "TERMINATED",
       amountWithTax: new Decimal(1000),
     });
 
-    await service.reconcileContractStatus('c1');
+    await service.reconcileContractStatus("c1");
 
     expect(prisma.paymentRecord.aggregate).not.toHaveBeenCalled();
     expect(prisma.contract.update).not.toHaveBeenCalled();
   });
 
-  it('should set status to COMPLETED when paid amount reaches contract amount', async () => {
+  it("should set status to COMPLETED when paid amount reaches contract amount", async () => {
     prisma.contract.findUnique.mockResolvedValueOnce({
-      id: 'c1',
-      status: 'EXECUTING',
+      id: "c1",
+      status: "EXECUTING",
       amountWithTax: new Decimal(1000),
     });
     prisma.paymentRecord.aggregate.mockResolvedValueOnce({
       _sum: { amount: new Decimal(1000) },
     });
 
-    await service.reconcileContractStatus('c1');
+    await service.reconcileContractStatus("c1");
 
     expect(prisma.contract.update).toHaveBeenCalledWith({
-      where: { id: 'c1' },
-      data: { status: 'COMPLETED' },
+      where: { id: "c1" },
+      data: { status: "COMPLETED" },
     });
   });
 
-  it('should set status to EXECUTING when completed contract is underpaid', async () => {
+  it("should set status to EXECUTING when completed contract is underpaid", async () => {
     prisma.contract.findUnique.mockResolvedValueOnce({
-      id: 'c1',
-      status: 'COMPLETED',
+      id: "c1",
+      status: "COMPLETED",
       amountWithTax: new Decimal(1000),
     });
     prisma.paymentRecord.aggregate.mockResolvedValueOnce({
       _sum: { amount: new Decimal(200) },
     });
 
-    await service.reconcileContractStatus('c1');
+    await service.reconcileContractStatus("c1");
 
     expect(prisma.contract.update).toHaveBeenCalledWith({
-      where: { id: 'c1' },
-      data: { status: 'EXECUTING' },
+      where: { id: "c1" },
+      data: { status: "EXECUTING" },
     });
   });
 
-  it('should skip update when reconcile status result is unchanged', async () => {
+  it("should skip update when reconcile status result is unchanged", async () => {
     prisma.contract.findUnique.mockResolvedValueOnce({
-      id: 'c1',
-      status: 'EXECUTING',
+      id: "c1",
+      status: "EXECUTING",
       amountWithTax: new Decimal(1000),
     });
     prisma.paymentRecord.aggregate.mockResolvedValueOnce({
       _sum: { amount: new Decimal(500) },
     });
 
-    await service.reconcileContractStatus('c1');
+    await service.reconcileContractStatus("c1");
 
     expect(prisma.contract.update).not.toHaveBeenCalled();
   });
 
-  it('should treat null aggregate amount as zero in reconcileContractStatus', async () => {
+  it("should treat null aggregate amount as zero in reconcileContractStatus", async () => {
     prisma.contract.findUnique.mockResolvedValueOnce({
-      id: 'c1',
-      status: 'COMPLETED',
+      id: "c1",
+      status: "COMPLETED",
       amountWithTax: new Decimal(1000),
     });
     prisma.paymentRecord.aggregate.mockResolvedValueOnce({
       _sum: { amount: null },
     });
 
-    await service.reconcileContractStatus('c1');
+    await service.reconcileContractStatus("c1");
 
     expect(prisma.contract.update).toHaveBeenCalledWith({
-      where: { id: 'c1' },
-      data: { status: 'EXECUTING' },
+      where: { id: "c1" },
+      data: { status: "EXECUTING" },
     });
   });
 
-  it('should proxy checkAndCompleteContract to reconcileContractStatus', async () => {
+  it("should proxy checkAndCompleteContract to reconcileContractStatus", async () => {
     const reconcileSpy = jest
-      .spyOn(service, 'reconcileContractStatus')
+      .spyOn(service, "reconcileContractStatus")
       .mockResolvedValueOnce(undefined);
 
-    await service.checkAndCompleteContract('c1');
+    await service.checkAndCompleteContract("c1");
 
-    expect(reconcileSpy).toHaveBeenCalledWith('c1');
+    expect(reconcileSpy).toHaveBeenCalledWith("c1");
   });
 
-  it('should export contracts csv with required headers', async () => {
-    jest.spyOn(service, 'findAll').mockResolvedValueOnce({
+  it("should export contracts csv with required headers", async () => {
+    jest.spyOn(service, "findAll").mockResolvedValueOnce({
       items: [
         {
-          contractNo: 'HT202603-0001',
-          signDate: new Date('2026-03-18'),
-          name: '测试合同',
-          customer: { name: '测试客户' },
-          signingEntity: 'InfFinanceMs',
-          contractType: 'SERVICE',
+          contractNo: "HT202603-0001",
+          signDate: new Date("2026-03-18"),
+          name: "测试合同",
+          customer: { name: "测试客户" },
+          signingEntity: "InfFinanceMs",
+          contractType: "SERVICE",
           amountWithTax: new Decimal(1000),
-          endDate: new Date('2026-12-31'),
-          status: 'EXECUTING',
+          endDate: new Date("2026-12-31"),
+          status: "EXECUTING",
         },
       ],
       total: 1,
@@ -616,28 +673,28 @@ describe('ContractsService', () => {
       totalPages: 1,
     } as any);
 
-    const csv = await service.exportCsv({ keyword: '测试' } as any);
+    const csv = await service.exportCsv({ keyword: "测试" } as any);
 
-    expect(csv).toContain('合同编号');
-    expect(csv).toContain('签约年份');
-    expect(csv).toContain('测试合同');
-    expect(csv).toContain('InfFinanceMs');
-    expect(csv).toContain('执行中');
+    expect(csv).toContain("合同编号");
+    expect(csv).toContain("签约年份");
+    expect(csv).toContain("测试合同");
+    expect(csv).toContain("InfFinanceMs");
+    expect(csv).toContain("执行中");
   });
 
-  it('should export contracts excel with required headers', async () => {
-    jest.spyOn(service, 'findAll').mockResolvedValueOnce({
+  it("should export contracts excel with required headers", async () => {
+    jest.spyOn(service, "findAll").mockResolvedValueOnce({
       items: [
         {
-          contractNo: 'HT202603-0001',
-          signDate: new Date('2026-03-18'),
-          name: '测试合同',
-          customer: { name: '测试客户' },
-          signingEntity: 'InfFinanceMs',
-          contractType: 'SERVICE',
+          contractNo: "HT202603-0001",
+          signDate: new Date("2026-03-18"),
+          name: "测试合同",
+          customer: { name: "测试客户" },
+          signingEntity: "InfFinanceMs",
+          contractType: "SERVICE",
           amountWithTax: new Decimal(1000),
-          endDate: new Date('2026-12-31'),
-          status: 'EXECUTING',
+          endDate: new Date("2026-12-31"),
+          status: "EXECUTING",
         },
       ],
       total: 1,
@@ -646,35 +703,35 @@ describe('ContractsService', () => {
       totalPages: 1,
     } as any);
 
-    const buffer = await service.exportExcel({ keyword: '测试' } as any);
-    const wb = readWorkbook(buffer, { type: 'buffer' });
+    const buffer = await service.exportExcel({ keyword: "测试" } as any);
+    const wb = readWorkbook(buffer, { type: "buffer" });
     const rows = xlsxUtils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
       header: 1,
       raw: false,
     }) as any[][];
 
-    expect(rows[0]).toContain('合同编号');
-    expect(rows[0]).toContain('签约年份');
-    expect(rows[1]).toContain('测试合同');
-    expect(rows[1]).toContain('InfFinanceMs');
-    expect(rows[1]).toContain('执行中');
+    expect(rows[0]).toContain("合同编号");
+    expect(rows[0]).toContain("签约年份");
+    expect(rows[1]).toContain("测试合同");
+    expect(rows[1]).toContain("InfFinanceMs");
+    expect(rows[1]).toContain("执行中");
   });
 
-  it('should import contracts from csv and return summary', async () => {
+  it("should import contracts from csv and return summary", async () => {
     prisma.dictionary.findMany.mockResolvedValueOnce([
-      { code: 'SERVICE', name: '服务合同' },
+      { code: "SERVICE", name: "服务合同" },
     ]);
     prisma.customer.findMany.mockResolvedValueOnce([
-      { id: 'cus-1', name: '测试客户' },
+      { id: "cus-1", name: "测试客户" },
     ]);
-    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import' } as any);
+    jest.spyOn(service, "create").mockResolvedValue({ id: "c-import" } as any);
 
     const csv = Buffer.from(
       [
-        '合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
-        'HT-IMPORT-001,导入合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
-      ].join('\n'),
-      'utf-8',
+        "合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期",
+        "HT-IMPORT-001,导入合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31",
+      ].join("\n"),
+      "utf-8",
     );
 
     const result = await service.importCsv(csv);
@@ -689,7 +746,7 @@ describe('ContractsService', () => {
     expect(prisma.contractImportLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          fileName: 'contracts-import.csv',
+          fileName: "contracts-import.csv",
           total: 1,
           success: 1,
           failed: 0,
@@ -699,24 +756,30 @@ describe('ContractsService', () => {
     );
   });
 
-  it('should auto create missing customer during contract import', async () => {
-    prisma.dictionary.findMany.mockResolvedValueOnce([{ code: 'SERVICE', name: '服务合同' }]);
+  it("should auto create missing customer during contract import", async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: "SALES", name: "销售合同" },
+    ]);
     prisma.dictionary.findFirst
-      .mockResolvedValueOnce({ code: 'ENTERPRISE' })
+      .mockResolvedValueOnce({ code: "ENTERPRISE" })
       .mockResolvedValueOnce({ sortOrder: 4 });
-    prisma.customer.findFirst.mockResolvedValueOnce(null);
-    prisma.customer.create.mockResolvedValueOnce({ id: 'cus-auto' });
-    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import-auto' } as any);
+    prisma.customer.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prisma.customer.create.mockResolvedValueOnce({ id: "cus-auto" });
+    jest
+      .spyOn(service, "create")
+      .mockResolvedValue({ id: "c-import-auto" } as any);
 
     const csv = Buffer.from(
       [
-        '合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
-        'HT-IMPORT-002,导入合同AutoCustomer,新创建客户A,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
-      ].join('\n'),
-      'utf-8',
+        "合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期",
+        "HT-IMPORT-002,导入合同AutoCustomer,新创建客户A,InfFinanceMs,销售合同,1000,2026-03-18,2026-12-31",
+      ].join("\n"),
+      "utf-8",
     );
 
-    const result = await service.importCsv(csv, { operatorId: 'u-1' });
+    const result = await service.importCsv(csv, { operatorId: "u-1" });
 
     expect(result.total).toBe(1);
     expect(result.success).toBe(1);
@@ -724,39 +787,47 @@ describe('ContractsService', () => {
     expect(prisma.customer.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          name: '新创建客户A',
-          type: 'ENTERPRISE',
-          submittedBy: 'u-1',
-          approvalStatus: 'PENDING',
+          name: "新创建客户A",
+          type: "ENTERPRISE",
+          submittedBy: "u-1",
+          approvalStatus: "PENDING",
         }),
       }),
     );
     expect(service.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        customerId: 'cus-auto',
-        name: '导入合同AutoCustomer',
+        customerId: "cus-auto",
+        name: "导入合同AutoCustomer",
       }),
     );
   });
 
-  it('should auto create missing contract type during import', async () => {
-    prisma.dictionary.findMany.mockResolvedValueOnce([{ code: 'SERVICE', name: '服务合同' }]);
+  it("should auto create missing contract type during import", async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: "SERVICE", name: "服务合同" },
+    ]);
     prisma.dictionary.findFirst
-      .mockResolvedValueOnce({ code: 'ENTERPRISE' })
+      .mockResolvedValueOnce({ code: "ENTERPRISE" })
       .mockResolvedValueOnce({ sortOrder: 4 })
       .mockResolvedValueOnce(null);
-    prisma.dictionary.create.mockResolvedValueOnce({ code: 'NDA', name: 'NDA', value: 'NDA' });
-    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import-nda' } as any);
+    prisma.dictionary.create.mockResolvedValueOnce({
+      code: "NDA",
+      name: "NDA",
+      value: "NDA",
+    });
+    jest
+      .spyOn(service, "create")
+      .mockResolvedValue({ id: "c-import-nda" } as any);
 
     const csv = Buffer.from(
       [
-        '合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
-        'HT-IMPORT-003,导入合同AutoType,测试客户,InfFinanceMs,NDA,1000,2026-03-18,2026-12-31',
-      ].join('\n'),
-      'utf-8',
+        "合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期",
+        "HT-IMPORT-003,导入合同AutoType,测试客户,InfFinanceMs,NDA,1000,2026-03-18,2026-12-31",
+      ].join("\n"),
+      "utf-8",
     );
 
-    const result = await service.importCsv(csv, { operatorId: 'u-1' });
+    const result = await service.importCsv(csv, { operatorId: "u-1" });
 
     expect(result.total).toBe(1);
     expect(result.success).toBe(1);
@@ -764,62 +835,99 @@ describe('ContractsService', () => {
     expect(prisma.dictionary.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          type: 'CONTRACT_TYPE',
-          code: 'NDA',
-          name: 'NDA',
-          value: 'NDA',
+          type: "CONTRACT_TYPE",
+          code: "NDA",
+          name: "NDA",
+          value: "NDA",
           isEnabled: true,
         }),
       }),
     );
     expect(service.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: '导入合同AutoType',
-        contractType: 'NDA',
+        name: "导入合同AutoType",
+        contractType: "NDA",
       }),
     );
   });
 
-  it('should accept tolerant header names like 签署日期（必填）', async () => {
-    prisma.dictionary.findMany.mockResolvedValueOnce([{ code: 'SERVICE', name: '服务合同' }]);
-    prisma.customer.findMany.mockResolvedValueOnce([{ id: 'cus-1', name: '测试客户' }]);
-    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import-header-variant' } as any);
+  it("should accept tolerant header names like 签署日期（必填）", async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: "SERVICE", name: "服务合同" },
+    ]);
+    prisma.customer.findMany.mockResolvedValueOnce([
+      { id: "cus-1", name: "测试客户" },
+    ]);
+    jest
+      .spyOn(service, "create")
+      .mockResolvedValue({ id: "c-import-header-variant" } as any);
 
     const csv = Buffer.from(
       [
-        '合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期（必填）,结束日期（可选）',
-        'HT-IMPORT-004,导入合同HeaderVariant,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
-      ].join('\n'),
-      'utf-8',
+        "合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期（必填）,结束日期（可选）",
+        "HT-IMPORT-004,导入合同HeaderVariant,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31",
+      ].join("\n"),
+      "utf-8",
     );
 
-    const result = await service.importCsv(csv, { fileName: 'variant-header.csv' });
+    const result = await service.importCsv(csv, {
+      fileName: "variant-header.csv",
+    });
 
     expect(result.total).toBe(1);
     expect(result.success).toBe(1);
     expect(result.failed).toBe(0);
     expect(service.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: '导入合同HeaderVariant',
-        signDate: '2026-03-18',
+        name: "导入合同HeaderVariant",
+        signDate: "2026-03-18",
       }),
     );
   });
 
-  it('should import contracts from excel and return summary', async () => {
-    prisma.dictionary.findMany.mockResolvedValueOnce([{ code: 'SERVICE', name: '服务合同' }]);
-    prisma.customer.findMany.mockResolvedValueOnce([{ id: 'cus-1', name: '测试客户' }]);
-    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import-xlsx' } as any);
+  it("should import contracts from excel and return summary", async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: "SERVICE", name: "服务合同" },
+    ]);
+    prisma.customer.findMany.mockResolvedValueOnce([
+      { id: "cus-1", name: "测试客户" },
+    ]);
+    jest
+      .spyOn(service, "create")
+      .mockResolvedValue({ id: "c-import-xlsx" } as any);
 
     const wb = xlsxUtils.book_new();
     const ws = xlsxUtils.aoa_to_sheet([
-      ['合同编号', '合同名称', '客户名称', '公司签约主体', '合同类型', '合同金额', '签署日期', '结束日期'],
-      ['HT-IMPORT-005', '导入合同X', '测试客户', 'InfFinanceMs', '服务合同', 2000, '2026-03-20', '2026-12-31'],
+      [
+        "合同编号",
+        "合同名称",
+        "客户名称",
+        "公司签约主体",
+        "合同类型",
+        "合同金额",
+        "签署日期",
+        "结束日期",
+      ],
+      [
+        "HT-IMPORT-005",
+        "导入合同X",
+        "测试客户",
+        "InfFinanceMs",
+        "服务合同",
+        2000,
+        "2026-03-20",
+        "2026-12-31",
+      ],
     ]);
-    xlsxUtils.book_append_sheet(wb, ws, 'Sheet1');
-    const buffer = writeWorkbook(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    xlsxUtils.book_append_sheet(wb, ws, "Sheet1");
+    const buffer = writeWorkbook(wb, {
+      type: "buffer",
+      bookType: "xlsx",
+    }) as Buffer;
 
-    const result = await service.importCsv(buffer, { fileName: 'contracts.xlsx' });
+    const result = await service.importCsv(buffer, {
+      fileName: "contracts.xlsx",
+    });
 
     expect(result).toEqual({
       total: 1,
@@ -829,26 +937,26 @@ describe('ContractsService', () => {
     });
     expect(service.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: '导入合同X',
-        contractType: 'SERVICE',
+        name: "导入合同X",
+        contractType: "SERVICE",
       }),
     );
   });
 
-  it('should preview import csv before commit', async () => {
+  it("should preview import csv before commit", async () => {
     prisma.dictionary.findMany.mockResolvedValueOnce([
-      { code: 'SERVICE', name: '服务合同' },
+      { code: "SERVICE", name: "服务合同" },
     ]);
     prisma.customer.findMany.mockResolvedValueOnce([
-      { id: 'cus-1', name: '测试客户' },
+      { id: "cus-1", name: "测试客户" },
     ]);
 
     const csv = Buffer.from(
       [
-        '合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
-        'HT-IMPORT-006,导入合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
-      ].join('\n'),
-      'utf-8',
+        "合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期",
+        "HT-IMPORT-006,导入合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31",
+      ].join("\n"),
+      "utf-8",
     );
 
     const result = await service.previewImportCsv(csv);
@@ -861,26 +969,28 @@ describe('ContractsService', () => {
       samples: [
         {
           row: 2,
-          contractNo: 'HT-IMPORT-006',
-          name: '导入合同A',
-          customerName: '测试客户',
-          contractType: '服务合同',
+          contractNo: "HT-IMPORT-006",
+          name: "导入合同A",
+          customerName: "测试客户",
+          contractType: "服务合同",
           amount: 1000,
-          signDate: '2026-03-18',
+          signDate: "2026-03-18",
         },
       ],
     });
   });
 
-  it('should keep unknown contract type valid in preview result', async () => {
-    prisma.dictionary.findMany.mockResolvedValueOnce([{ code: 'SERVICE', name: '服务合同' }]);
+  it("should keep unknown contract type valid in preview result", async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: "SERVICE", name: "服务合同" },
+    ]);
 
     const csv = Buffer.from(
       [
-        '合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
-        'HT-IMPORT-007,导入合同UnknownType,测试客户,InfFinanceMs,NDA,1000,2026-03-18,2026-12-31',
-      ].join('\n'),
-      'utf-8',
+        "合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期",
+        "HT-IMPORT-007,导入合同UnknownType,测试客户,InfFinanceMs,NDA,1000,2026-03-18,2026-12-31",
+      ].join("\n"),
+      "utf-8",
     );
 
     const result = await service.previewImportCsv(csv);
@@ -889,21 +999,27 @@ describe('ContractsService', () => {
     expect(result.valid).toBe(1);
     expect(result.invalid).toBe(0);
     expect(result.errors).toEqual([]);
-    expect(result.samples[0].contractNo).toBe('HT-IMPORT-007');
-    expect(result.samples[0].contractType).toBe('NDA');
+    expect(result.samples[0].contractNo).toBe("HT-IMPORT-007");
+    expect(result.samples[0].contractType).toBe("NDA");
   });
 
-  it('should support english alias headers when importing csv', async () => {
-    prisma.dictionary.findMany.mockResolvedValueOnce([{ code: 'SERVICE', name: '服务合同' }]);
-    prisma.customer.findMany.mockResolvedValueOnce([{ id: 'cus-1', name: '测试客户' }]);
-    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import-2' } as any);
+  it("should support english alias headers when importing csv", async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: "SERVICE", name: "服务合同" },
+    ]);
+    prisma.customer.findMany.mockResolvedValueOnce([
+      { id: "cus-1", name: "测试客户" },
+    ]);
+    jest
+      .spyOn(service, "create")
+      .mockResolvedValue({ id: "c-import-2" } as any);
 
     const csv = Buffer.from(
       [
-        'contract_no,name,customer_name,signing_entity,contract_type,amount,sign_date,end_date',
-        'HT-IMPORT-008,Alias合同,测试客户,InfFinanceMs,SERVICE,8888,2026-04-01,2026-12-31',
-      ].join('\n'),
-      'utf-8',
+        "contract_no,name,customer_name,signing_entity,contract_type,amount,sign_date,end_date",
+        "HT-IMPORT-008,Alias合同,测试客户,InfFinanceMs,SERVICE,8888,2026-04-01,2026-12-31",
+      ].join("\n"),
+      "utf-8",
     );
 
     const result = await service.importCsv(csv);
@@ -912,37 +1028,37 @@ describe('ContractsService', () => {
     expect(result.failed).toBe(0);
     expect(service.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: 'Alias合同',
-        contractType: 'SERVICE',
+        name: "Alias合同",
+        contractType: "SERVICE",
         amountWithTax: 8888,
-        signDate: '2026-04-01',
+        signDate: "2026-04-01",
       }),
     );
   });
 
-  it('should record row errors when import data is invalid', async () => {
+  it("should record row errors when import data is invalid", async () => {
     prisma.dictionary.findMany.mockResolvedValueOnce([
-      { code: 'SERVICE', name: '服务合同' },
+      { code: "SERVICE", name: "服务合同" },
     ]);
     prisma.customer.findMany.mockResolvedValueOnce([
-      { id: 'cus-1', name: '测试客户' },
+      { id: "cus-1", name: "测试客户" },
     ]);
 
     const csv = Buffer.from(
       [
-        '合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
-        ',测试合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
-        'HT-IMPORT-009,导入合同B,未知客户,InfFinanceMs,服务合同,1000,2026-03-18,',
-        'HT-IMPORT-010,导入合同C,测试客户,InfFinanceMs,未知类型,1000,2026-03-18,',
-      ].join('\n'),
-      'utf-8',
+        "合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期",
+        ",测试合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31",
+        "HT-IMPORT-009,导入合同B,未知客户,InfFinanceMs,服务合同,1000,2026-03-18,",
+        "HT-IMPORT-010,导入合同C,测试客户,InfFinanceMs,未知类型,1000,2026-03-18,",
+      ].join("\n"),
+      "utf-8",
     );
 
     await expect(service.importCsv(csv)).rejects.toThrow(BadRequestException);
     expect(prisma.contractImportLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          fileName: 'contracts-import.csv',
+          fileName: "contracts-import.csv",
           total: 3,
           success: 0,
           failed: 1,
@@ -952,18 +1068,24 @@ describe('ContractsService', () => {
     );
   });
 
-  it('should import valid rows when allowPartial is enabled', async () => {
-    prisma.dictionary.findMany.mockResolvedValueOnce([{ code: 'SERVICE', name: '服务合同' }]);
-    prisma.customer.findMany.mockResolvedValueOnce([{ id: 'cus-1', name: '测试客户' }]);
-    jest.spyOn(service, 'create').mockResolvedValue({ id: 'c-import-ok' } as any);
+  it("should import valid rows when allowPartial is enabled", async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: "SERVICE", name: "服务合同" },
+    ]);
+    prisma.customer.findMany.mockResolvedValueOnce([
+      { id: "cus-1", name: "测试客户" },
+    ]);
+    jest
+      .spyOn(service, "create")
+      .mockResolvedValue({ id: "c-import-ok" } as any);
 
     const csv = Buffer.from(
       [
-        '合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期',
-        'HT-IMPORT-011,导入合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
-        ',测试合同B,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31',
-      ].join('\n'),
-      'utf-8',
+        "合同编号,合同名称,客户名称,公司签约主体,合同类型,合同金额,签署日期,结束日期",
+        "HT-IMPORT-011,导入合同A,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31",
+        ",测试合同B,测试客户,InfFinanceMs,服务合同,1000,2026-03-18,2026-12-31",
+      ].join("\n"),
+      "utf-8",
     );
 
     const result = await service.importCsv(csv, { allowPartial: true });
@@ -985,53 +1107,56 @@ describe('ContractsService', () => {
     );
   });
 
-  it('should return import history with sanitized errors and operator', async () => {
+  it("should return import history with sanitized errors and operator", async () => {
     prisma.contractImportLog.findMany.mockResolvedValueOnce([
       {
-        id: 'log-1',
-        fileName: 'contracts-a.csv',
+        id: "log-1",
+        fileName: "contracts-a.csv",
         total: 5,
         success: 4,
         failed: 1,
         allowPartial: true,
-        errors: [{ row: 2, message: '客户不存在' }, { row: 0, message: 'invalid' }],
-        createdAt: new Date('2026-03-18T10:00:00.000Z'),
+        errors: [
+          { row: 2, message: "客户不存在" },
+          { row: 0, message: "invalid" },
+        ],
+        createdAt: new Date("2026-03-18T10:00:00.000Z"),
         operator: {
-          id: 'u-1',
-          name: '财务A',
-          email: 'finance@inffinancems.com',
+          id: "u-1",
+          name: "财务A",
+          email: "finance@inffinancems.com",
         },
       },
     ]);
 
-    const result = await service.getImportHistory(10, 'u-1');
+    const result = await service.getImportHistory(10, "u-1");
 
     expect(prisma.contractImportLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { operatorId: 'u-1' },
+        where: { operatorId: "u-1" },
         take: 10,
       }),
     );
     expect(result).toEqual([
       {
-        id: 'log-1',
-        fileName: 'contracts-a.csv',
+        id: "log-1",
+        fileName: "contracts-a.csv",
         total: 5,
         success: 4,
         failed: 1,
         allowPartial: true,
-        errors: [{ row: 2, message: '客户不存在' }],
-        createdAt: new Date('2026-03-18T10:00:00.000Z'),
+        errors: [{ row: 2, message: "客户不存在" }],
+        createdAt: new Date("2026-03-18T10:00:00.000Z"),
         operator: {
-          id: 'u-1',
-          name: '财务A',
-          email: 'finance@inffinancems.com',
+          id: "u-1",
+          name: "财务A",
+          email: "finance@inffinancems.com",
         },
       },
     ]);
   });
 
-  it('should clamp import history limit between 1 and 50', async () => {
+  it("should clamp import history limit between 1 and 50", async () => {
     await service.getImportHistory(0);
     expect(prisma.contractImportLog.findMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -1047,10 +1172,10 @@ describe('ContractsService', () => {
     );
   });
 
-  it('should clear import history by operator scope', async () => {
-    await service.clearImportHistory('u-1');
+  it("should clear import history by operator scope", async () => {
+    await service.clearImportHistory("u-1");
     expect(prisma.contractImportLog.deleteMany).toHaveBeenCalledWith({
-      where: { operatorId: 'u-1' },
+      where: { operatorId: "u-1" },
     });
 
     await service.clearImportHistory();
@@ -1059,39 +1184,132 @@ describe('ContractsService', () => {
     });
   });
 
-  it('should export import error csv by log id', async () => {
+  it("should export import error csv by log id", async () => {
     prisma.contractImportLog.findFirst.mockResolvedValueOnce({
-      id: 'log-1',
-      fileName: 'contracts-a.csv',
-      errors: [{ row: 3, message: '合同金额无效' }],
+      id: "log-1",
+      fileName: "contracts-a.csv",
+      errors: [{ row: 3, message: "合同金额无效" }],
     });
 
-    const payload = await service.exportImportErrorCsv('log-1', 'u-1');
+    const payload = await service.exportImportErrorCsv("log-1", "u-1");
 
     expect(prisma.contractImportLog.findFirst).toHaveBeenCalledWith({
-      where: { id: 'log-1', operatorId: 'u-1' },
+      where: { id: "log-1", operatorId: "u-1" },
       select: {
         id: true,
         fileName: true,
         errors: true,
       },
     });
-    expect(payload.fileName).toContain('contracts-import-errors-log-1.csv');
-    expect(payload.csv).toContain('行号');
-    expect(payload.csv).toContain('合同金额无效');
+    expect(payload.fileName).toContain("contracts-import-errors-log-1.csv");
+    expect(payload.csv).toContain("行号");
+    expect(payload.csv).toContain("合同金额无效");
   });
 
-  it('should reject exporting error csv when log does not exist', async () => {
+  it("should reject exporting error csv when log does not exist", async () => {
     prisma.contractImportLog.findFirst.mockResolvedValueOnce(null);
-    await expect(service.exportImportErrorCsv('missing', 'u-1')).rejects.toThrow(NotFoundException);
+    await expect(
+      service.exportImportErrorCsv("missing", "u-1"),
+    ).rejects.toThrow(NotFoundException);
   });
 
-  it('should reject exporting error csv when log has no errors', async () => {
+  it("should reject exporting error csv when log has no errors", async () => {
     prisma.contractImportLog.findFirst.mockResolvedValueOnce({
-      id: 'log-1',
-      fileName: 'contracts-a.csv',
+      id: "log-1",
+      fileName: "contracts-a.csv",
       errors: [],
     });
-    await expect(service.exportImportErrorCsv('log-1')).rejects.toThrow(BadRequestException);
+    await expect(service.exportImportErrorCsv("log-1")).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it("should batch bind attachments by contractNo in file name", async () => {
+    prisma.contract.findMany.mockResolvedValueOnce([
+      { id: "c-1", contractNo: "TKFY-0001-202601", attachmentUrl: null },
+      { id: "c-2", contractNo: "TKFY-0002-202601", attachmentUrl: null },
+    ]);
+    uploadService.saveFile
+      .mockResolvedValueOnce({
+        url: "/uploads/contracts/file-1.pdf",
+        filename: "file-1.pdf",
+        originalName: "TKFY-0001-202601 房租合同.pdf",
+        size: 123,
+      })
+      .mockResolvedValueOnce({
+        url: "/uploads/contracts/file-2.pdf",
+        filename: "file-2.pdf",
+        originalName: "TKFY-0002-202601 服务协议.pdf",
+        size: 234,
+      });
+
+    const files = [
+      {
+        originalname: "TKFY-0001-202601 房租合同.pdf",
+        mimetype: "application/pdf",
+        size: 123,
+        buffer: Buffer.from("%PDF-1"),
+      } as Express.Multer.File,
+      {
+        originalname: "TKFY-0002-202601 服务协议.pdf",
+        mimetype: "application/pdf",
+        size: 234,
+        buffer: Buffer.from("%PDF-2"),
+      } as Express.Multer.File,
+    ];
+
+    const result = await service.batchBindAttachments(files, {
+      allowOverwrite: true,
+    });
+
+    expect(result.total).toBe(2);
+    expect(result.success).toBe(2);
+    expect(result.failed).toBe(0);
+    expect(prisma.contract.update).toHaveBeenCalledTimes(2);
+    expect(prisma.contract.update).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: { id: "c-1" },
+        data: expect.objectContaining({
+          attachmentUrl: "/uploads/contracts/file-1.pdf",
+        }),
+      }),
+    );
+    expect(prisma.contract.update).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { id: "c-2" },
+        data: expect.objectContaining({
+          attachmentUrl: "/uploads/contracts/file-2.pdf",
+        }),
+      }),
+    );
+  });
+
+  it("should report error when attachment file does not match any contractNo", async () => {
+    prisma.contract.findMany.mockResolvedValueOnce([
+      { id: "c-1", contractNo: "TKFY-0001-202601", attachmentUrl: null },
+    ]);
+
+    const files = [
+      {
+        originalname: "未匹配合同附件.pdf",
+        mimetype: "application/pdf",
+        size: 123,
+        buffer: Buffer.from("%PDF-1"),
+      } as Express.Multer.File,
+    ];
+
+    const result = await service.batchBindAttachments(files, {
+      allowOverwrite: true,
+    });
+
+    expect(result.total).toBe(1);
+    expect(result.success).toBe(0);
+    expect(result.failed).toBe(1);
+    expect(result.errors[0].message).toContain(
+      "文件名未包含系统内可识别的合同编号",
+    );
+    expect(prisma.contract.update).not.toHaveBeenCalled();
   });
 });

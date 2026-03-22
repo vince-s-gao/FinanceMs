@@ -28,6 +28,19 @@ function hasValidJwt(token?: string): boolean {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isLocalHost =
+    request.nextUrl.hostname === 'localhost' ||
+    request.nextUrl.hostname === '127.0.0.1';
+  const shouldForceHttps =
+    (process.env.NEXT_PUBLIC_FORCE_HTTPS === 'true' ||
+      process.env.NODE_ENV === 'production') &&
+    !isLocalHost;
+
+  if (shouldForceHttps && request.nextUrl.protocol === 'http:') {
+    const httpsUrl = request.nextUrl.clone();
+    httpsUrl.protocol = 'https:';
+    return NextResponse.redirect(httpsUrl, { status: 308 });
+  }
 
   // 检查是否是公共路径
   const isPublicPath = publicPaths.some(path => pathname.startsWith(path));

@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 报销管理页面
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Table,
@@ -71,7 +71,7 @@ export default function ExpensesPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
 
   // 加载报销列表
-  const fetchExpenses = async () => {
+  const fetchExpenses = useCallback(async () => {
     setLoading(true);
     try {
       const params: any = { page, pageSize };
@@ -86,11 +86,11 @@ export default function ExpensesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, keyword, statusFilter]);
 
   useEffect(() => {
     fetchExpenses();
-  }, [page, pageSize, keyword, statusFilter]);
+  }, [fetchExpenses]);
 
   // 提交报销
   const handleSubmit = async (id: string) => {

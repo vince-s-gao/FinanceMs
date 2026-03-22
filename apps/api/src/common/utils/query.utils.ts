@@ -8,7 +8,7 @@ const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
  */
 export function parseDateRangeStart(input: string): Date {
   if (DATE_ONLY_REGEX.test(input)) {
-    const [year, month, day] = input.split('-').map(Number);
+    const [year, month, day] = input.split("-").map(Number);
     return new Date(year, month - 1, day, 0, 0, 0, 0);
   }
   return new Date(input);
@@ -20,7 +20,7 @@ export function parseDateRangeStart(input: string): Date {
  */
 export function parseDateRangeEnd(input: string): Date {
   if (DATE_ONLY_REGEX.test(input)) {
-    const [year, month, day] = input.split('-').map(Number);
+    const [year, month, day] = input.split("-").map(Number);
     return new Date(year, month - 1, day, 23, 59, 59, 999);
   }
   return new Date(input);

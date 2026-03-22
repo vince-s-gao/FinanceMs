@@ -2,7 +2,7 @@
 
 // InfFinanceMs - 权限管理页面
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   Table,
@@ -83,6 +83,13 @@ const FUNCTION_PERMISSIONS = [
 ];
 
 // 角色功能权限矩阵（已移至动态加载）
+const ROLE_MENU_MATRIX_DEFAULT: Record<string, { menus: string[]; functions: string[] }> = {
+  EMPLOYEE: { menus: ['/dashboard', '/expenses'], functions: ['expense.create'] },
+  SALES: { menus: ['/dashboard', '/customers', '/contracts', '/payments', '/expenses'], functions: ['expense.create', 'customer.create', 'customer.edit', 'contract.create', 'contract.edit'] },
+  FINANCE: { menus: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'expense.pay', 'invoice.create', 'invoice.void', 'budget.create', 'budget.edit', 'supplier.create', 'supplier.edit', 'supplier.delete'] },
+  MANAGER: { menus: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'customer.create', 'customer.edit', 'customer.approve', 'contract.create', 'contract.edit', 'supplier.create', 'supplier.edit'] },
+  ADMIN: { menus: MENU_PERMISSIONS.map(m => m.key), functions: FUNCTION_PERMISSIONS.map(f => f.key) },
+};
 
 export default function PermissionsPage() {
   const [activeTab, setActiveTab] = useState('menu');
@@ -95,7 +102,7 @@ export default function PermissionsPage() {
   const [saving, setSaving] = useState(false);
 
   // 加载权限配置
-  const fetchPermissions = async () => {
+  const fetchPermissions = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get<Record<string, { menus: string[]; functions: string[] }>>('/permissions/roles');
@@ -106,20 +113,11 @@ export default function PermissionsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchPermissions();
-  }, []);
-
-  // 默认权限配置（用于初始化和回退）
-  const ROLE_MENU_MATRIX_DEFAULT: Record<string, { menus: string[]; functions: string[] }> = {
-    EMPLOYEE: { menus: ['/dashboard', '/expenses'], functions: ['expense.create'] },
-    SALES: { menus: ['/dashboard', '/customers', '/contracts', '/payments', '/expenses'], functions: ['expense.create', 'customer.create', 'customer.edit', 'contract.create', 'contract.edit'] },
-    FINANCE: { menus: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'expense.pay', 'invoice.create', 'invoice.void', 'budget.create', 'budget.edit', 'supplier.create', 'supplier.edit', 'supplier.delete'] },
-    MANAGER: { menus: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports'], functions: ['expense.create', 'expense.approve', 'customer.create', 'customer.edit', 'customer.approve', 'contract.create', 'contract.edit', 'supplier.create', 'supplier.edit'] },
-    ADMIN: { menus: MENU_PERMISSIONS.map(m => m.key), functions: FUNCTION_PERMISSIONS.map(f => f.key) },
-  };
+  }, [fetchPermissions]);
 
   // 获取当前权限矩阵
   const getCurrentMatrix = () => {

@@ -1,8 +1,8 @@
-import { ForbiddenException } from '@nestjs/common';
-import { ERROR_CODE } from '@inffinancems/shared';
-import { CsrfMiddleware } from './csrf.middleware';
+import { ForbiddenException } from "@nestjs/common";
+import { ERROR_CODE } from "@inffinancems/shared";
+import { CsrfMiddleware } from "./csrf.middleware";
 
-describe('CsrfMiddleware', () => {
+describe("CsrfMiddleware", () => {
   let middleware: CsrfMiddleware;
   let next: jest.Mock;
 
@@ -11,11 +11,11 @@ describe('CsrfMiddleware', () => {
     next = jest.fn();
   });
 
-  it('should bypass safe methods', () => {
+  it("should bypass safe methods", () => {
     middleware.use(
       {
-        method: 'GET',
-        path: '/api/costs',
+        method: "GET",
+        path: "/api/costs",
         headers: {},
       } as any,
       {} as any,
@@ -25,11 +25,11 @@ describe('CsrfMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it('should bypass configured auth paths', () => {
+  it("should bypass configured auth paths", () => {
     middleware.use(
       {
-        method: 'POST',
-        path: '/api/auth/login',
+        method: "POST",
+        path: "/api/auth/login",
         headers: {},
       } as any,
       {} as any,
@@ -39,14 +39,14 @@ describe('CsrfMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it('should reject request when csrf token is missing', () => {
+  it("should reject request when csrf token is missing", () => {
     expect(() =>
       middleware.use(
         {
-          method: 'POST',
-          path: '/api/costs',
+          method: "POST",
+          path: "/api/costs",
           headers: {
-            cookie: '',
+            cookie: "",
           },
         } as any,
         {} as any,
@@ -55,15 +55,15 @@ describe('CsrfMiddleware', () => {
     ).toThrow(ForbiddenException);
   });
 
-  it('should reject request when csrf token mismatches', () => {
+  it("should reject request when csrf token mismatches", () => {
     expect(() =>
       middleware.use(
         {
-          method: 'DELETE',
-          path: '/api/costs/1',
+          method: "DELETE",
+          path: "/api/costs/1",
           headers: {
-            cookie: 'csrfToken=cookie-token',
-            'x-csrf-token': 'header-token',
+            cookie: "csrfToken=cookie-token",
+            "x-csrf-token": "header-token",
           },
         } as any,
         {} as any,
@@ -78,14 +78,14 @@ describe('CsrfMiddleware', () => {
     );
   });
 
-  it('should pass request when csrf token matches', () => {
+  it("should pass request when csrf token matches", () => {
     middleware.use(
       {
-        method: 'PATCH',
-        path: '/api/costs/1',
+        method: "PATCH",
+        path: "/api/costs/1",
         headers: {
-          cookie: 'foo=bar; csrfToken=same-token',
-          'x-csrf-token': 'same-token',
+          cookie: "foo=bar; csrfToken=same-token",
+          "x-csrf-token": "same-token",
         },
       } as any,
       {} as any,

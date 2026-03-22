@@ -1,8 +1,8 @@
 // InfFinanceMs - 供应商模块
 
-import { Module } from '@nestjs/common';
-import { SuppliersService } from './suppliers.service';
-import { SuppliersController } from './suppliers.controller';
+import { Module } from "@nestjs/common";
+import { SuppliersService } from "./suppliers.service";
+import { SuppliersController } from "./suppliers.controller";
 
 @Module({
   controllers: [SuppliersController],
@@ -10,4 +10,3 @@ import { SuppliersController } from './suppliers.controller';
   exports: [SuppliersService],
 })
 export class SuppliersModule {}
-
