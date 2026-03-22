@@ -9,6 +9,11 @@ type FeeType = (typeof FEE_TYPES)[number];
 type CostSource = (typeof COST_SOURCES)[number];
 
 export class QueryCostDto extends PaginationDto {
+  @ApiPropertyOptional({ description: "关键词（费用说明/项目/合同/报销单号）" })
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
   @ApiPropertyOptional({ description: "费用类型", enum: FEE_TYPES })
   @IsOptional()
   @IsIn(FEE_TYPES)

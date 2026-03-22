@@ -1,5 +1,5 @@
-import InvoiceManagementPage from '@/components/invoices/InvoiceManagementPage';
+import { redirect } from "next/navigation";
 
 export default function OutboundInvoicesPage() {
-  return <InvoiceManagementPage fixedDirection="OUTBOUND" />;
+  redirect("/invoices?tab=outbound");
 }

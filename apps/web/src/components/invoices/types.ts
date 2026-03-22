@@ -1,6 +1,6 @@
-import type dayjs from 'dayjs';
+import type dayjs from "dayjs";
 
-export type InvoiceDirection = 'INBOUND' | 'OUTBOUND';
+export type InvoiceDirection = "INBOUND" | "OUTBOUND";
 
 export interface Invoice {
   id: string;
@@ -82,6 +82,7 @@ export interface ContractListResponse {
 
 export interface InvoiceManagementPageProps {
   fixedDirection?: InvoiceDirection;
+  hidePageTitle?: boolean;
 }
 
 export interface InvoiceFormValues {
@@ -94,11 +95,11 @@ export interface InvoiceFormValues {
 }
 
 export const INVOICE_PAGE_TITLE: Record<InvoiceDirection, string> = {
-  INBOUND: '进项发票管理',
-  OUTBOUND: '出项发票管理',
+  INBOUND: "进项发票管理",
+  OUTBOUND: "出项发票管理",
 };
 
 export const INVOICE_CONTRACT_HINT: Record<InvoiceDirection, string> = {
-  INBOUND: '仅可选择采购类合同',
-  OUTBOUND: '仅可选择销售类合同',
+  INBOUND: "仅可选择采购类合同",
+  OUTBOUND: "仅可选择销售类合同",
 };

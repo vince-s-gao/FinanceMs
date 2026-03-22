@@ -1,10 +1,23 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 主布局组件（简化版）
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-import { Layout, Menu, Avatar, Dropdown, Space, Typography, Spin, Badge, Popover, List, Button, message } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import {
+  Layout,
+  Menu,
+  Avatar,
+  Dropdown,
+  Space,
+  Typography,
+  Spin,
+  Badge,
+  Popover,
+  List,
+  Button,
+  message,
+} from "antd";
 import {
   DashboardOutlined,
   TeamOutlined,
@@ -27,12 +40,12 @@ import {
   BellOutlined,
   FileSearchOutlined,
   ShopOutlined,
-} from '@ant-design/icons';
-import { useAuthStore } from '@/stores/auth';
-import { ROLE_LABELS } from '@/lib/constants';
-import { api } from '@/lib/api';
-import { getErrorMessage } from '@/lib/error';
-import type { NotificationItem } from '@inffinancems/shared';
+} from "@ant-design/icons";
+import { useAuthStore } from "@/stores/auth";
+import { ROLE_LABELS } from "@/lib/constants";
+import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
+import type { NotificationItem } from "@inffinancems/shared";
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -41,55 +54,113 @@ const { Text } = Typography;
 const ALL_MENU_ITEMS = [
   // 核心业务
   {
-    key: 'core-business',
-    label: '核心业务',
-    type: 'group' as const,
+    key: "core-business",
+    label: "核心业务",
+    type: "group" as const,
     children: [
-      { key: '/dashboard', icon: <DashboardOutlined />, label: '工作台' },
-      { key: '/customers', icon: <TeamOutlined />, label: '客户管理' },
-      { key: '/suppliers', icon: <ShopOutlined />, label: '供应商管理' },
-      { key: '/contracts', icon: <FileTextOutlined />, label: '合同管理' },
-      { key: '/payments', icon: <DollarOutlined />, label: '回款管理' },
-      { key: '/projects', icon: <ProjectOutlined />, label: '项目管理' },
+      { key: "/dashboard", icon: <DashboardOutlined />, label: "工作台" },
+      { key: "/customers", icon: <TeamOutlined />, label: "客户管理" },
+      { key: "/suppliers", icon: <ShopOutlined />, label: "供应商管理" },
+      { key: "/contracts", icon: <FileTextOutlined />, label: "合同管理" },
+      { key: "/payments", icon: <DollarOutlined />, label: "回款管理" },
+      { key: "/projects", icon: <ProjectOutlined />, label: "项目管理" },
     ],
   },
   // 财务管理
   {
-    key: 'finance-management',
-    label: '财务管理',
-    type: 'group' as const,
+    key: "finance-management",
+    label: "财务管理",
+    type: "group" as const,
     children: [
-      { key: '/payment-requests', icon: <MoneyCollectOutlined />, label: '付款申请' },
-      { key: '/invoices/inbound', icon: <FileProtectOutlined />, label: '进项发票' },
-      { key: '/invoices/outbound', icon: <FileProtectOutlined />, label: '出项发票' },
-      { key: '/expenses', icon: <AccountBookOutlined />, label: '报销管理' },
-      { key: '/costs', icon: <WalletOutlined />, label: '费用管理' },
-      { key: '/budgets', icon: <WalletOutlined />, label: '预算管理' },
-      { key: '/reports', icon: <BarChartOutlined />, label: '报表看板' },
+      {
+        key: "/payment-requests",
+        icon: <MoneyCollectOutlined />,
+        label: "付款申请",
+      },
+      { key: "/invoices", icon: <FileProtectOutlined />, label: "发票管理" },
+      { key: "/expenses", icon: <AccountBookOutlined />, label: "报销管理" },
+      { key: "/costs", icon: <WalletOutlined />, label: "费用管理" },
+      { key: "/budgets", icon: <WalletOutlined />, label: "预算管理" },
+      { key: "/reports", icon: <BarChartOutlined />, label: "报表看板" },
     ],
   },
   // 系统管理
   {
-    key: 'system-management',
-    label: '系统管理',
-    type: 'group' as const,
+    key: "system-management",
+    label: "系统管理",
+    type: "group" as const,
     children: [
-      { key: '/departments', icon: <ApartmentOutlined />, label: '员工管理' },
-      { key: '/permissions', icon: <SafetyOutlined />, label: '权限管理' },
-      { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
-      { key: '/settings/dictionaries', icon: <DatabaseOutlined />, label: '数据字典' },
-      { key: '/audit-logs', icon: <FileSearchOutlined />, label: '日志管理' },
+      { key: "/departments", icon: <ApartmentOutlined />, label: "员工管理" },
+      { key: "/permissions", icon: <SafetyOutlined />, label: "权限管理" },
+      { key: "/settings", icon: <SettingOutlined />, label: "系统设置" },
+      {
+        key: "/settings/dictionaries",
+        icon: <DatabaseOutlined />,
+        label: "数据字典",
+      },
+      { key: "/audit-logs", icon: <FileSearchOutlined />, label: "日志管理" },
     ],
   },
 ];
 
 // 角色权限配置
 const ROLE_MENU_CONFIG: Record<string, string[]> = {
-  EMPLOYEE: ['/dashboard', '/expenses'],
-  SALES: ['/dashboard', '/customers', '/contracts', '/payments', '/expenses', '/projects'],
-  FINANCE: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
-  MANAGER: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports', '/projects'],
-  ADMIN: ['/dashboard', '/customers', '/suppliers', '/contracts', '/payments', '/payment-requests', '/invoices/inbound', '/invoices/outbound', '/expenses', '/costs', '/budgets', '/reports', '/projects', '/departments', '/permissions', '/settings', '/settings/dictionaries', '/audit-logs'],
+  EMPLOYEE: ["/dashboard", "/expenses"],
+  SALES: [
+    "/dashboard",
+    "/customers",
+    "/contracts",
+    "/payments",
+    "/expenses",
+    "/projects",
+  ],
+  FINANCE: [
+    "/dashboard",
+    "/customers",
+    "/suppliers",
+    "/contracts",
+    "/payments",
+    "/payment-requests",
+    "/invoices",
+    "/expenses",
+    "/costs",
+    "/budgets",
+    "/reports",
+    "/projects",
+  ],
+  MANAGER: [
+    "/dashboard",
+    "/customers",
+    "/suppliers",
+    "/contracts",
+    "/payments",
+    "/payment-requests",
+    "/invoices",
+    "/expenses",
+    "/costs",
+    "/budgets",
+    "/reports",
+    "/projects",
+  ],
+  ADMIN: [
+    "/dashboard",
+    "/customers",
+    "/suppliers",
+    "/contracts",
+    "/payments",
+    "/payment-requests",
+    "/invoices",
+    "/expenses",
+    "/costs",
+    "/budgets",
+    "/reports",
+    "/projects",
+    "/departments",
+    "/permissions",
+    "/settings",
+    "/settings/dictionaries",
+    "/audit-logs",
+  ],
 };
 
 interface MainLayoutProps {
@@ -108,14 +179,15 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const userId = user?.id;
 
   const allowedPaths = useMemo(
-    () => ROLE_MENU_CONFIG[user?.role || 'EMPLOYEE'] || ROLE_MENU_CONFIG.EMPLOYEE,
+    () =>
+      ROLE_MENU_CONFIG[user?.role || "EMPLOYEE"] || ROLE_MENU_CONFIG.EMPLOYEE,
     [user?.role],
   );
 
   const hasMenuAccess = useCallback(
     (path: string) =>
       allowedPaths.includes(path) ||
-      (allowedPaths.includes('/invoices') && (path === '/invoices/inbound' || path === '/invoices/outbound')),
+      (allowedPaths.includes("/invoices") && path.startsWith("/invoices/")),
     [allowedPaths],
   );
 
@@ -138,7 +210,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
     if (!isHydrated) return;
 
     if (!isAuthenticated) {
-      router.replace('/login');
+      router.replace("/login");
     }
   }, [isHydrated, isAuthenticated, router]);
 
@@ -149,8 +221,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
       setNotificationLoading(true);
       try {
         const [countRes, listRes] = await Promise.all([
-          api.get<{ unreadCount: number }>('/notifications/unread-count'),
-          api.get<{ items: NotificationItem[] }>('/notifications', {
+          api.get<{ unreadCount: number }>("/notifications/unread-count"),
+          api.get<{ items: NotificationItem[] }>("/notifications", {
             params: { page: 1, pageSize: 8 },
           }),
         ]);
@@ -183,14 +255,14 @@ export default function MainLayout({ children }: MainLayoutProps) {
   // 处理登出
   const handleLogout = async () => {
     await logout();
-    router.replace('/login');
+    router.replace("/login");
   };
 
   const refreshNotifications = async () => {
     try {
       const [countRes, listRes] = await Promise.all([
-        api.get<{ unreadCount: number }>('/notifications/unread-count'),
-        api.get<{ items: NotificationItem[] }>('/notifications', {
+        api.get<{ unreadCount: number }>("/notifications/unread-count"),
+        api.get<{ items: NotificationItem[] }>("/notifications", {
           params: { page: 1, pageSize: 8 },
         }),
       ]);
@@ -203,11 +275,11 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   const handleMarkAllRead = async () => {
     try {
-      await api.post('/notifications/read-all', {});
+      await api.post("/notifications/read-all", {});
       await refreshNotifications();
-      message.success('已全部标记为已读');
+      message.success("已全部标记为已读");
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '操作失败'));
+      message.error(getErrorMessage(error, "操作失败"));
     }
   };
 
@@ -221,24 +293,24 @@ export default function MainLayout({ children }: MainLayoutProps) {
       }
       await refreshNotifications();
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '打开通知失败'));
+      message.error(getErrorMessage(error, "打开通知失败"));
     }
   };
 
   // 用户下拉菜单
   const userMenuItems = [
     {
-      key: 'profile',
+      key: "profile",
       icon: <UserOutlined />,
-      label: '个人信息',
+      label: "个人信息",
     },
     {
-      type: 'divider' as const,
+      type: "divider" as const,
     },
     {
-      key: 'logout',
+      key: "logout",
       icon: <LogoutOutlined />,
-      label: '退出登录',
+      label: "退出登录",
       onClick: handleLogout,
     },
   ];
@@ -262,10 +334,12 @@ export default function MainLayout({ children }: MainLayoutProps) {
   }
 
   // 过滤分组菜单，只保留用户有权限访问的菜单项
-  const menuItems = ALL_MENU_ITEMS.map(group => {
-    if (group.type === 'group' && group.children) {
+  const menuItems = ALL_MENU_ITEMS.map((group) => {
+    if (group.type === "group" && group.children) {
       // 过滤该分组下的子菜单
-      const filteredChildren = group.children.filter((item) => hasMenuAccess(item.key));
+      const filteredChildren = group.children.filter((item) =>
+        hasMenuAccess(item.key),
+      );
       // 如果分组下没有可访问的菜单，则不显示该分组
       if (filteredChildren.length === 0) {
         return null;
@@ -295,12 +369,18 @@ export default function MainLayout({ children }: MainLayoutProps) {
         theme="dark"
         className="tech-sider"
         width={220}
-        style={{ overflow: 'auto', height: '100vh', position: 'fixed', left: 0, top: 0 }}
+        style={{
+          overflow: "auto",
+          height: "100vh",
+          position: "fixed",
+          left: 0,
+          top: 0,
+        }}
       >
         {/* Logo */}
         <div className="h-16 flex items-center justify-center border-b border-cyan-300/20">
           <span className="tech-logo text-lg font-semibold">
-            {collapsed ? 'IFM' : 'InfFinanceMs'}
+            {collapsed ? "IFM" : "InfFinanceMs"}
           </span>
         </div>
 
@@ -314,7 +394,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
         />
       </Sider>
 
-      <Layout style={{ marginLeft: collapsed ? 80 : 220 }} className="bg-transparent">
+      <Layout
+        style={{ marginLeft: collapsed ? 80 : 220 }}
+        className="bg-transparent"
+      >
         {/* 顶部导航 */}
         <Header className="tech-header mx-4 mt-4 px-4 flex items-center justify-between sticky top-0 z-10">
           {/* 折叠按钮 */}
@@ -333,17 +416,22 @@ export default function MainLayout({ children }: MainLayoutProps) {
                 <div className="w-[360px] max-h-[420px] overflow-auto">
                   <div className="flex items-center justify-between mb-2">
                     <Text strong>消息通知</Text>
-                    <Button size="small" type="link" onClick={handleMarkAllRead} disabled={!unreadCount}>
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={handleMarkAllRead}
+                      disabled={!unreadCount}
+                    >
                       全部已读
                     </Button>
                   </div>
                   <List
                     loading={notificationLoading}
-                    locale={{ emptyText: '暂无消息' }}
+                    locale={{ emptyText: "暂无消息" }}
                     dataSource={notifications}
                     renderItem={(item) => (
                       <List.Item
-                        className={`cursor-pointer rounded px-2 ${item.isRead ? '' : 'bg-blue-50'}`}
+                        className={`cursor-pointer rounded px-2 ${item.isRead ? "" : "bg-blue-50"}`}
                         onClick={() => handleOpenNotification(item)}
                       >
                         <List.Item.Meta
@@ -357,7 +445,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
                             <div>
                               <div>{item.content}</div>
                               <Text type="secondary" className="text-xs">
-                                {new Date(item.createdAt).toLocaleString('zh-CN')}
+                                {new Date(item.createdAt).toLocaleString(
+                                  "zh-CN",
+                                )}
                               </Text>
                             </div>
                           }
@@ -382,11 +472,13 @@ export default function MainLayout({ children }: MainLayoutProps) {
                   className="bg-blue-600"
                 />
                 <div className="hidden sm:block">
-                  <Text strong className="tech-user-name">{user.name}</Text>
+                  <Text strong className="tech-user-name">
+                    {user.name}
+                  </Text>
                   <Badge
                     count={ROLE_LABELS[user.role] || user.role}
                     className="ml-2 tech-user-role"
-                    style={{ backgroundColor: '#1890ff' }}
+                    style={{ backgroundColor: "#1890ff" }}
                   />
                 </div>
               </Space>
