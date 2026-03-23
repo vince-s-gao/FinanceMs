@@ -1,6 +1,6 @@
 // InfFinanceMs - 审计日志服务
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
@@ -19,6 +19,8 @@ import {
  */
 @Injectable()
 export class AuditService {
+  private readonly logger = new Logger(AuditService.name);
+
   constructor(private prisma: PrismaService) {}
 
   private readonly sensitiveFields = [
@@ -86,7 +88,9 @@ export class AuditService {
       });
     } catch (error) {
       // 审计日志记录失败不应影响主业务流程
-      console.error("审计日志记录失败:", error);
+      const safeError =
+        error instanceof Error ? error.message : "unknown-audit-error";
+      this.logger.error(`审计日志记录失败: ${safeError}`);
     }
   }
 

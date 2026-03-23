@@ -47,9 +47,14 @@ describe("AuditService", () => {
 
   it("should not throw when audit logging fails", async () => {
     prisma.auditLog.create.mockRejectedValueOnce(new Error("db down"));
-    const errorSpy = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
+    const errorSpy = jest.spyOn(
+      (
+        service as unknown as {
+          logger: { error: (...args: unknown[]) => void };
+        }
+      ).logger,
+      "error",
+    );
 
     await expect(
       service.log(
@@ -62,7 +67,7 @@ describe("AuditService", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(errorSpy).toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith("审计日志记录失败: db down");
   });
 
   it("should log login success and failure actions", async () => {
