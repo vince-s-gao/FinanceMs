@@ -23,6 +23,11 @@ model User {
   role         Role     @default(EMPLOYEE)
   departmentId String? // 所属部门ID
   isActive     Boolean  @default(true)
+  failedLoginAttempts Int      @default(0) // 连续登录失败次数
+  lockedUntil         DateTime? // 账号锁定截止时间
+  lastLoginAt         DateTime? // 最近登录时间
+  lastLoginIp         String? // 最近登录IP
+  lastLoginUserAgent  String? // 最近登录设备信息
   
   // 飞书账户关联字段
   feishuUserId   String?  @unique // 飞书用户ID
@@ -43,8 +48,29 @@ model User {
   approvedPaymentRequests  PaymentRequest[] @relation("PaymentRequestApprover") // 审批的付款申请
   notifications      Notification[] // 消息通知
   contractImportLogs ContractImportLog[] // 合同导入日志
+  sessions           UserSession[] // 登录会话
 
   @@map("users")
+}
+
+/// 用户会话表
+model UserSession {
+  id               String   @id
+  userId           String
+  refreshTokenHash String
+  ipAddress        String?
+  userAgent        String?
+  expiresAt        DateTime
+  lastActivityAt   DateTime @default(now())
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("user_sessions")
 }
 
 /// 角色枚举
@@ -173,9 +199,13 @@ model Contract {
 
   @@index([signDate])
   @@index([endDate])
+  @@index([status])
   @@index([contractType])
   @@index([signingEntity])
   @@index([customerId, signDate])
+  @@index([customerId, status])
+  @@index([contractType, status])
+  @@index([signDate, status])
   @@map("contracts")
 }
 

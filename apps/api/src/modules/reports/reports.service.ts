@@ -3,28 +3,18 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { Decimal } from "@prisma/client/runtime/library";
-import { toCsv } from "../../common/utils/tabular.utils";
+import { normalizeText, toCsv } from "../../common/utils/tabular.utils";
+import { isSalesContractType } from "../contracts/contracts.type.utils";
+import {
+  ContractStatus as PrismaContractStatus,
+  ExpenseStatus as PrismaExpenseStatus,
+  PaymentPlanStatus,
+  type Prisma,
+} from "@prisma/client";
 
-// 状态常量
-const ContractStatus = {
-  DRAFT: "DRAFT",
-  EXECUTING: "EXECUTING",
-  COMPLETED: "COMPLETED",
-  TERMINATED: "TERMINATED",
-} as const;
-
-const ExpenseStatus = {
-  DRAFT: "DRAFT",
-  PENDING: "PENDING",
-  APPROVED: "APPROVED",
-  REJECTED: "REJECTED",
-  PAID: "PAID",
-} as const;
-
-const InvoiceStatus = {
-  ISSUED: "ISSUED",
-  VOIDED: "VOIDED",
-} as const;
+const ContractStatus = PrismaContractStatus;
+const ExpenseStatus = PrismaExpenseStatus;
+const SALES_CONTRACT_TYPES_CACHE_TTL_MS = 5 * 60 * 1000;
 
 // 计算账龄
 function calculateAging(dueDate: Date | string): number {
@@ -48,12 +38,65 @@ function getAgingBucket(
 
 @Injectable()
 export class ReportsService {
+  private salesContractTypesCache: {
+    codes: string[];
+    expiresAt: number;
+  } | null = null;
+
   constructor(private prisma: PrismaService) {}
+
+  private async getSalesContractTypeCodes(): Promise<string[]> {
+    const now = Date.now();
+    if (
+      this.salesContractTypesCache &&
+      this.salesContractTypesCache.expiresAt > now
+    ) {
+      return this.salesContractTypesCache.codes;
+    }
+
+    const rows = await this.prisma.dictionary.findMany({
+      where: { type: "CONTRACT_TYPE" },
+      select: { code: true, name: true, value: true },
+    });
+
+    const detected = rows
+      .filter((row) =>
+        isSalesContractType([row.code, row.name || "", row.value || ""]),
+      )
+      .map((row) => normalizeText(row.code).toUpperCase())
+      .filter(Boolean);
+
+    const resolved = [...new Set([...detected, "SALES"])];
+    this.salesContractTypesCache = {
+      codes: resolved,
+      expiresAt: now + SALES_CONTRACT_TYPES_CACHE_TTL_MS,
+    };
+
+    return resolved;
+  }
+
+  private async isSalesContract(
+    contractType?: string | null,
+  ): Promise<boolean> {
+    const salesCodes = await this.getSalesContractTypeCodes();
+    return this.isSalesContractByCodes(contractType, salesCodes);
+  }
+
+  private isSalesContractByCodes(
+    contractType: string | null | undefined,
+    salesCodes: string[],
+  ): boolean {
+    const normalized = normalizeText(contractType || "").toUpperCase();
+    if (!normalized) return false;
+    if (salesCodes.includes(normalized)) return true;
+    return isSalesContractType([contractType || ""]);
+  }
 
   /**
    * 应收账款总览
    */
   async getReceivablesOverview() {
+    const salesCodes = await this.getSalesContractTypeCodes();
     // 获取所有执行中的合同
     const contracts = await this.prisma.contract.findMany({
       where: {
@@ -65,6 +108,12 @@ export class ReportsService {
         paymentRecords: true,
       },
     });
+    const salesContracts: typeof contracts = [];
+    for (const contract of contracts) {
+      if (this.isSalesContractByCodes(contract.contractType, salesCodes)) {
+        salesContracts.push(contract);
+      }
+    }
 
     let totalContractAmount = new Decimal(0);
     let totalReceived = new Decimal(0);
@@ -75,7 +124,7 @@ export class ReportsService {
       daysOver90: new Decimal(0),
     };
 
-    for (const contract of contracts) {
+    for (const contract of salesContracts) {
       totalContractAmount = totalContractAmount.plus(contract.amountWithTax);
 
       const contractReceived = contract.paymentRecords.reduce(
@@ -93,7 +142,7 @@ export class ReportsService {
         const overduePlans = contract.paymentPlans
           .filter(
             (plan) =>
-              plan.status !== "COMPLETED" &&
+              plan.status !== PaymentPlanStatus.COMPLETED &&
               new Date(plan.planDate) < new Date(),
           )
           .sort(
@@ -146,6 +195,7 @@ export class ReportsService {
    * 客户维度报表
    */
   async getCustomerReport() {
+    const salesCodes = await this.getSalesContractTypeCodes();
     const customers = await this.prisma.customer.findMany({
       where: { isDeleted: false },
       include: {
@@ -163,8 +213,13 @@ export class ReportsService {
       let totalAmount = new Decimal(0);
       let receivedAmount = new Decimal(0);
       let overdueOver90 = new Decimal(0);
+      let salesContractCount = 0;
 
       for (const contract of customer.contracts) {
+        if (!this.isSalesContractByCodes(contract.contractType, salesCodes)) {
+          continue;
+        }
+        salesContractCount += 1;
         totalAmount = totalAmount.plus(contract.amountWithTax);
 
         const contractReceived = contract.paymentRecords.reduce(
@@ -181,7 +236,7 @@ export class ReportsService {
           const overduePlans = contract.paymentPlans
             .filter(
               (plan) =>
-                plan.status !== "COMPLETED" &&
+                plan.status !== PaymentPlanStatus.COMPLETED &&
                 new Date(plan.planDate) < new Date(),
             )
             .sort(
@@ -201,7 +256,7 @@ export class ReportsService {
       return {
         customerId: customer.id,
         customerName: customer.name,
-        contractCount: customer.contracts.length,
+        contractCount: salesContractCount,
         totalAmount: totalAmount.toNumber(),
         receivedAmount: receivedAmount.toNumber(),
         receivableAmount: totalAmount.minus(receivedAmount).toNumber(),
@@ -279,14 +334,25 @@ export class ReportsService {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    // 执行中合同数
-    const executingCount = await this.prisma.contract.count({
-      where: { status: ContractStatus.EXECUTING, isDeleted: false },
+    const salesCodes = await this.getSalesContractTypeCodes();
+    // 执行中合同数（仅销售）
+    const executingContracts = await this.prisma.contract.findMany({
+      where: {
+        status: ContractStatus.EXECUTING,
+        isDeleted: false,
+      },
+      select: { id: true, contractType: true },
     });
+    const salesExecutingContracts: typeof executingContracts = [];
+    for (const contract of executingContracts) {
+      if (this.isSalesContractByCodes(contract.contractType, salesCodes)) {
+        salesExecutingContracts.push(contract);
+      }
+    }
+    const executingCount = salesExecutingContracts.length;
 
-    // 本月新签合同
-    const monthlyNew = await this.prisma.contract.aggregate({
+    // 本月新签合同（仅销售）
+    const monthlyNewContracts = await this.prisma.contract.findMany({
       where: {
         signDate: {
           gte: startOfMonth,
@@ -294,48 +360,81 @@ export class ReportsService {
         },
         isDeleted: false,
       },
-      _sum: { amountWithTax: true },
-      _count: true,
+      select: {
+        amountWithTax: true,
+        contractType: true,
+      },
     });
+    const salesMonthlyNewContracts: typeof monthlyNewContracts = [];
+    for (const contract of monthlyNewContracts) {
+      if (this.isSalesContractByCodes(contract.contractType, salesCodes)) {
+        salesMonthlyNewContracts.push(contract);
+      }
+    }
+    const monthlyNewAmount = salesMonthlyNewContracts.reduce(
+      (sum, contract) => sum.plus(contract.amountWithTax),
+      new Decimal(0),
+    );
+    const monthlyNewCount = salesMonthlyNewContracts.length;
 
-    // 本月回款
-    const monthlyPayment = await this.prisma.paymentRecord.aggregate({
+    // 本月回款（仅销售）
+    const monthlyPaymentRecords = await this.prisma.paymentRecord.findMany({
       where: {
         paymentDate: {
           gte: startOfMonth,
           lte: endOfMonth,
         },
+        contract: { isDeleted: false },
       },
-      _sum: { amount: true },
+      select: {
+        amount: true,
+        contract: {
+          select: { contractType: true },
+        },
+      },
     });
+    const monthlyPaymentAmount = monthlyPaymentRecords.reduce(
+      (sum, record) =>
+        this.isSalesContractByCodes(record.contract?.contractType, salesCodes)
+          ? sum.plus(record.amount)
+          : sum,
+      new Decimal(0),
+    );
 
     // 即将到期的回款计划（7天内）
     const upcomingPayments = await this.prisma.paymentPlan.findMany({
       where: {
-        status: { not: "COMPLETED" },
+        status: { not: PaymentPlanStatus.COMPLETED },
         planDate: {
           gte: now,
           lte: sevenDaysLater,
         },
+        contract: {
+          isDeleted: false,
+        },
       },
       include: {
         contract: {
-          select: { id: true, contractNo: true, name: true },
+          select: {
+            id: true,
+            contractNo: true,
+            name: true,
+            contractType: true,
+          },
         },
       },
       orderBy: { planDate: "asc" },
     });
+    const salesUpcomingPayments = upcomingPayments.filter((plan) =>
+      this.isSalesContractByCodes(plan.contract.contractType, salesCodes),
+    );
 
     return {
       executingCount,
-      monthlyNewCount: monthlyNew._count,
-      monthlyNewAmount: (
-        monthlyNew._sum.amountWithTax || new Decimal(0)
-      ).toNumber(),
-      monthlyPaymentAmount: (
-        monthlyPayment._sum.amount || new Decimal(0)
-      ).toNumber(),
-      upcomingPayments: upcomingPayments.map((plan) => ({
+      monthlyNewCount,
+      monthlyNewAmount: monthlyNewAmount.toNumber(),
+      monthlyPaymentAmount: monthlyPaymentAmount.toNumber(),
+      upcomingPayments: salesUpcomingPayments.map((plan) => ({
         planId: plan.id,
         contractId: plan.contract.id,
         contractNo: plan.contract.contractNo,
@@ -355,7 +454,7 @@ export class ReportsService {
    * 合同毛利分析
    */
   async getContractProfitAnalysis(contractId?: string) {
-    const where: any = {
+    const where: Prisma.ContractWhereInput = {
       isDeleted: false,
       status: { in: [ContractStatus.EXECUTING, ContractStatus.COMPLETED] },
     };

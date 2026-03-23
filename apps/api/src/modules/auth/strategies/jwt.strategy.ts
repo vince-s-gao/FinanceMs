@@ -5,15 +5,32 @@ import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import { ConfigService } from "@nestjs/config";
 import { AuthService } from "../auth.service";
+import type { Request } from "express";
 
 const DEV_FALLBACK_JWT_SECRET = "development-only-jwt-secret-change-me";
 const ACCESS_TOKEN_TYPE = "access";
+
+interface JwtPayload {
+  sub?: string;
+  email?: string;
+  role?: string;
+  type?: string;
+  sid?: string;
+}
+
+interface VerifiedJwtPayload {
+  sub: string;
+  email?: string;
+  role?: string;
+  type?: string;
+  sid?: string;
+}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly logger = new Logger(JwtStrategy.name);
 
-  private static cookieTokenExtractor(req: any): string | null {
+  private static cookieTokenExtractor(req?: Request): string | null {
     const cookieHeader = req?.headers?.cookie as string | undefined;
     if (!cookieHeader) return null;
     const token = cookieHeader
@@ -57,7 +74,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
   }
 
-  async validate(payload: any) {
+  async validate(payload: JwtPayload) {
     // 验证 payload 结构
     if (!payload || !payload.sub) {
       throw new UnauthorizedException("无效的令牌格式");
@@ -67,7 +84,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException("无效的访问令牌类型");
     }
 
-    const user = await this.authService.validateToken(payload);
+    const verifiedPayload: VerifiedJwtPayload = {
+      ...payload,
+      sub: payload.sub,
+      sid: payload.sid,
+    };
+
+    const user = await this.authService.validateToken(verifiedPayload);
     if (!user) {
       throw new UnauthorizedException("无效的令牌");
     }

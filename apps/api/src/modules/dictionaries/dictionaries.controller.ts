@@ -17,7 +17,7 @@ import { CreateDictionaryDto } from "./dto/create-dictionary.dto";
 import { UpdateDictionaryDto } from "./dto/update-dictionary.dto";
 import { QueryDictionaryDto } from "./dto/query-dictionary.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles, Role } from "../../common/decorators";
+import { Functions, Roles, Role } from "../../common/decorators";
 
 @ApiTags("数据字典")
 @ApiBearerAuth()
@@ -28,6 +28,7 @@ export class DictionariesController {
 
   @Get()
   @Roles(Role.ADMIN)
+  @Functions("dictionary.read")
   @ApiOperation({ summary: "获取字典列表" })
   async findAll(@Query() query: QueryDictionaryDto) {
     return this.dictionariesService.findAll(query);
@@ -35,6 +36,7 @@ export class DictionariesController {
 
   @Get("types")
   @Roles(Role.ADMIN)
+  @Functions("dictionary.read")
   @ApiOperation({ summary: "获取所有字典类型" })
   async getTypes() {
     return this.dictionariesService.getTypes();
@@ -49,6 +51,7 @@ export class DictionariesController {
 
   @Get(":id")
   @Roles(Role.ADMIN)
+  @Functions("dictionary.read")
   @ApiOperation({ summary: "获取字典详情" })
   async findOne(@Param("id") id: string) {
     return this.dictionariesService.findOne(id);
@@ -56,6 +59,7 @@ export class DictionariesController {
 
   @Post()
   @Roles(Role.ADMIN)
+  @Functions("dictionary.create")
   @ApiOperation({ summary: "创建字典项" })
   async create(@Body() createDto: CreateDictionaryDto) {
     return this.dictionariesService.create(createDto);
@@ -84,6 +88,7 @@ export class DictionariesController {
 
   @Patch(":id")
   @Roles(Role.ADMIN)
+  @Functions("dictionary.edit")
   @ApiOperation({ summary: "更新字典项" })
   async update(
     @Param("id") id: string,
@@ -94,6 +99,7 @@ export class DictionariesController {
 
   @Delete(":id")
   @Roles(Role.ADMIN)
+  @Functions("dictionary.delete")
   @ApiOperation({ summary: "删除字典项" })
   async remove(@Param("id") id: string) {
     return this.dictionariesService.remove(id);

@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 报销管理页面
 
-import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   Button,
@@ -15,7 +15,8 @@ import {
   Typography,
   Card,
   Popconfirm,
-} from 'antd';
+} from "antd";
+import type { TableColumnsType } from "antd";
 import {
   PlusOutlined,
   SearchOutlined,
@@ -24,15 +25,16 @@ import {
   CheckOutlined,
   CloseOutlined,
   DollarOutlined,
-} from '@ant-design/icons';
-import { api } from '@/lib/api';
-import { useAuthStore, isFinance } from '@/stores/auth';
+} from "@ant-design/icons";
+import { api } from "@/lib/api";
+import { useAuthStore, isFinance } from "@/stores/auth";
 import {
   EXPENSE_STATUS_LABELS,
   EXPENSE_STATUS_COLORS,
   formatAmount,
   formatDate,
-} from '@/lib/constants';
+} from "@/lib/constants";
+import { getErrorMessage } from "@/lib/error";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -59,6 +61,11 @@ interface Expense {
   };
 }
 
+interface ExpenseListResponse {
+  items: Expense[];
+  total: number;
+}
+
 export default function ExpensesPage() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -67,22 +74,22 @@ export default function ExpensesPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [keyword, setKeyword] = useState('');
+  const [keyword, setKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
 
   // 加载报销列表
   const fetchExpenses = useCallback(async () => {
     setLoading(true);
     try {
-      const params: any = { page, pageSize };
+      const params: Record<string, string | number> = { page, pageSize };
       if (keyword) params.keyword = keyword;
       if (statusFilter) params.status = statusFilter;
 
-      const res = await api.get<any>('/expenses', { params });
+      const res = await api.get<ExpenseListResponse>("/expenses", { params });
       setExpenses(res.items);
       setTotal(res.total);
-    } catch (error: any) {
-      message.error(error.message || '加载失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "加载失败"));
     } finally {
       setLoading(false);
     }
@@ -96,10 +103,10 @@ export default function ExpensesPage() {
   const handleSubmit = async (id: string) => {
     try {
       await api.patch(`/expenses/${id}/submit`);
-      message.success('提交成功');
+      message.success("提交成功");
       fetchExpenses();
-    } catch (error: any) {
-      message.error(error.message || '提交失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "提交失败"));
     }
   };
 
@@ -108,12 +115,12 @@ export default function ExpensesPage() {
     try {
       await api.patch(`/expenses/${id}/approve`, {
         approved,
-        rejectReason: approved ? undefined : '审批驳回',
+        rejectReason: approved ? undefined : "审批驳回",
       });
-      message.success(approved ? '审批通过' : '已驳回');
+      message.success(approved ? "审批通过" : "已驳回");
       fetchExpenses();
-    } catch (error: any) {
-      message.error(error.message || '操作失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "操作失败"));
     }
   };
 
@@ -121,67 +128,62 @@ export default function ExpensesPage() {
   const handlePay = async (id: string) => {
     try {
       await api.patch(`/expenses/${id}/pay`);
-      message.success('打款成功');
+      message.success("打款成功");
       fetchExpenses();
-    } catch (error: any) {
-      message.error(error.message || '打款失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "打款失败"));
     }
   };
 
   // 表格列定义
-  const columns = [
+  const columns: TableColumnsType<Expense> = [
     {
-      title: '报销单号',
-      dataIndex: 'expenseNo',
-      key: 'expenseNo',
+      title: "报销单号",
+      dataIndex: "expenseNo",
+      key: "expenseNo",
       width: 140,
       render: (v: string, record: Expense) => (
         <a onClick={() => router.push(`/expenses/${record.id}`)}>{v}</a>
       ),
     },
     {
-      title: '申请人',
-      dataIndex: ['applicant', 'name'],
-      key: 'applicant',
+      title: "申请人",
+      dataIndex: ["applicant", "name"],
+      key: "applicant",
       width: 100,
     },
     {
-      title: '部门',
-      dataIndex: ['applicant', 'department'],
-      key: 'department',
+      title: "部门",
+      dataIndex: ["applicant", "department"],
+      key: "department",
       width: 100,
     },
     {
-      title: '明细数',
-      dataIndex: ['_count', 'details'],
-      key: 'detailCount',
+      title: "明细数",
+      dataIndex: ["_count", "details"],
+      key: "detailCount",
       width: 90,
       render: (v: number | undefined) => v ?? 0,
     },
     {
-      title: '关联项目',
-      dataIndex: ['project', 'name'],
-      key: 'project',
+      title: "关联项目",
+      dataIndex: ["project", "name"],
+      key: "project",
       width: 150,
-      render: (v: string, record: Expense) => (
-        record.project ? (
-          <span title={record.project.code}>{v}</span>
-        ) : '-'
-      ),
+      render: (v: string, record: Expense) =>
+        record.project ? <span title={record.project.code}>{v}</span> : "-",
     },
     {
-      title: '金额',
-      dataIndex: 'totalAmount',
-      key: 'totalAmount',
+      title: "金额",
+      dataIndex: "totalAmount",
+      key: "totalAmount",
       width: 120,
-      render: (v: number) => (
-        <Text strong>¥{formatAmount(v)}</Text>
-      ),
+      render: (v: number) => <Text strong>¥{formatAmount(v)}</Text>,
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
       width: 100,
       render: (status: string) => (
         <Tag color={EXPENSE_STATUS_COLORS[status]}>
@@ -190,17 +192,17 @@ export default function ExpensesPage() {
       ),
     },
     {
-      title: '提交时间',
-      dataIndex: 'submitDate',
-      key: 'submitDate',
+      title: "提交时间",
+      dataIndex: "submitDate",
+      key: "submitDate",
       width: 110,
-      render: (v: string) => (v ? formatDate(v) : '-'),
+      render: (v: string) => (v ? formatDate(v) : "-"),
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 200,
-      render: (_: any, record: Expense) => (
+      render: (_: unknown, record: Expense) => (
         <Space size="small">
           <Button
             type="link"
@@ -212,7 +214,7 @@ export default function ExpensesPage() {
           </Button>
 
           {/* 草稿/驳回状态可提交 */}
-          {['DRAFT', 'REJECTED'].includes(record.status) &&
+          {["DRAFT", "REJECTED"].includes(record.status) &&
             record.applicant.id === user?.id && (
               <Popconfirm
                 title="确定提交该报销单吗？"
@@ -225,7 +227,7 @@ export default function ExpensesPage() {
             )}
 
           {/* 财务可审批 */}
-          {record.status === 'PENDING' && isFinance(user) && (
+          {record.status === "PENDING" && isFinance(user) && (
             <>
               <Popconfirm
                 title="确定通过该报销单吗？"
@@ -235,7 +237,7 @@ export default function ExpensesPage() {
                   type="link"
                   size="small"
                   icon={<CheckOutlined />}
-                  style={{ color: '#52c41a' }}
+                  style={{ color: "#52c41a" }}
                 >
                   通过
                 </Button>
@@ -257,7 +259,7 @@ export default function ExpensesPage() {
           )}
 
           {/* 财务可打款 */}
-          {record.status === 'APPROVED' && isFinance(user) && (
+          {record.status === "APPROVED" && isFinance(user) && (
             <Popconfirm
               title="确定已完成打款吗？"
               onConfirm={() => handlePay(record.id)}
@@ -266,7 +268,7 @@ export default function ExpensesPage() {
                 type="link"
                 size="small"
                 icon={<DollarOutlined />}
-                style={{ color: '#52c41a' }}
+                style={{ color: "#52c41a" }}
               >
                 打款
               </Button>
@@ -286,7 +288,7 @@ export default function ExpensesPage() {
         <Button
           type="primary"
           icon={<PlusOutlined />}
-          onClick={() => router.push('/expenses/new')}
+          onClick={() => router.push("/expenses/new")}
         >
           新增报销
         </Button>

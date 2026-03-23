@@ -5,7 +5,7 @@ describe("FeishuService", () => {
   let service: FeishuService;
   let configService: any;
   let prisma: any;
-  let jwtService: any;
+  let authService: any;
 
   beforeEach(() => {
     configService = {
@@ -14,7 +14,6 @@ describe("FeishuService", () => {
         if (key === "FEISHU_APP_SECRET") return "app-secret-1";
         if (key === "FEISHU_REDIRECT_URI")
           return "https://example.com/callback";
-        if (key === "JWT_REFRESH_EXPIRES_IN") return "30d";
         return fallback;
       }),
     };
@@ -28,11 +27,23 @@ describe("FeishuService", () => {
       },
     };
 
-    jwtService = {
-      sign: jest.fn().mockReturnValue("jwt-token-1"),
+    authService = {
+      issueLoginResult: jest.fn(async (user: any) => ({
+        accessToken: "jwt-token-1",
+        refreshToken: "jwt-refresh-1",
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          departmentId: user.departmentId,
+          avatar: user.avatar,
+          feishuUserId: user.feishuUserId ?? null,
+        },
+      })),
     };
 
-    service = new FeishuService(configService, prisma, jwtService);
+    service = new FeishuService(configService, prisma, authService);
   });
 
   afterEach(() => {
@@ -269,7 +280,27 @@ describe("FeishuService", () => {
     expect(user.open_id).toBe("open-4");
   });
 
-  it("should create user on first login and return jwt payload", async () => {
+  it("should return user info when getFeishuUserInfo uses flattened data payload", async () => {
+    jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
+      json: async () => ({
+        code: 0,
+        data: {
+          open_id: "open-flat-1",
+          union_id: "union-flat-1",
+          name: "李四",
+          email: "lisi@example.com",
+          mobile: "13800005555",
+          avatar_url: "avatar-flat-1",
+          tenant_key: "tenant-flat-1",
+        },
+      }),
+    } as any);
+
+    const user = await (service as any).getFeishuUserInfo("good-token");
+    expect(user.open_id).toBe("open-flat-1");
+  });
+
+  it("should create user on first login and return auth payload", async () => {
     jest.spyOn(service as any, "getUserAccessToken").mockResolvedValueOnce({
       access_token: "user-token",
       token_type: "Bearer",
@@ -309,27 +340,15 @@ describe("FeishuService", () => {
         }),
       }),
     );
-    expect(jwtService.sign).toHaveBeenNthCalledWith(
-      1,
+    expect(authService.issueLoginResult).toHaveBeenCalledWith(
       expect.objectContaining({
-        sub: "local-1",
+        id: "local-1",
         email: "open-1@feishu.local",
-        role: "EMPLOYEE",
-        type: "access",
       }),
-    );
-    expect(jwtService.sign).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        sub: "local-1",
-        email: "open-1@feishu.local",
-        role: "EMPLOYEE",
-        type: "refresh",
-      }),
-      { expiresIn: "30d" },
+      undefined,
     );
     expect(result.accessToken).toBe("jwt-token-1");
-    expect(result.refreshToken).toBe("jwt-token-1");
+    expect(result.refreshToken).toBe("jwt-refresh-1");
     expect(result.user.id).toBe("local-1");
   });
 

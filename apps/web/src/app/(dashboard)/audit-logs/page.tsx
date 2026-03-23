@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useMemo, useState } from 'react';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   Button,
   Card,
@@ -13,26 +13,27 @@ import {
   Table,
   Tag,
   Typography,
-} from 'antd';
-import { api } from '@/lib/api';
-import { getErrorMessage } from '@/lib/error';
-import type { AuditLogItem, PaginatedData } from '@inffinancems/shared';
+} from "antd";
+import type { TableColumnsType } from "antd";
+import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
+import type { AuditLogItem, PaginatedData } from "@inffinancems/shared";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
 const ACTION_LABELS: Record<string, string> = {
-  LOGIN: '登录',
-  CREATE: '新增',
-  UPDATE: '修改',
-  DELETE: '删除',
+  LOGIN: "登录",
+  CREATE: "新增",
+  UPDATE: "修改",
+  DELETE: "删除",
 };
 
 const ACTION_COLORS: Record<string, string> = {
-  LOGIN: 'blue',
-  CREATE: 'green',
-  UPDATE: 'gold',
-  DELETE: 'red',
+  LOGIN: "blue",
+  CREATE: "green",
+  UPDATE: "gold",
+  DELETE: "red",
 };
 
 interface AuditMeta {
@@ -49,15 +50,22 @@ export default function AuditLogsPage() {
   const [selectedLog, setSelectedLog] = useState<AuditLogItem | null>(null);
 
   const metaQuery = useQuery({
-    queryKey: ['audit-logs', 'meta'],
-    queryFn: () => api.get<AuditMeta>('/audit-logs/meta'),
+    queryKey: ["audit-logs", "meta"],
+    queryFn: () => api.get<AuditMeta>("/audit-logs/meta"),
     staleTime: 5 * 60 * 1000,
   });
 
   const logsQuery = useQuery({
-    queryKey: ['audit-logs', page, pageSize, actionFilter, entityTypeFilter, keyword],
+    queryKey: [
+      "audit-logs",
+      page,
+      pageSize,
+      actionFilter,
+      entityTypeFilter,
+      keyword,
+    ],
     queryFn: () =>
-      api.get<PaginatedData<AuditLogItem>>('/audit-logs', {
+      api.get<PaginatedData<AuditLogItem>>("/audit-logs", {
         params: {
           page,
           pageSize,
@@ -69,18 +77,18 @@ export default function AuditLogsPage() {
     placeholderData: keepPreviousData,
   });
 
-  const columns = useMemo(
+  const columns = useMemo<TableColumnsType<AuditLogItem>>(
     () => [
       {
-        title: '时间',
-        dataIndex: 'createdAt',
-        key: 'createdAt',
+        title: "时间",
+        dataIndex: "createdAt",
+        key: "createdAt",
         width: 180,
-        render: (value: string) => new Date(value).toLocaleString('zh-CN'),
+        render: (value: string) => new Date(value).toLocaleString("zh-CN"),
       },
       {
-        title: '操作人',
-        key: 'user',
+        title: "操作人",
+        key: "user",
         width: 220,
         render: (_: unknown, record: AuditLogItem) =>
           record.user ? (
@@ -91,44 +99,50 @@ export default function AuditLogsPage() {
               </Text>
             </div>
           ) : (
-            '-'
+            "-"
           ),
       },
       {
-        title: '操作类型',
-        dataIndex: 'action',
-        key: 'action',
+        title: "操作类型",
+        dataIndex: "action",
+        key: "action",
         width: 100,
         render: (value: string) => (
-          <Tag color={ACTION_COLORS[value] || 'default'}>{ACTION_LABELS[value] || value}</Tag>
+          <Tag color={ACTION_COLORS[value] || "default"}>
+            {ACTION_LABELS[value] || value}
+          </Tag>
         ),
       },
       {
-        title: '模块',
-        dataIndex: 'entityType',
-        key: 'entityType',
+        title: "模块",
+        dataIndex: "entityType",
+        key: "entityType",
         width: 140,
       },
       {
-        title: '目标ID',
-        dataIndex: 'entityId',
-        key: 'entityId',
+        title: "目标ID",
+        dataIndex: "entityId",
+        key: "entityId",
         width: 220,
         ellipsis: true,
       },
       {
-        title: 'IP',
-        dataIndex: 'ipAddress',
-        key: 'ipAddress',
+        title: "IP",
+        dataIndex: "ipAddress",
+        key: "ipAddress",
         width: 150,
-        render: (value: string | null) => value || '-',
+        render: (value: string | null) => value || "-",
       },
       {
-        title: '详情',
-        key: 'detail',
+        title: "详情",
+        key: "detail",
         width: 100,
         render: (_: unknown, record: AuditLogItem) => (
-          <Button type="link" size="small" onClick={() => setSelectedLog(record)}>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => setSelectedLog(record)}
+          >
             查看
           </Button>
         ),
@@ -191,7 +205,7 @@ export default function AuditLogsPage() {
 
       <Table
         rowKey="id"
-        columns={columns as any}
+        columns={columns}
         dataSource={logsQuery.data?.items || []}
         loading={logsQuery.isLoading || logsQuery.isFetching}
         scroll={{ x: 1150 }}
@@ -209,8 +223,8 @@ export default function AuditLogsPage() {
         }}
         locale={{
           emptyText: logsQuery.error
-            ? getErrorMessage(logsQuery.error, '日志加载失败')
-            : '暂无日志',
+            ? getErrorMessage(logsQuery.error, "日志加载失败")
+            : "暂无日志",
         }}
       />
 
@@ -224,23 +238,35 @@ export default function AuditLogsPage() {
         {selectedLog && (
           <Descriptions bordered size="small" column={1}>
             <Descriptions.Item label="时间">
-              {new Date(selectedLog.createdAt).toLocaleString('zh-CN')}
+              {new Date(selectedLog.createdAt).toLocaleString("zh-CN")}
             </Descriptions.Item>
             <Descriptions.Item label="操作类型">
-              <Tag color={ACTION_COLORS[selectedLog.action] || 'default'}>
+              <Tag color={ACTION_COLORS[selectedLog.action] || "default"}>
                 {ACTION_LABELS[selectedLog.action] || selectedLog.action}
               </Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="模块">{selectedLog.entityType}</Descriptions.Item>
-            <Descriptions.Item label="目标ID">{selectedLog.entityId}</Descriptions.Item>
-            <Descriptions.Item label="操作人">
-              {selectedLog.user ? `${selectedLog.user.name} (${selectedLog.user.email})` : '-'}
+            <Descriptions.Item label="模块">
+              {selectedLog.entityType}
             </Descriptions.Item>
-            <Descriptions.Item label="IP">{selectedLog.ipAddress || '-'}</Descriptions.Item>
-            <Descriptions.Item label="User-Agent">{selectedLog.userAgent || '-'}</Descriptions.Item>
+            <Descriptions.Item label="目标ID">
+              {selectedLog.entityId}
+            </Descriptions.Item>
+            <Descriptions.Item label="操作人">
+              {selectedLog.user
+                ? `${selectedLog.user.name} (${selectedLog.user.email})`
+                : "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="IP">
+              {selectedLog.ipAddress || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="User-Agent">
+              {selectedLog.userAgent || "-"}
+            </Descriptions.Item>
             <Descriptions.Item label="新值">
               <pre className="max-h-60 overflow-auto whitespace-pre-wrap text-xs bg-gray-50 p-3 rounded">
-                {selectedLog.newValue ? JSON.stringify(selectedLog.newValue, null, 2) : '-'}
+                {selectedLog.newValue
+                  ? JSON.stringify(selectedLog.newValue, null, 2)
+                  : "-"}
               </pre>
             </Descriptions.Item>
           </Descriptions>
@@ -249,4 +275,3 @@ export default function AuditLogsPage() {
     </div>
   );
 }
-

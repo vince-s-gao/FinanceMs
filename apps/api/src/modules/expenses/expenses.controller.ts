@@ -18,7 +18,8 @@ import { UpdateExpenseDto } from "./dto/update-expense.dto";
 import { QueryExpenseDto } from "./dto/query-expense.dto";
 import { ApproveExpenseDto } from "./dto/approve-expense.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles, CurrentUser } from "../../common/decorators";
+import { Functions, Roles, CurrentUser } from "../../common/decorators";
+import type { AuthenticatedUser } from "../../common/types/auth-user.type";
 
 // 角色常量
 const Role = {
@@ -37,24 +38,33 @@ export class ExpensesController {
 
   @Get()
   @Roles(Role.EMPLOYEE, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("expense.view")
   @ApiOperation({ summary: "获取报销列表" })
-  async findAll(@Query() query: QueryExpenseDto, @CurrentUser() user: any) {
+  async findAll(
+    @Query() query: QueryExpenseDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.expensesService.findAll(query, user.id, user.role);
   }
 
   @Get(":id")
   @Roles(Role.EMPLOYEE, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("expense.view")
   @ApiOperation({ summary: "获取报销详情" })
-  async findOne(@Param("id") id: string, @CurrentUser() user: any) {
+  async findOne(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.expensesService.findOne(id, user.id, user.role);
   }
 
   @Post()
   @Roles(Role.EMPLOYEE, Role.FINANCE, Role.ADMIN)
+  @Functions("expense.create")
   @ApiOperation({ summary: "创建报销单" })
   async create(
     @Body() createExpenseDto: CreateExpenseDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.expensesService.create(
       createExpenseDto,
@@ -65,11 +75,12 @@ export class ExpensesController {
 
   @Patch(":id")
   @Roles(Role.EMPLOYEE, Role.FINANCE, Role.ADMIN)
+  @Functions("expense.edit")
   @ApiOperation({ summary: "更新报销单" })
   async update(
     @Param("id") id: string,
     @Body() updateExpenseDto: UpdateExpenseDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.expensesService.update(
       id,
@@ -81,13 +92,18 @@ export class ExpensesController {
 
   @Patch(":id/submit")
   @Roles(Role.EMPLOYEE, Role.FINANCE, Role.ADMIN)
+  @Functions("expense.submit")
   @ApiOperation({ summary: "提交报销单" })
-  async submit(@Param("id") id: string, @CurrentUser() user: any) {
+  async submit(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.expensesService.submit(id, user.id, user.role);
   }
 
   @Patch(":id/approve")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("expense.approve")
   @ApiOperation({ summary: "审批报销单" })
   async approve(
     @Param("id") id: string,
@@ -98,6 +114,7 @@ export class ExpensesController {
 
   @Patch(":id/pay")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("expense.pay")
   @ApiOperation({ summary: "报销打款" })
   async pay(@Param("id") id: string) {
     return this.expensesService.pay(id);
@@ -105,8 +122,12 @@ export class ExpensesController {
 
   @Delete(":id")
   @Roles(Role.EMPLOYEE, Role.FINANCE, Role.ADMIN)
+  @Functions("expense.delete")
   @ApiOperation({ summary: "删除报销单" })
-  async remove(@Param("id") id: string, @CurrentUser() user: any) {
+  async remove(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.expensesService.remove(id, user.id, user.role);
   }
 }

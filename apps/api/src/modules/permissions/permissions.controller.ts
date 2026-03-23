@@ -4,7 +4,8 @@ import { Controller, Get, Post, Body, Param, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
 import { PermissionsService } from "./permissions.service";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles } from "../../common/decorators";
+import { Roles, CurrentUser } from "../../common/decorators";
+import type { AuthenticatedUser } from "../../common/types/auth-user.type";
 
 // 角色常量
 const Role = {
@@ -19,27 +20,37 @@ export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 
   @Get("menus")
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: "获取所有菜单定义" })
   async getAllMenus() {
     return this.permissionsService.getAllMenus();
   }
 
   @Get("functions")
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: "获取所有功能定义" })
   async getAllFunctions() {
     return this.permissionsService.getAllFunctions();
   }
 
   @Get("roles")
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: "获取所有角色的权限配置" })
   async getAllRolePermissions() {
     return this.permissionsService.getAllRolePermissions();
   }
 
   @Get("roles/:role")
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: "获取指定角色的权限配置" })
   async getRolePermissions(@Param("role") role: string) {
     return this.permissionsService.getRolePermissions(role);
+  }
+
+  @Get("me")
+  @ApiOperation({ summary: "获取当前登录角色的权限配置" })
+  async getCurrentRolePermissions(@CurrentUser() user: AuthenticatedUser) {
+    return this.permissionsService.getRolePermissions(user.role);
   }
 
   @Post("roles/:role")

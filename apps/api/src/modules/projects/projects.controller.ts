@@ -17,7 +17,7 @@ import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { QueryProjectDto } from "./dto/query-project.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles, Role } from "../../common/decorators";
+import { Roles, Role, Functions } from "../../common/decorators";
 
 @ApiTags("项目管理")
 @ApiBearerAuth()
@@ -28,6 +28,7 @@ export class ProjectsController {
 
   @Get()
   @Roles(Role.EMPLOYEE, Role.SALES, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("project.view")
   @ApiOperation({ summary: "获取项目列表" })
   findAll(@Query() query: QueryProjectDto) {
     return this.projectsService.findAll(query);
@@ -35,6 +36,7 @@ export class ProjectsController {
 
   @Get(":id")
   @Roles(Role.EMPLOYEE, Role.SALES, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("project.view")
   @ApiOperation({ summary: "获取项目详情" })
   findOne(@Param("id") id: string) {
     return this.projectsService.findOne(id);
@@ -42,6 +44,7 @@ export class ProjectsController {
 
   @Post()
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("project.create")
   @ApiOperation({ summary: "创建项目" })
   create(@Body() createDto: CreateProjectDto) {
     return this.projectsService.create(createDto);
@@ -49,6 +52,7 @@ export class ProjectsController {
 
   @Put(":id")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("project.edit")
   @ApiOperation({ summary: "更新项目" })
   update(@Param("id") id: string, @Body() updateDto: UpdateProjectDto) {
     return this.projectsService.update(id, updateDto);
@@ -56,6 +60,7 @@ export class ProjectsController {
 
   @Delete(":id")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("project.delete")
   @ApiOperation({ summary: "删除项目" })
   remove(@Param("id") id: string) {
     return this.projectsService.remove(id);

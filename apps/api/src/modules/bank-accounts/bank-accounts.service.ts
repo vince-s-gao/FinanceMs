@@ -7,6 +7,7 @@ import {
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateBankAccountDto } from "./dto/create-bank-account.dto";
 import { UpdateBankAccountDto } from "./dto/update-bank-account.dto";
+import type { Prisma } from "@prisma/client";
 
 @Injectable()
 export class BankAccountsService {
@@ -52,7 +53,7 @@ export class BankAccountsService {
    * 查询所有银行账户
    */
   async findAll(onlyEnabled: boolean = true) {
-    const where: any = {};
+    const where: Prisma.BankAccountWhereInput = {};
     if (onlyEnabled) {
       where.isEnabled = true;
     }

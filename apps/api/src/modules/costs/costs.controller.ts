@@ -29,7 +29,7 @@ import { CreateCostDto } from "./dto/create-cost.dto";
 import { QueryCostDto } from "./dto/query-cost.dto";
 import { UpdateCostDto } from "./dto/update-cost.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles } from "../../common/decorators";
+import { Functions, Roles } from "../../common/decorators";
 import { buildSingleFileInterceptorOptions } from "../../common/utils/upload.utils";
 import { isSupportedTabularFile } from "../../common/utils/tabular.utils";
 
@@ -81,6 +81,7 @@ export class CostsController {
 
   @Get()
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("cost.view")
   @ApiOperation({ summary: "获取费用列表" })
   async findAll(@Query() query: QueryCostDto) {
     return this.costsService.findAll(query);
@@ -88,6 +89,7 @@ export class CostsController {
 
   @Get("summary")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("cost.view")
   @ApiOperation({ summary: "获取费用汇总看板数据" })
   async getSummary(@Query() query: QueryCostDto) {
     return this.costsService.getSummary(query);
@@ -95,6 +97,7 @@ export class CostsController {
 
   @Get("export/csv")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("cost.view")
   @ApiOperation({ summary: "导出费用（CSV）" })
   async exportCsv(@Query() query: QueryCostDto, @Res() res: Response) {
     const csv = await this.costsService.exportCsv(query);
@@ -103,6 +106,7 @@ export class CostsController {
 
   @Get("export/excel")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("cost.view")
   @ApiOperation({ summary: "导出费用（Excel）" })
   async exportExcel(@Query() query: QueryCostDto, @Res() res: Response) {
     const buffer = await this.costsService.exportExcel(query);
@@ -111,6 +115,7 @@ export class CostsController {
 
   @Post("import")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("cost.create")
   @UseInterceptors(
     FileInterceptor(
       "file",
@@ -140,6 +145,7 @@ export class CostsController {
 
   @Get("contract/:contractId")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("cost.view")
   @ApiOperation({ summary: "获取合同费用汇总" })
   async getContractCostSummary(@Param("contractId") contractId: string) {
     return this.costsService.getContractCostSummary(contractId);
@@ -147,6 +153,7 @@ export class CostsController {
 
   @Get(":id")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("cost.view")
   @ApiOperation({ summary: "获取费用详情" })
   async findOne(@Param("id") id: string) {
     return this.costsService.findOne(id);
@@ -154,6 +161,7 @@ export class CostsController {
 
   @Post()
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("cost.create")
   @ApiOperation({ summary: "创建费用（直接录入）" })
   async create(@Body() createCostDto: CreateCostDto) {
     return this.costsService.create(createCostDto);
@@ -161,6 +169,7 @@ export class CostsController {
 
   @Patch(":id")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("cost.edit")
   @ApiOperation({ summary: "更新费用（仅直接录入费用）" })
   async update(@Param("id") id: string, @Body() updateCostDto: UpdateCostDto) {
     return this.costsService.update(id, updateCostDto);
@@ -168,6 +177,7 @@ export class CostsController {
 
   @Delete(":id")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("cost.delete")
   @ApiOperation({ summary: "删除费用" })
   async remove(@Param("id") id: string) {
     return this.costsService.remove(id);

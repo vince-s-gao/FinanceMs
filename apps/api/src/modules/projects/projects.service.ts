@@ -5,11 +5,15 @@ import {
   NotFoundException,
   ConflictException,
 } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { QueryProjectDto } from "./dto/query-project.dto";
-import { resolveSortField } from "../../common/utils/query.utils";
+import {
+  normalizePagination,
+  resolveSortField,
+} from "../../common/utils/query.utils";
 import {
   createWithGeneratedCode,
   generatePrefixedCode,
@@ -63,14 +67,18 @@ export class ProjectsService {
       sortBy = "createdAt",
       sortOrder = "desc",
     } = query;
-    const skip = (page - 1) * pageSize;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
     const safeSortBy = resolveSortField(
       sortBy,
       ALLOWED_PROJECT_SORT_FIELDS,
       "createdAt",
     );
 
-    const where: any = {
+    const where: Prisma.ProjectWhereInput = {
       isDeleted: false,
     };
 
@@ -91,7 +99,7 @@ export class ProjectsService {
       this.prisma.project.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: { [safeSortBy]: sortOrder },
       }),
       this.prisma.project.count({ where }),
@@ -100,9 +108,9 @@ export class ProjectsService {
     return {
       items,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 
@@ -138,15 +146,15 @@ export class ProjectsService {
    * 创建项目
    */
   async create(createDto: CreateProjectDto) {
-    // 移除 createDto 中的 code 字段，使用系统生成的编号
-    const { code: _, ...restDto } = createDto as any;
-
+    const { name, description, status } = createDto;
     return createWithGeneratedCode({
       generateCode: () => this.generateProjectCode(),
       create: (code: string) =>
         this.prisma.project.create({
           data: {
-            ...restDto,
+            name,
+            description,
+            status,
             code,
             startDate: createDto.startDate
               ? new Date(createDto.startDate)
@@ -166,14 +174,14 @@ export class ProjectsService {
    */
   async update(id: string, updateDto: UpdateProjectDto) {
     await this.findOne(id);
-
-    // 项目编号不允许修改，移除 code 字段
-    const { code: _, ...restDto } = updateDto as any;
+    const { name, description, status } = updateDto;
 
     return this.prisma.project.update({
       where: { id },
       data: {
-        ...restDto,
+        name,
+        description,
+        status,
         startDate: updateDto.startDate
           ? new Date(updateDto.startDate)
           : undefined,

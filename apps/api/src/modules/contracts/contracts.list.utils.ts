@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import {
+  normalizePagination,
   parseDateRangeEnd,
   parseDateRangeStart,
   resolveSortField,
@@ -124,6 +125,7 @@ export function buildContractListQueryContext(args: {
   query: QueryContractDto;
   allowedSortFields: readonly string[];
   defaultSortBy?: string;
+  maxPageSize?: number;
 }) {
   const {
     page = 1,
@@ -145,11 +147,16 @@ export function buildContractListQueryContext(args: {
     args.allowedSortFields,
     args.defaultSortBy || "createdAt",
   );
-
-  return {
+  const pagination = normalizePagination({
     page,
     pageSize,
-    skip: (page - 1) * pageSize,
+    maxPageSize: args.maxPageSize,
+  });
+
+  return {
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+    skip: pagination.skip,
     sortOrder,
     safeSortBy,
     where: buildContractListWhere({

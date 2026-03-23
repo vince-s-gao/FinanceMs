@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { QueryNotificationDto } from "./dto/query-notification.dto";
+import { Prisma } from "@prisma/client";
+import { normalizePagination } from "../../common/utils/query.utils";
 
 interface CreateNotificationInput {
   userId: string;
@@ -15,6 +17,14 @@ interface CreateNotificationInput {
 export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private toJsonInput(
+    metadata: unknown,
+  ): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined {
+    if (metadata === undefined) return undefined;
+    if (metadata === null) return Prisma.JsonNull;
+    return metadata as Prisma.InputJsonValue;
+  }
+
   async createNotification(input: CreateNotificationInput) {
     return this.prisma.notification.create({
       data: {
@@ -23,7 +33,7 @@ export class NotificationsService {
         content: input.content,
         type: input.type || "SYSTEM",
         link: input.link,
-        metadata: input.metadata as any,
+        metadata: this.toJsonInput(input.metadata),
       },
     });
   }
@@ -41,7 +51,7 @@ export class NotificationsService {
         content: payload.content,
         type: payload.type || "SYSTEM",
         link: payload.link,
-        metadata: payload.metadata as any,
+        metadata: this.toJsonInput(payload.metadata),
       })),
     });
   }
@@ -49,6 +59,11 @@ export class NotificationsService {
   async findMine(userId: string, query: QueryNotificationDto) {
     const page = query.page || 1;
     const pageSize = query.pageSize || 20;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
     const unreadOnly = query.unreadOnly === "true";
     const where = {
       userId,
@@ -60,17 +75,17 @@ export class NotificationsService {
       this.prisma.notification.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take: safePageSize,
       }),
     ]);
 
     return {
       items,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 

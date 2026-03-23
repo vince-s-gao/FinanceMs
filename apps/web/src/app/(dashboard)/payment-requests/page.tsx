@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 付款申请列表页面
-import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
 import {
   Table,
   Button,
@@ -15,7 +15,7 @@ import {
   message,
   Popconfirm,
   Typography,
-} from 'antd';
+} from "antd";
 import {
   PlusOutlined,
   SearchOutlined,
@@ -24,29 +24,30 @@ import {
   DeleteOutlined,
   SendOutlined,
   CloseOutlined,
-} from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
+} from "@ant-design/icons";
+import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
+import { getErrorMessage } from "@/lib/error";
 
 const { Title, Text } = Typography;
 
 // 付款申请状态映射
 const statusMap: Record<string, { label: string; color: string }> = {
-  DRAFT: { label: '草稿', color: 'default' },
-  PENDING: { label: '待审批', color: 'processing' },
-  APPROVED: { label: '已通过', color: 'success' },
-  REJECTED: { label: '已拒绝', color: 'error' },
-  PAID: { label: '已付款', color: 'cyan' },
-  CANCELLED: { label: '已取消', color: 'default' },
+  DRAFT: { label: "草稿", color: "default" },
+  PENDING: { label: "待审批", color: "processing" },
+  APPROVED: { label: "已通过", color: "success" },
+  REJECTED: { label: "已拒绝", color: "error" },
+  PAID: { label: "已付款", color: "cyan" },
+  CANCELLED: { label: "已取消", color: "default" },
 };
 
 // 付款方式映射
 const paymentMethodMap: Record<string, string> = {
-  TRANSFER: '银行转账',
-  CASH: '现金',
-  CHECK: '支票',
-  DRAFT: '汇票',
-  OTHER: '其他',
+  TRANSFER: "银行转账",
+  CASH: "现金",
+  CHECK: "支票",
+  DRAFT: "汇票",
+  OTHER: "其他",
 };
 
 interface PaymentRequest {
@@ -61,7 +62,12 @@ interface PaymentRequest {
   paymentDate: string;
   status: string;
   project?: { id: string; code: string; name: string };
-  contract?: { id: string; contractNo: string; name: string; contractType?: string };
+  contract?: {
+    id: string;
+    contractNo: string;
+    name: string;
+    contractType?: string;
+  };
   applicant: { id: string; name: string; email: string };
   bankAccount: { id: string; accountName: string; bankName: string };
   createdAt: string;
@@ -80,14 +86,14 @@ export default function PaymentRequestsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PageData | null>(null);
   const [searchForm, setSearchForm] = useState({
-    requestNo: '',
-    reason: '',
-    status: '',
+    requestNo: "",
+    reason: "",
+    status: "",
   });
   const [filters, setFilters] = useState({
-    requestNo: '',
-    reason: '',
-    status: '',
+    requestNo: "",
+    reason: "",
+    status: "",
     page: 1,
     pageSize: 10,
   });
@@ -97,16 +103,18 @@ export default function PaymentRequestsPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filters.requestNo) params.append('requestNo', filters.requestNo);
-      if (filters.reason) params.append('reason', filters.reason);
-      if (filters.status) params.append('status', filters.status);
-      params.append('page', String(filters.page));
-      params.append('pageSize', String(filters.pageSize));
+      if (filters.requestNo) params.append("requestNo", filters.requestNo);
+      if (filters.reason) params.append("reason", filters.reason);
+      if (filters.status) params.append("status", filters.status);
+      params.append("page", String(filters.page));
+      params.append("pageSize", String(filters.pageSize));
 
-      const result = await api.get<PageData>(`/payment-requests?${params.toString()}`);
+      const result = await api.get<PageData>(
+        `/payment-requests?${params.toString()}`,
+      );
       setData(result);
-    } catch (error: any) {
-      message.error(error.message || '加载数据失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "加载数据失败"));
     } finally {
       setLoading(false);
     }
@@ -131,10 +139,10 @@ export default function PaymentRequestsPage() {
   const handleSubmit = async (id: string) => {
     try {
       await api.post(`/payment-requests/${id}/submit`);
-      message.success('提交成功');
+      message.success("提交成功");
       loadData();
-    } catch (error: any) {
-      message.error(error.message || '提交失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "提交失败"));
     }
   };
 
@@ -142,10 +150,10 @@ export default function PaymentRequestsPage() {
   const handleCancel = async (id: string) => {
     try {
       await api.post(`/payment-requests/${id}/cancel`);
-      message.success('取消成功');
+      message.success("取消成功");
       loadData();
-    } catch (error: any) {
-      message.error(error.message || '取消失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "取消失败"));
     }
   };
 
@@ -153,24 +161,24 @@ export default function PaymentRequestsPage() {
   const handleDelete = async (id: string) => {
     try {
       await api.delete(`/payment-requests/${id}`);
-      message.success('删除成功');
+      message.success("删除成功");
       loadData();
-    } catch (error: any) {
-      message.error(error.message || '删除失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "删除失败"));
     }
   };
 
   // 表格列定义
   const columns: ColumnsType<PaymentRequest> = [
     {
-      title: '申请单号',
-      dataIndex: 'requestNo',
-      key: 'requestNo',
+      title: "申请单号",
+      dataIndex: "requestNo",
+      key: "requestNo",
       width: 160,
     },
     {
-      title: '关联项目',
-      key: 'project',
+      title: "关联项目",
+      key: "project",
       width: 180,
       ellipsis: true,
       render: (_, record) =>
@@ -182,12 +190,12 @@ export default function PaymentRequestsPage() {
             </Text>
           </div>
         ) : (
-          '-'
+          "-"
         ),
     },
     {
-      title: '采购合同',
-      key: 'contract',
+      title: "采购合同",
+      key: "contract",
       width: 220,
       ellipsis: true,
       render: (_, record) =>
@@ -199,18 +207,18 @@ export default function PaymentRequestsPage() {
             </Text>
           </div>
         ) : (
-          '-'
+          "-"
         ),
     },
     {
-      title: '付款事由',
-      dataIndex: 'reason',
-      key: 'reason',
+      title: "付款事由",
+      dataIndex: "reason",
+      key: "reason",
       ellipsis: true,
     },
     {
-      title: '付款金额',
-      key: 'amount',
+      title: "付款金额",
+      key: "amount",
       width: 150,
       render: (_, record) => (
         <span>
@@ -219,37 +227,37 @@ export default function PaymentRequestsPage() {
       ),
     },
     {
-      title: '付款方式',
-      dataIndex: 'paymentMethod',
-      key: 'paymentMethod',
+      title: "付款方式",
+      dataIndex: "paymentMethod",
+      key: "paymentMethod",
       width: 100,
       render: (method) => paymentMethodMap[method] || method,
     },
     {
-      title: '付款日期',
-      dataIndex: 'paymentDate',
-      key: 'paymentDate',
+      title: "付款日期",
+      dataIndex: "paymentDate",
+      key: "paymentDate",
       width: 120,
-      render: (date) => dayjs(date).format('YYYY-MM-DD'),
+      render: (date) => dayjs(date).format("YYYY-MM-DD"),
     },
     {
-      title: '申请人',
-      key: 'applicant',
+      title: "申请人",
+      key: "applicant",
       width: 100,
       render: (_, record) => record.applicant?.name,
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
       width: 100,
       render: (status) => (
         <Tag color={statusMap[status]?.color}>{statusMap[status]?.label}</Tag>
       ),
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 180,
       render: (_, record) => (
         <Space size="small">
@@ -259,13 +267,15 @@ export default function PaymentRequestsPage() {
             icon={<EyeOutlined />}
             onClick={() => router.push(`/payment-requests/${record.id}`)}
           />
-          {record.status === 'DRAFT' && (
+          {record.status === "DRAFT" && (
             <>
               <Button
                 type="link"
                 size="small"
                 icon={<EditOutlined />}
-                onClick={() => router.push(`/payment-requests/${record.id}/edit`)}
+                onClick={() =>
+                  router.push(`/payment-requests/${record.id}/edit`)
+                }
               />
               <Button
                 type="link"
@@ -273,27 +283,32 @@ export default function PaymentRequestsPage() {
                 icon={<SendOutlined />}
                 onClick={() => handleSubmit(record.id)}
               />
-        <Popconfirm
-          title="确定要删除该付款申请吗？"
-          description="删除后数据将无法恢复"
-          onConfirm={() => handleDelete(record.id)}
-          okText="确定"
-          cancelText="取消"
-        >
-          <Button type="link" size="small" danger icon={<DeleteOutlined />} />
-        </Popconfirm>
+              <Popconfirm
+                title="确定要删除该付款申请吗？"
+                description="删除后数据将无法恢复"
+                onConfirm={() => handleDelete(record.id)}
+                okText="确定"
+                cancelText="取消"
+              >
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                />
+              </Popconfirm>
             </>
           )}
-          {record.status === 'PENDING' && (
-      <Popconfirm
-        title="确定要取消该付款申请吗？"
-        description="取消后需要重新提交审批"
-        onConfirm={() => handleCancel(record.id)}
-        okText="确定"
-        cancelText="取消"
-      >
-        <Button type="link" size="small" icon={<CloseOutlined />} />
-      </Popconfirm>
+          {record.status === "PENDING" && (
+            <Popconfirm
+              title="确定要取消该付款申请吗？"
+              description="取消后需要重新提交审批"
+              onConfirm={() => handleCancel(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" icon={<CloseOutlined />} />
+            </Popconfirm>
           )}
         </Space>
       ),
@@ -305,13 +320,15 @@ export default function PaymentRequestsPage() {
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <div>
-          <Title level={4} style={{ margin: 0 }}>付款申请</Title>
+          <Title level={4} style={{ margin: 0 }}>
+            付款申请
+          </Title>
           <Text type="secondary">现金、支票等各类（对公）付款申请</Text>
         </div>
         <Button
           type="primary"
           icon={<PlusOutlined />}
-          onClick={() => router.push('/payment-requests/new')}
+          onClick={() => router.push("/payment-requests/new")}
         >
           新建申请
         </Button>
@@ -323,32 +340,42 @@ export default function PaymentRequestsPage() {
           <Input
             placeholder="申请单号"
             value={searchForm.requestNo}
-            onChange={(e) => setSearchForm((prev) => ({ ...prev, requestNo: e.target.value }))}
+            onChange={(e) =>
+              setSearchForm((prev) => ({ ...prev, requestNo: e.target.value }))
+            }
             style={{ width: 160 }}
             allowClear
           />
           <Input
             placeholder="付款事由"
             value={searchForm.reason}
-            onChange={(e) => setSearchForm((prev) => ({ ...prev, reason: e.target.value }))}
+            onChange={(e) =>
+              setSearchForm((prev) => ({ ...prev, reason: e.target.value }))
+            }
             style={{ width: 160 }}
             allowClear
           />
           <Select
             placeholder="状态"
             value={searchForm.status || undefined}
-            onChange={(value) => setSearchForm((prev) => ({ ...prev, status: value || '' }))}
+            onChange={(value) =>
+              setSearchForm((prev) => ({ ...prev, status: value || "" }))
+            }
             style={{ width: 120 }}
             allowClear
             options={[
-              { value: 'DRAFT', label: '草稿' },
-              { value: 'PENDING', label: '待审批' },
-              { value: 'APPROVED', label: '已通过' },
-              { value: 'REJECTED', label: '已拒绝' },
-              { value: 'PAID', label: '已付款' },
+              { value: "DRAFT", label: "草稿" },
+              { value: "PENDING", label: "待审批" },
+              { value: "APPROVED", label: "已通过" },
+              { value: "REJECTED", label: "已拒绝" },
+              { value: "PAID", label: "已付款" },
             ]}
           />
-          <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+          <Button
+            type="primary"
+            icon={<SearchOutlined />}
+            onClick={handleSearch}
+          >
             搜索
           </Button>
         </Space>

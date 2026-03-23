@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 回款管理页面
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   Card,
@@ -17,16 +17,19 @@ import {
   Button,
   Spin,
   message,
-} from 'antd';
+} from "antd";
+import type { TableColumnsType } from "antd";
 import {
   DollarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   WarningOutlined,
   EyeOutlined,
-} from '@ant-design/icons';
-import { api } from '@/lib/api';
-import { formatAmount, formatDate } from '@/lib/constants';
+} from "@ant-design/icons";
+import { api } from "@/lib/api";
+import { formatAmount, formatDate } from "@/lib/constants";
+import { getErrorMessage } from "@/lib/error";
+import { formatLocaleMoney } from "@/lib/number";
 
 const { Title, Text } = Typography;
 
@@ -69,10 +72,10 @@ export default function PaymentsPage() {
   const fetchStatistics = async () => {
     setLoading(true);
     try {
-      const res = await api.get<PaymentStatistics>('/payments/statistics');
+      const res = await api.get<PaymentStatistics>("/payments/statistics");
       setStatistics(res);
-    } catch (error: any) {
-      message.error(error.message || '加载失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "加载失败"));
     } finally {
       setLoading(false);
     }
@@ -83,87 +86,86 @@ export default function PaymentsPage() {
   }, []);
 
   // 表格列定义
-  const columns = [
+  const columns: TableColumnsType<ContractPaymentInfo> = [
     {
-      title: '合同编号',
-      dataIndex: 'contractNo',
-      key: 'contractNo',
+      title: "合同编号",
+      dataIndex: "contractNo",
+      key: "contractNo",
       width: 140,
       render: (v: string, record: ContractPaymentInfo) => (
         <a onClick={() => router.push(`/contracts/${record.id}`)}>{v}</a>
       ),
     },
     {
-      title: '合同名称',
-      dataIndex: 'name',
-      key: 'name',
+      title: "合同名称",
+      dataIndex: "name",
+      key: "name",
       ellipsis: true,
     },
     {
-      title: '客户',
-      dataIndex: ['customer', 'name'],
-      key: 'customer',
+      title: "客户",
+      dataIndex: ["customer", "name"],
+      key: "customer",
       width: 150,
       ellipsis: true,
     },
     {
-      title: '合同金额',
-      dataIndex: 'amountWithTax',
-      key: 'amountWithTax',
+      title: "合同金额",
+      dataIndex: "amountWithTax",
+      key: "amountWithTax",
       width: 130,
       render: (v: number) => <Text>¥{formatAmount(v)}</Text>,
     },
     {
-      title: '已回款',
-      dataIndex: 'totalPaid',
-      key: 'totalPaid',
+      title: "已回款",
+      dataIndex: "totalPaid",
+      key: "totalPaid",
       width: 130,
-      render: (v: number) => (
-        <Text type="success">¥{formatAmount(v)}</Text>
-      ),
+      render: (v: number) => <Text type="success">¥{formatAmount(v)}</Text>,
     },
     {
-      title: '应收余额',
-      dataIndex: 'receivable',
-      key: 'receivable',
+      title: "应收余额",
+      dataIndex: "receivable",
+      key: "receivable",
       width: 130,
       render: (v: number) => (
-        <Text type={Number(v) > 0 ? 'warning' : 'success'}>
+        <Text type={Number(v) > 0 ? "warning" : "success"}>
           ¥{formatAmount(v)}
         </Text>
       ),
     },
     {
-      title: '逾期金额',
-      dataIndex: 'overdueAmount',
-      key: 'overdueAmount',
+      title: "逾期金额",
+      dataIndex: "overdueAmount",
+      key: "overdueAmount",
       width: 120,
-      render: (v: number) => (
+      render: (v: number) =>
         Number(v) > 0 ? (
           <Text type="danger">¥{formatAmount(v)}</Text>
         ) : (
           <Text type="secondary">-</Text>
-        )
-      ),
+        ),
     },
     {
-      title: '回款进度',
-      dataIndex: 'progress',
-      key: 'progress',
+      title: "回款进度",
+      dataIndex: "progress",
+      key: "progress",
       width: 150,
       render: (progress: number) => (
         <Progress
           percent={progress}
           size="small"
-          status={progress >= 100 ? 'success' : progress > 0 ? 'active' : 'normal'}
+          status={
+            progress >= 100 ? "success" : progress > 0 ? "active" : "normal"
+          }
         />
       ),
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 80,
-      render: (_: any, record: ContractPaymentInfo) => (
+      render: (_: unknown, record: ContractPaymentInfo) => (
         <Button
           type="link"
           size="small"
@@ -200,11 +202,13 @@ export default function PaymentsPage() {
               precision={2}
               prefix={<DollarOutlined />}
               suffix="元"
-              valueStyle={{ color: '#1890ff' }}
-              formatter={(value) => value?.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              valueStyle={{ color: "#1890ff" }}
+              formatter={(value) => formatLocaleMoney(value)}
             />
             <div className="mt-2">
-              <Text type="secondary">执行中合同 {summary?.contractCount || 0} 个</Text>
+              <Text type="secondary">
+                执行中销售合同 {summary?.contractCount || 0} 个
+              </Text>
             </div>
           </Card>
         </Col>
@@ -216,8 +220,8 @@ export default function PaymentsPage() {
               precision={2}
               prefix={<CheckCircleOutlined />}
               suffix="元"
-              valueStyle={{ color: '#52c41a' }}
-              formatter={(value) => value?.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              valueStyle={{ color: "#52c41a" }}
+              formatter={(value) => formatLocaleMoney(value)}
             />
             <div className="mt-2">
               <Text type="secondary">
@@ -234,8 +238,8 @@ export default function PaymentsPage() {
               precision={2}
               prefix={<ClockCircleOutlined />}
               suffix="元"
-              formatter={(value) => value?.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              valueStyle={{ color: '#faad14' }}
+              formatter={(value) => formatLocaleMoney(value)}
+              valueStyle={{ color: "#faad14" }}
             />
             <div className="mt-2">
               <Text type="secondary">待回款金额</Text>
@@ -250,8 +254,8 @@ export default function PaymentsPage() {
               precision={2}
               prefix={<WarningOutlined />}
               suffix="元"
-              valueStyle={{ color: '#ff4d4f' }}
-              formatter={(value) => value?.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              valueStyle={{ color: "#ff4d4f" }}
+              formatter={(value) => formatLocaleMoney(value)}
             />
             <div className="mt-2">
               <Text type="secondary">需及时跟进</Text>
@@ -269,10 +273,10 @@ export default function PaymentsPage() {
               percent={summary?.completionRate || 0}
               status={
                 (summary?.completionRate || 0) >= 100
-                  ? 'success'
+                  ? "success"
                   : (summary?.completionRate || 0) > 50
-                  ? 'active'
-                  : 'normal'
+                    ? "active"
+                    : "normal"
               }
               strokeWidth={16}
               format={(percent) => `${percent}%`}
@@ -282,7 +286,7 @@ export default function PaymentsPage() {
       </Card>
 
       {/* 合同回款列表 */}
-      <Card title="合同回款状态">
+      <Card title="销售合同回款状态">
         <Table
           columns={columns}
           dataSource={statistics?.contracts || []}

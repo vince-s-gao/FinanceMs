@@ -9,6 +9,7 @@ import {
 import { Request } from "express";
 import { tap } from "rxjs";
 import { AuditService } from "../../modules/audit/audit.service";
+import type { AuthenticatedUser } from "../types/auth-user.type";
 
 type AuditAction = "CREATE" | "UPDATE" | "DELETE";
 type AuditJson =
@@ -47,7 +48,7 @@ export class AuditLogInterceptor implements NestInterceptor {
 
     const request = context
       .switchToHttp()
-      .getRequest<Request & { user?: any }>();
+      .getRequest<Request & { user?: AuthenticatedUser }>();
     const method = (request.method || "").toUpperCase();
     const pathname = `${request.baseUrl || ""}${request.path || ""}`;
 

@@ -14,11 +14,12 @@ import { PaymentsService } from "./payments.service";
 import { CreatePaymentPlanDto } from "./dto/create-payment-plan.dto";
 import { CreatePaymentRecordDto } from "./dto/create-payment-record.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles } from "../../common/decorators";
+import { Functions, Roles } from "../../common/decorators";
 
 // 角色常量
 const Role = {
   EMPLOYEE: "EMPLOYEE",
+  SALES: "SALES",
   FINANCE: "FINANCE",
   MANAGER: "MANAGER",
   ADMIN: "ADMIN",
@@ -32,21 +33,24 @@ export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @Get("statistics")
-  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.SALES, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("payment.view")
   @ApiOperation({ summary: "获取回款统计数据" })
   async getStatistics() {
     return this.paymentsService.getStatistics();
   }
 
   @Get("plans/:contractId")
-  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.SALES, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("payment.view")
   @ApiOperation({ summary: "获取合同回款计划" })
   async findPlansByContract(@Param("contractId") contractId: string) {
     return this.paymentsService.findPlansByContract(contractId);
   }
 
   @Get("records/:contractId")
-  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.SALES, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("payment.view")
   @ApiOperation({ summary: "获取合同回款记录" })
   async findRecordsByContract(@Param("contractId") contractId: string) {
     return this.paymentsService.findRecordsByContract(contractId);
@@ -54,6 +58,7 @@ export class PaymentsController {
 
   @Post("plans")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("payment.plan.create")
   @ApiOperation({ summary: "创建回款计划" })
   async createPlan(@Body() createPlanDto: CreatePaymentPlanDto) {
     return this.paymentsService.createPlan(createPlanDto);
@@ -61,6 +66,7 @@ export class PaymentsController {
 
   @Post("plans/batch/:contractId")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("payment.plan.create")
   @ApiOperation({ summary: "批量创建回款计划" })
   async createPlans(
     @Param("contractId") contractId: string,
@@ -71,6 +77,7 @@ export class PaymentsController {
 
   @Post("records")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("payment.record.create")
   @ApiOperation({ summary: "创建回款记录" })
   async createRecord(@Body() createRecordDto: CreatePaymentRecordDto) {
     return this.paymentsService.createRecord(createRecordDto);
@@ -78,6 +85,7 @@ export class PaymentsController {
 
   @Delete("plans/:id")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("payment.plan.delete")
   @ApiOperation({ summary: "删除回款计划" })
   async removePlan(@Param("id") id: string) {
     return this.paymentsService.removePlan(id);
@@ -85,6 +93,7 @@ export class PaymentsController {
 
   @Delete("records/:id")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("payment.record.delete")
   @ApiOperation({ summary: "删除回款记录" })
   async removeRecord(@Param("id") id: string) {
     return this.paymentsService.removeRecord(id);

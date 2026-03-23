@@ -1,9 +1,9 @@
 // InfFinanceMs - 数据缓存 Hook
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from "react";
 
 // 简单的内存缓存
-const cache = new Map<string, { data: any; timestamp: number }>();
+const cache = new Map<string, { data: unknown; timestamp: number }>();
 
 // 缓存过期时间（默认 30 秒）
 const CACHE_TTL = 30 * 1000;
@@ -44,34 +44,37 @@ export function useCachedData<T>({
   const [error, setError] = useState<Error | null>(null);
   const fetchingRef = useRef(false);
 
-  const fetchData = useCallback(async (forceRefresh = false) => {
-    // 如果正在获取中，不重复获取
-    if (fetchingRef.current) return;
+  const fetchData = useCallback(
+    async (forceRefresh = false) => {
+      // 如果正在获取中，不重复获取
+      if (fetchingRef.current) return;
 
-    // 检查缓存
-    const cached = cache.get(cacheKey);
-    const now = Date.now();
-    
-    if (!forceRefresh && cached && now - cached.timestamp < ttl) {
-      setData(cached.data);
-      return;
-    }
+      // 检查缓存
+      const cached = cache.get(cacheKey);
+      const now = Date.now();
 
-    fetchingRef.current = true;
-    setLoading(true);
-    setError(null);
+      if (!forceRefresh && cached && now - cached.timestamp < ttl) {
+        setData(cached.data as T);
+        return;
+      }
 
-    try {
-      const result = await fetcher();
-      setData(result);
-      cache.set(cacheKey, { data: result, timestamp: now });
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      setLoading(false);
-      fetchingRef.current = false;
-    }
-  }, [cacheKey, fetcher, ttl]);
+      fetchingRef.current = true;
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await fetcher();
+        setData(result);
+        cache.set(cacheKey, { data: result, timestamp: now });
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        setLoading(false);
+        fetchingRef.current = false;
+      }
+    },
+    [cacheKey, fetcher, ttl],
+  );
 
   useEffect(() => {
     if (enabled) {
@@ -103,13 +106,21 @@ export function clearAllCache() {
 /**
  * 预加载数据到缓存
  */
-export function preloadData<T>(cacheKey: string, fetcher: () => Promise<T>, ttl = CACHE_TTL) {
+export function preloadData<T>(
+  cacheKey: string,
+  fetcher: () => Promise<T>,
+  ttl = CACHE_TTL,
+) {
   const cached = cache.get(cacheKey);
   const now = Date.now();
-  
+
   if (!cached || now - cached.timestamp >= ttl) {
-    fetcher().then(data => {
-      cache.set(cacheKey, { data, timestamp: Date.now() });
-    }).catch(console.error);
+    fetcher()
+      .then((data) => {
+        cache.set(cacheKey, { data, timestamp: Date.now() });
+      })
+      .catch((error: unknown) => {
+        console.error("preloadData failed", error);
+      });
   }
 }

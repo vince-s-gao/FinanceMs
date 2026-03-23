@@ -20,6 +20,13 @@ describe("InvoicesService", () => {
       },
       contract: {
         findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            contractNo: "HT-001",
+            contractType: "SALES",
+          },
+        ]),
       },
       paymentRecord: {
         aggregate: jest.fn(),
@@ -106,7 +113,19 @@ describe("InvoicesService", () => {
     } as any);
 
     const findManyArg = prisma.invoice.findMany.mock.calls[0][0];
-    expect(findManyArg.where.contract.contractType.in).toContain("SALES");
+    expect(findManyArg.where.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          contract: expect.objectContaining({
+            is: expect.objectContaining({
+              contractType: expect.objectContaining({
+                in: expect.arrayContaining(["SALES"]),
+              }),
+            }),
+          }),
+        }),
+      ]),
+    );
   });
 
   it("should throw when findOne invoice does not exist", async () => {

@@ -1,8 +1,8 @@
 // InfFinanceMs - React Query Hooks
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import { message } from 'antd';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { message } from "antd";
 
 /**
  * 通用查询 Hook
@@ -13,7 +13,7 @@ import { message } from 'antd';
 export function useApiQuery<T>(
   queryKey: string[],
   endpoint: string,
-  params?: Record<string, any>
+  params?: Record<string, unknown>,
 ) {
   return useQuery({
     queryKey,
@@ -31,22 +31,22 @@ export function useApiQuery<T>(
  * @param endpoint API 端点
  * @param invalidateKeys 成功后失效的查询键
  */
-export function useApiMutation<T, D = any>(
+export function useApiMutation<T, D = unknown>(
   mutationKey: string[],
-  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   endpoint: string,
-  invalidateKeys?: string[][]
+  invalidateKeys?: string[][],
 ) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationKey,
     mutationFn: async (data?: D) => {
-      if (method === 'POST') {
+      if (method === "POST") {
         return api.post<T>(endpoint, data);
-      } else if (method === 'PUT') {
+      } else if (method === "PUT") {
         return api.put<T>(endpoint, data);
-      } else if (method === 'PATCH') {
+      } else if (method === "PATCH") {
         return api.patch<T>(endpoint, data);
       } else {
         return api.delete<T>(endpoint);
@@ -60,8 +60,12 @@ export function useApiMutation<T, D = any>(
         });
       }
     },
-    onError: (error: any) => {
-      message.error(error.message || '操作失败');
+    onError: (error: unknown) => {
+      if (error instanceof Error) {
+        message.error(error.message || "操作失败");
+        return;
+      }
+      message.error("操作失败");
     },
   });
 }

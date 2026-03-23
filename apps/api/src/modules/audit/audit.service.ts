@@ -1,8 +1,10 @@
 // InfFinanceMs - 审计日志服务
 
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
+  normalizePagination,
   parseDateRangeEnd,
   parseDateRangeStart,
 } from "../../common/utils/query.utils";
@@ -18,6 +20,31 @@ import {
 @Injectable()
 export class AuditService {
   constructor(private prisma: PrismaService) {}
+
+  private readonly sensitiveFields = [
+    "password",
+    "token",
+    "secret",
+    "apiKey",
+    "accessToken",
+    "refreshToken",
+    "bankAccount",
+    "idCard",
+    "phone",
+    "email",
+  ];
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  }
+
+  private toAuditJson(
+    value: unknown,
+  ): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return Prisma.JsonNull;
+    return value as Prisma.InputJsonValue;
+  }
 
   /**
    * 记录审计日志
@@ -35,8 +62,8 @@ export class AuditService {
     action: string,
     entityType: string,
     entityId: string,
-    oldValue?: any,
-    newValue?: any,
+    oldValue?: unknown,
+    newValue?: unknown,
     ipAddress?: string,
     userAgent?: string,
   ): Promise<void> {
@@ -51,8 +78,8 @@ export class AuditService {
           action,
           entityType,
           entityId,
-          oldValue: sanitizedOldValue,
-          newValue: sanitizedNewValue,
+          oldValue: this.toAuditJson(sanitizedOldValue),
+          newValue: this.toAuditJson(sanitizedNewValue),
           ipAddress,
           userAgent,
         },
@@ -113,8 +140,8 @@ export class AuditService {
     userId: string,
     entityType: string,
     entityId: string,
-    oldValue: any,
-    newValue: any,
+    oldValue: unknown,
+    newValue: unknown,
     ipAddress?: string,
     userAgent?: string,
   ): Promise<void> {
@@ -138,7 +165,7 @@ export class AuditService {
     operation: string,
     entityType: string,
     entityId: string,
-    details?: any,
+    details?: unknown,
     ipAddress?: string,
     userAgent?: string,
   ): Promise<void> {
@@ -159,7 +186,7 @@ export class AuditService {
    * @param data 原始数据
    * @returns 脱敏后的数据
    */
-  private sanitizeSensitiveData(data: any): any {
+  private sanitizeSensitiveData(data: unknown): unknown {
     if (!data) {
       return data;
     }
@@ -173,23 +200,13 @@ export class AuditService {
     }
 
     if (typeof data === "object") {
-      const sanitized: any = {};
-      const sensitiveFields = [
-        "password",
-        "token",
-        "secret",
-        "apiKey",
-        "accessToken",
-        "refreshToken",
-        "bankAccount",
-        "idCard",
-        "phone",
-        "email",
-      ];
+      const sanitized: Record<string, unknown> = {};
 
-      for (const [key, value] of Object.entries(data)) {
+      for (const [key, value] of Object.entries(
+        this.isRecord(data) ? data : {},
+      )) {
         if (
-          sensitiveFields.some((field) =>
+          this.sensitiveFields.some((field) =>
             key.toLowerCase().includes(field.toLowerCase()),
           )
         ) {
@@ -212,7 +229,7 @@ export class AuditService {
    * @param value 值
    * @returns 掩码后的值
    */
-  private maskSensitiveValue(field: string, value: any): string {
+  private maskSensitiveValue(field: string, value: unknown): string {
     if (!value || typeof value !== "string") {
       return "***";
     }
@@ -319,9 +336,12 @@ export class AuditService {
       sortBy = "createdAt",
       sortOrder = "desc",
     } = query;
-
-    const skip = (page - 1) * pageSize;
-    const where: any = {};
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
+    const where: Prisma.AuditLogWhereInput = {};
 
     if (action) where.action = action;
     if (entityType) where.entityType = entityType.toLowerCase();
@@ -348,7 +368,7 @@ export class AuditService {
       this.prisma.auditLog.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: { [safeSortBy]: safeSortOrder },
         include: {
           user: {
@@ -367,9 +387,9 @@ export class AuditService {
     return {
       items,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 

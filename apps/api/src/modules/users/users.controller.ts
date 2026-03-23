@@ -16,7 +16,7 @@ import { UsersService } from "./users.service";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { CurrentUser, Roles } from "../../common/decorators";
+import { CurrentUser, Functions, Roles } from "../../common/decorators";
 
 // 角色常量
 const Role = {
@@ -73,6 +73,7 @@ export class UsersController {
 
   @Post()
   @Roles(Role.ADMIN)
+  @Functions("user.create")
   @ApiOperation({ summary: "创建用户" })
   async create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
@@ -80,6 +81,7 @@ export class UsersController {
 
   @Patch(":id")
   @Roles(Role.ADMIN)
+  @Functions("user.edit")
   @ApiOperation({ summary: "更新用户" })
   async update(@Param("id") id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, updateUserDto);
@@ -87,6 +89,7 @@ export class UsersController {
 
   @Delete(":id")
   @Roles(Role.ADMIN)
+  @Functions("user.delete")
   @ApiOperation({ summary: "删除用户" })
   async remove(
     @Param("id") id: string,

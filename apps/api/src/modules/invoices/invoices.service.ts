@@ -10,10 +10,12 @@ import {
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
 import { QueryInvoiceDto } from "./dto/query-invoice.dto";
+import type { Prisma } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import * as fs from "fs";
 import * as path from "path";
 import {
+  normalizePagination,
   parseDateRangeEnd,
   parseDateRangeStart,
   resolveSortField,
@@ -47,6 +49,7 @@ const INVOICE_TYPE_VALUES = ["VAT_SPECIAL", "VAT_NORMAL", "RECEIPT"] as const;
 type InvoiceTypeValue = (typeof INVOICE_TYPE_VALUES)[number];
 type InvoiceDirectionValue = "INBOUND" | "OUTBOUND";
 const MAX_REASONABLE_INVOICE_AMOUNT = 1_000_000_000; // 10亿，超过该值通常为误识别（如发票号码串）
+const SALES_CONTRACT_TYPES_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const IMPORT_HEADER_ALIASES = {
   contractId: ["合同ID", "合同id", "contractId", "contract_id"],
@@ -88,9 +91,26 @@ interface DirectionCheckContext {
   normalizedSalesSet?: Set<string>;
 }
 
+type HttpErrorPayload = {
+  code?: string;
+  message?: string | string[];
+  details?: {
+    contractNo?: string;
+    contractAmountWithTax?: string;
+    issuedAmount?: string;
+    currentInvoiceAmount?: string;
+    totalAfterImport?: string;
+    overflowAmount?: string;
+  };
+};
+
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
+  private salesContractTypesCache: {
+    codes: string[];
+    expiresAt: number;
+  } | null = null;
 
   constructor(
     private prisma: PrismaService,
@@ -99,19 +119,16 @@ export class InvoicesService {
 
   private normalizeErrorMessage(error: unknown): string {
     if (error instanceof HttpException) {
-      const payload = error.getResponse() as any;
+      const response = error.getResponse();
+      const payload: HttpErrorPayload =
+        typeof response === "string"
+          ? { message: response }
+          : (response as HttpErrorPayload);
       if (
         payload?.code === "INVOICE_AMOUNT_EXCEEDS_CONTRACT" &&
         payload?.details
       ) {
-        const details = payload.details as {
-          contractNo?: string;
-          contractAmountWithTax?: string;
-          issuedAmount?: string;
-          currentInvoiceAmount?: string;
-          totalAfterImport?: string;
-          overflowAmount?: string;
-        };
+        const details = payload.details;
         return [
           payload?.message || "开票金额超出合同金额",
           `合同(${details.contractNo || "-"})含税金额 ${details.contractAmountWithTax || "-"}，`,
@@ -142,6 +159,14 @@ export class InvoicesService {
   }
 
   private async getSalesContractTypeCodes(): Promise<string[]> {
+    const now = Date.now();
+    if (
+      this.salesContractTypesCache &&
+      this.salesContractTypesCache.expiresAt > now
+    ) {
+      return this.salesContractTypesCache.codes;
+    }
+
     const fallback = ["SALES"];
     const rows = await this.prisma.dictionary.findMany({
       where: {
@@ -162,7 +187,12 @@ export class InvoicesService {
       .filter((code) => !!normalizeText(code));
 
     const merged = [...new Set([...codes, ...fallback])];
-    return merged.length > 0 ? merged : fallback;
+    const resolved = merged.length > 0 ? merged : fallback;
+    this.salesContractTypesCache = {
+      codes: resolved,
+      expiresAt: now + SALES_CONTRACT_TYPES_CACHE_TTL_MS,
+    };
+    return resolved;
   }
 
   private resolveDirectionByContractType(
@@ -1016,6 +1046,70 @@ export class InvoicesService {
     return contract.id;
   }
 
+  private async warmupContractCaches(
+    rows: ParsedInvoiceCandidate[],
+    contractCacheById: Map<
+      string,
+      { id: string; direction: InvoiceDirectionValue }
+    >,
+    contractCacheByNo: Map<
+      string,
+      { id: string; direction: InvoiceDirectionValue }
+    >,
+    directionCheckContext?: DirectionCheckContext,
+  ): Promise<void> {
+    if (!rows.length) return;
+
+    const normalizedSalesSet =
+      directionCheckContext?.normalizedSalesSet || new Set<string>();
+    const contractIds = Array.from(
+      new Set(rows.map((row) => row.contractId?.trim()).filter(Boolean)),
+    ) as string[];
+    const contractNos = Array.from(
+      new Set(
+        rows
+          .map((row) => normalizeText(row.contractNo || "").toUpperCase())
+          .filter(Boolean),
+      ),
+    );
+
+    const clauses: Prisma.ContractWhereInput[] = [];
+    if (contractIds.length) {
+      clauses.push({ id: { in: contractIds } });
+    }
+    if (contractNos.length) {
+      clauses.push({ contractNo: { in: contractNos } });
+    }
+    if (!clauses.length) return;
+
+    const contracts = await this.prisma.contract.findMany({
+      where: {
+        isDeleted: false,
+        OR: clauses,
+      },
+      select: {
+        id: true,
+        contractNo: true,
+        contractType: true,
+      },
+    });
+
+    for (const contract of contracts) {
+      const direction = this.resolveDirectionByContractType(
+        contract.contractType,
+        normalizedSalesSet,
+      );
+      const cacheItem = { id: contract.id, direction };
+      contractCacheById.set(contract.id, cacheItem);
+      const normalizedContractNo = normalizeText(
+        contract.contractNo,
+      ).toUpperCase();
+      if (normalizedContractNo) {
+        contractCacheByNo.set(normalizedContractNo, cacheItem);
+      }
+    }
+  }
+
   async previewImportFiles(
     files: Express.Multer.File[],
     defaultContractId?: string,
@@ -1041,6 +1135,15 @@ export class InvoicesService {
       : [];
     const normalizedSalesSet = new Set(
       salesContractTypeCodes.map((item) => normalizeText(item).toUpperCase()),
+    );
+    await this.warmupContractCaches(
+      prepared.validRows,
+      contractCacheById,
+      contractCacheByNo,
+      {
+        expectedDirection,
+        normalizedSalesSet,
+      },
     );
 
     for (const row of prepared.validRows) {
@@ -1114,6 +1217,15 @@ export class InvoicesService {
       : [];
     const normalizedSalesSet = new Set(
       salesContractTypeCodes.map((item) => normalizeText(item).toUpperCase()),
+    );
+    await this.warmupContractCaches(
+      prepared.validRows,
+      contractCacheById,
+      contractCacheByNo,
+      {
+        expectedDirection,
+        normalizedSalesSet,
+      },
     );
 
     for (const row of prepared.validRows) {
@@ -1214,14 +1326,18 @@ export class InvoicesService {
       sortBy = "createdAt",
       sortOrder = "desc",
     } = query;
-    const skip = (page - 1) * pageSize;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
     const safeSortBy = resolveSortField(
       sortBy,
       ALLOWED_INVOICE_SORT_FIELDS,
       "createdAt",
     );
 
-    const where: any = {};
+    const where: Prisma.InvoiceWhereInput = {};
 
     // 关键词搜索
     if (keyword) {
@@ -1255,24 +1371,46 @@ export class InvoicesService {
       salesContractTypeCodes.map((item) => normalizeText(item).toUpperCase()),
     );
     if (direction === "OUTBOUND") {
-      where.contract = {
-        ...(where.contract || {}),
-        contractType: {
-          in: salesContractTypeCodes,
-        },
-      };
-    } else if (direction === "INBOUND") {
-      where.contract = {
-        ...(where.contract || {}),
-        OR: [
-          { contractType: null },
-          {
-            contractType: {
-              notIn: salesContractTypeCodes,
+      const currentAnd = Array.isArray(where.AND)
+        ? where.AND
+        : where.AND
+          ? [where.AND]
+          : [];
+      where.AND = [
+        ...currentAnd,
+        {
+          contract: {
+            is: {
+              contractType: {
+                in: salesContractTypeCodes,
+              },
             },
           },
-        ],
-      };
+        },
+      ];
+    } else if (direction === "INBOUND") {
+      const currentAnd = Array.isArray(where.AND)
+        ? where.AND
+        : where.AND
+          ? [where.AND]
+          : [];
+      where.AND = [
+        ...currentAnd,
+        {
+          contract: {
+            is: {
+              OR: [
+                { contractType: null },
+                {
+                  contractType: {
+                    notIn: salesContractTypeCodes,
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ];
     }
 
     // 日期范围筛选
@@ -1286,7 +1424,7 @@ export class InvoicesService {
       this.prisma.invoice.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: { [safeSortBy]: sortOrder },
         include: {
           contract: {
@@ -1305,7 +1443,7 @@ export class InvoicesService {
       this.prisma.invoice.count({ where }),
     ]);
 
-    const itemsWithDirection = items.map((item: any) => ({
+    const itemsWithDirection = items.map((item) => ({
       ...item,
       direction: this.resolveDirectionByContractType(
         item.contract?.contractType,
@@ -1316,9 +1454,9 @@ export class InvoicesService {
     return {
       items: itemsWithDirection,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 

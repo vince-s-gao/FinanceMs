@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 新增报销页面
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Form,
   Input,
@@ -19,12 +19,23 @@ import {
   Switch,
   Popconfirm,
   Upload,
-} from 'antd';
-import type { UploadFile, UploadProps } from 'antd';
-import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined, UploadOutlined } from '@ant-design/icons';
-import { api } from '@/lib/api';
-import { FEE_TYPE_LABELS } from '@/lib/constants';
-import dayjs from 'dayjs';
+} from "antd";
+import type { TableColumnsType, UploadFile, UploadProps } from "antd";
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  ArrowLeftOutlined,
+  UploadOutlined,
+} from "@ant-design/icons";
+import { api } from "@/lib/api";
+import { FEE_TYPE_LABELS } from "@/lib/constants";
+import { getErrorMessage } from "@/lib/error";
+import {
+  formatLocaleMoney,
+  formatThousandSeparated,
+  parseCurrencySeparated,
+} from "@/lib/number";
+import dayjs from "dayjs";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -45,6 +56,10 @@ interface Contract {
   id: string;
   contractNo: string;
   name: string;
+}
+
+interface ListResponse<T> {
+  items: T[];
 }
 
 // 项目接口
@@ -75,10 +90,12 @@ export default function NewExpensePage() {
   useEffect(() => {
     const fetchContracts = async () => {
       try {
-        const res = await api.get<any>('/contracts', { params: { pageSize: 100, status: 'EXECUTING' } });
+        const res = await api.get<ListResponse<Contract>>("/contracts", {
+          params: { pageSize: 100, status: "EXECUTING" },
+        });
         setContracts(res.items || []);
       } catch (error) {
-        console.error('加载合同列表失败', error);
+        console.error("加载合同列表失败", error);
       }
     };
     fetchContracts();
@@ -88,10 +105,12 @@ export default function NewExpensePage() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const res = await api.get<any>('/projects', { params: { pageSize: 100, status: 'ACTIVE' } });
-        setProjects(res.items || res || []);
+        const res = await api.get<ListResponse<Project>>("/projects", {
+          params: { pageSize: 100, status: "ACTIVE" },
+        });
+        setProjects(res.items || []);
       } catch (error) {
-        console.error('加载项目列表失败', error);
+        console.error("加载项目列表失败", error);
       }
     };
     fetchProjects();
@@ -101,10 +120,10 @@ export default function NewExpensePage() {
   const handleAddDetail = () => {
     const newDetail: ExpenseDetail = {
       key: Date.now().toString(),
-      description: '',
-      occurDate: dayjs().format('YYYY-MM-DD'),
+      description: "",
+      occurDate: dayjs().format("YYYY-MM-DD"),
       amount: 0,
-      feeType: 'OTHER',
+      feeType: "OTHER",
       hasInvoice: true,
     };
     setDetails([...details, newDetail]);
@@ -122,7 +141,7 @@ export default function NewExpensePage() {
       // 限制文件大小 100MB
       const isLt100M = file.size / 1024 / 1024 < 100;
       if (!isLt100M) {
-        message.error('文件大小不能超过100MB');
+        message.error("文件大小不能超过100MB");
         return Upload.LIST_IGNORE;
       }
       setFileList([...fileList, file]);
@@ -138,9 +157,13 @@ export default function NewExpensePage() {
   };
 
   // 更新明细行
-  const handleUpdateDetail = (key: string, field: string, value: any) => {
+  const handleUpdateDetail = <K extends keyof ExpenseDetail>(
+    key: string,
+    field: K,
+    value: ExpenseDetail[K],
+  ) => {
     setDetails(
-      details.map((d) => (d.key === key ? { ...d, [field]: value } : d))
+      details.map((d) => (d.key === key ? { ...d, [field]: value } : d)),
     );
   };
 
@@ -153,18 +176,18 @@ export default function NewExpensePage() {
       const values = await form.validateFields();
 
       if (details.length === 0) {
-        message.error('请至少添加一条报销明细');
+        message.error("请至少添加一条报销明细");
         return;
       }
 
       // 验证明细
       for (const detail of details) {
         if (!detail.description || !detail.occurDate || !detail.amount) {
-          message.error('请完善报销明细信息（内容描述、发生日期、金额必填）');
+          message.error("请完善报销明细信息（内容描述、发生日期、金额必填）");
           return;
         }
         if (detail.amount <= 0) {
-          message.error('报销金额必须大于0');
+          message.error("报销金额必须大于0");
           return;
         }
       }
@@ -186,76 +209,76 @@ export default function NewExpensePage() {
         })),
       };
 
-      await api.post('/expenses', payload);
-      message.success('创建成功');
-      router.push('/expenses');
-    } catch (error: any) {
-      if (error.message) {
-        message.error(error.message);
-      }
+      await api.post("/expenses", payload);
+      message.success("创建成功");
+      router.push("/expenses");
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "创建失败"));
     } finally {
       setSubmitting(false);
     }
   };
 
   // 明细表格列
-  const detailColumns = [
+  const detailColumns: TableColumnsType<ExpenseDetail> = [
     {
-      title: '内容描述',
-      dataIndex: 'description',
-      key: 'description',
+      title: "内容描述",
+      dataIndex: "description",
+      key: "description",
       width: 200,
-      render: (_: any, record: ExpenseDetail) => (
+      render: (_: unknown, record: ExpenseDetail) => (
         <Input
           value={record.description}
-          onChange={(e) => handleUpdateDetail(record.key, 'description', e.target.value)}
+          onChange={(e) =>
+            handleUpdateDetail(record.key, "description", e.target.value)
+          }
           placeholder="请输入费用内容描述"
         />
       ),
     },
     {
-      title: '发生日期',
-      dataIndex: 'occurDate',
-      key: 'occurDate',
+      title: "发生日期",
+      dataIndex: "occurDate",
+      key: "occurDate",
       width: 140,
-      render: (_: any, record: ExpenseDetail) => (
+      render: (_: unknown, record: ExpenseDetail) => (
         <DatePicker
           value={record.occurDate ? dayjs(record.occurDate) : null}
           onChange={(d) =>
-            handleUpdateDetail(record.key, 'occurDate', d?.format('YYYY-MM-DD'))
+            handleUpdateDetail(record.key, "occurDate", d?.format("YYYY-MM-DD"))
           }
-          style={{ width: '100%' }}
+          style={{ width: "100%" }}
         />
       ),
     },
     {
-      title: '报销金额',
-      dataIndex: 'amount',
-      key: 'amount',
+      title: "报销金额",
+      dataIndex: "amount",
+      key: "amount",
       width: 130,
-      render: (_: any, record: ExpenseDetail) => (
-        <InputNumber
+      render: (_: unknown, record: ExpenseDetail) => (
+        <InputNumber<number>
           value={record.amount}
-          onChange={(v) => handleUpdateDetail(record.key, 'amount', v || 0)}
+          onChange={(v) => handleUpdateDetail(record.key, "amount", v || 0)}
           min={0}
           precision={2}
-          style={{ width: '100%' }}
+          style={{ width: "100%" }}
           prefix="¥"
-          formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-          parser={(value) => value!.replace(/[¥,]/g, '') as any}
+          formatter={formatThousandSeparated}
+          parser={parseCurrencySeparated}
         />
       ),
     },
     {
-      title: '费用类型',
-      dataIndex: 'feeType',
-      key: 'feeType',
+      title: "费用类型",
+      dataIndex: "feeType",
+      key: "feeType",
       width: 120,
-      render: (_: any, record: ExpenseDetail) => (
+      render: (_: unknown, record: ExpenseDetail) => (
         <Select
           value={record.feeType}
-          onChange={(v) => handleUpdateDetail(record.key, 'feeType', v)}
-          style={{ width: '100%' }}
+          onChange={(v) => handleUpdateDetail(record.key, "feeType", v)}
+          style={{ width: "100%" }}
         >
           {Object.entries(FEE_TYPE_LABELS).map(([k, v]) => (
             <Option key={k} value={k}>
@@ -266,46 +289,48 @@ export default function NewExpensePage() {
       ),
     },
     {
-      title: '有发票',
-      dataIndex: 'hasInvoice',
-      key: 'hasInvoice',
+      title: "有发票",
+      dataIndex: "hasInvoice",
+      key: "hasInvoice",
       width: 70,
-      render: (_: any, record: ExpenseDetail) => (
+      render: (_: unknown, record: ExpenseDetail) => (
         <Switch
           checked={record.hasInvoice}
-          onChange={(v) => handleUpdateDetail(record.key, 'hasInvoice', v)}
+          onChange={(v) => handleUpdateDetail(record.key, "hasInvoice", v)}
           size="small"
         />
       ),
     },
     {
-      title: '发票号',
-      dataIndex: 'invoiceNo',
-      key: 'invoiceNo',
+      title: "发票号",
+      dataIndex: "invoiceNo",
+      key: "invoiceNo",
       width: 120,
-      render: (_: any, record: ExpenseDetail) => (
+      render: (_: unknown, record: ExpenseDetail) => (
         <Input
           value={record.invoiceNo}
-          onChange={(e) => handleUpdateDetail(record.key, 'invoiceNo', e.target.value)}
+          onChange={(e) =>
+            handleUpdateDetail(record.key, "invoiceNo", e.target.value)
+          }
           placeholder="发票号码"
           disabled={!record.hasInvoice}
         />
       ),
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 60,
-      render: (_: any, record: ExpenseDetail) => (
-      <Popconfirm
-        title="确定删除该明细吗？"
-        description="删除后该行数据将被移除"
-        onConfirm={() => handleDeleteDetail(record.key)}
-        okText="确定"
-        cancelText="取消"
-      >
-        <Button type="link" danger icon={<DeleteOutlined />} />
-      </Popconfirm>
+      render: (_: unknown, record: ExpenseDetail) => (
+        <Popconfirm
+          title="确定删除该明细吗？"
+          description="删除后该行数据将被移除"
+          onConfirm={() => handleDeleteDetail(record.key)}
+          okText="确定"
+          cancelText="取消"
+        >
+          <Button type="link" danger icon={<DeleteOutlined />} />
+        </Popconfirm>
       ),
     },
   ];
@@ -331,7 +356,7 @@ export default function NewExpensePage() {
             <Form.Item
               name="projectId"
               label="关联项目"
-              rules={[{ required: true, message: '请选择关联项目' }]}
+              rules={[{ required: true, message: "请选择关联项目" }]}
             >
               <Select
                 placeholder="请选择关联项目"
@@ -362,14 +387,13 @@ export default function NewExpensePage() {
             </Form.Item>
 
             <Form.Item label="报销总额">
-              <InputNumber
+              <InputNumber<number>
                 value={totalAmount}
                 disabled
                 precision={2}
-                style={{ width: '100%' }}
+                style={{ width: "100%" }}
                 prefix="¥"
-                formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                parser={(value) => value!.replace(/[¥,]/g, '') as any}
+                formatter={formatThousandSeparated}
               />
             </Form.Item>
           </div>
@@ -377,7 +401,7 @@ export default function NewExpensePage() {
           <Form.Item
             name="reason"
             label="报销事由"
-            rules={[{ required: true, message: '请输入报销事由' }]}
+            rules={[{ required: true, message: "请输入报销事由" }]}
           >
             <TextArea
               placeholder="请详细描述报销事由，如：2026年1月出差北京参加客户会议"
@@ -392,7 +416,11 @@ export default function NewExpensePage() {
       <Card
         title="报销明细"
         extra={
-          <Button type="dashed" icon={<PlusOutlined />} onClick={handleAddDetail}>
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            onClick={handleAddDetail}
+          >
             添加明细
           </Button>
         }
@@ -411,7 +439,7 @@ export default function NewExpensePage() {
                   <strong>合计</strong>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1}>
-                  <strong>¥{totalAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                  <strong>¥{formatLocaleMoney(totalAmount)}</strong>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={2} colSpan={4} />
               </Table.Summary.Row>

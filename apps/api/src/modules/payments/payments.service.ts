@@ -10,6 +10,8 @@ import { ContractsService } from "../contracts/contracts.service";
 import { CreatePaymentPlanDto } from "./dto/create-payment-plan.dto";
 import { CreatePaymentRecordDto } from "./dto/create-payment-record.dto";
 import { Decimal } from "@prisma/client/runtime/library";
+import { isSalesContractType } from "../contracts/contracts.type.utils";
+import { normalizeText } from "../../common/utils/tabular.utils";
 
 // 合同状态常量
 const ContractStatus = {
@@ -25,13 +27,72 @@ import { Prisma } from "@prisma/client";
 
 // 回款计划状态常量（使用 Prisma 枚举）
 const PaymentPlanStatus = PrismaPaymentPlanStatus;
+const SALES_CONTRACT_TYPES_CACHE_TTL_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class PaymentsService {
+  private salesContractTypesCache: {
+    codes: string[];
+    expiresAt: number;
+  } | null = null;
+
   constructor(
     private prisma: PrismaService,
     private contractsService: ContractsService,
   ) {}
+
+  private async getSalesContractTypeCodes(): Promise<string[]> {
+    const now = Date.now();
+    if (
+      this.salesContractTypesCache &&
+      this.salesContractTypesCache.expiresAt > now
+    ) {
+      return this.salesContractTypesCache.codes;
+    }
+
+    const rows = await this.prisma.dictionary.findMany({
+      where: { type: "CONTRACT_TYPE" },
+      select: { code: true, name: true, value: true },
+    });
+
+    const detected = rows
+      .filter((row) =>
+        isSalesContractType([row.code, row.name || "", row.value || ""]),
+      )
+      .map((row) => normalizeText(row.code).toUpperCase())
+      .filter(Boolean);
+
+    const fallback = ["SALES"];
+    const resolved = [...new Set([...detected, ...fallback])];
+
+    this.salesContractTypesCache = {
+      codes: resolved,
+      expiresAt: now + SALES_CONTRACT_TYPES_CACHE_TTL_MS,
+    };
+
+    return resolved;
+  }
+
+  private async isSalesContract(
+    contractType?: string | null,
+  ): Promise<boolean> {
+    const normalized = normalizeText(contractType || "").toUpperCase();
+    if (!normalized) return false;
+
+    const salesCodes = await this.getSalesContractTypeCodes();
+    if (salesCodes.includes(normalized)) return true;
+
+    return isSalesContractType([contractType || ""]);
+  }
+
+  private async assertSalesContract(
+    contractType?: string | null,
+  ): Promise<void> {
+    const isSales = await this.isSalesContract(contractType);
+    if (!isSales) {
+      throw new BadRequestException("仅销售合同支持回款管理");
+    }
+  }
 
   /**
    * 重新计算并更新回款计划状态
@@ -70,11 +131,34 @@ export class PaymentsService {
    * 获取回款统计数据
    */
   async getStatistics() {
-    // 获取所有执行中的合同
+    const salesContractTypeCodes = await this.getSalesContractTypeCodes();
+    const salesContractTypeSet = new Set(
+      salesContractTypeCodes.map((item) => normalizeText(item).toUpperCase()),
+    );
+
+    // 仅读取销售合同，避免其他类型合同混入回款看板
     const contracts = await this.prisma.contract.findMany({
       where: {
         isDeleted: false,
         status: ContractStatus.EXECUTING,
+        OR: [
+          {
+            contractType: {
+              in: salesContractTypeCodes,
+            },
+          },
+          {
+            contractType: {
+              contains: "销售",
+            },
+          },
+          {
+            contractType: {
+              contains: "SALE",
+              mode: "insensitive",
+            },
+          },
+        ],
       },
       include: {
         customer: {
@@ -89,6 +173,13 @@ export class PaymentsService {
       },
     });
 
+    const salesContracts = contracts.filter((contract) =>
+      this.resolveIsSalesContractType(
+        contract.contractType,
+        salesContractTypeSet,
+      ),
+    );
+
     // 计算统计数据
     let totalContractAmount = new Decimal(0);
     let totalPaidAmount = new Decimal(0);
@@ -96,7 +187,7 @@ export class PaymentsService {
     let overdueAmount = new Decimal(0);
     const today = new Date();
 
-    const contractStats = contracts.map((contract) => {
+    const contractStats = salesContracts.map((contract) => {
       const contractAmount = new Decimal(contract.amountWithTax.toString());
       const paidAmount = contract.paymentRecords.reduce(
         (sum, record) => sum.plus(record.amount),
@@ -149,7 +240,7 @@ export class PaymentsService {
         totalPaidAmount,
         totalReceivable,
         overdueAmount,
-        contractCount: contracts.length,
+        contractCount: salesContracts.length,
         completionRate: totalContractAmount.gt(0)
           ? Math.round(
               totalPaidAmount.div(totalContractAmount).mul(100).toNumber(),
@@ -160,10 +251,29 @@ export class PaymentsService {
     };
   }
 
+  private resolveIsSalesContractType(
+    contractType: string | null | undefined,
+    salesCodes: Set<string>,
+  ): boolean {
+    const normalized = normalizeText(contractType || "").toUpperCase();
+    if (!normalized) return false;
+    if (salesCodes.has(normalized)) return true;
+    return isSalesContractType([contractType || ""]);
+  }
+
   /**
    * 获取合同的回款计划列表
    */
   async findPlansByContract(contractId: string) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, isDeleted: false },
+      select: { id: true, contractType: true },
+    });
+    if (!contract) {
+      throw new NotFoundException("合同不存在");
+    }
+    await this.assertSalesContract(contract.contractType);
+
     const plans = await this.prisma.paymentPlan.findMany({
       where: { contractId },
       orderBy: { period: "asc" },
@@ -192,6 +302,15 @@ export class PaymentsService {
    * 获取合同的回款记录列表
    */
   async findRecordsByContract(contractId: string) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, isDeleted: false },
+      select: { id: true, contractType: true },
+    });
+    if (!contract) {
+      throw new NotFoundException("合同不存在");
+    }
+    await this.assertSalesContract(contract.contractType);
+
     return this.prisma.paymentRecord.findMany({
       where: { contractId },
       orderBy: { paymentDate: "desc" },
@@ -214,6 +333,7 @@ export class PaymentsService {
     if (!contract) {
       throw new NotFoundException("合同不存在");
     }
+    await this.assertSalesContract(contract.contractType);
 
     // 检查期数是否重复
     const existingPlan = await this.prisma.paymentPlan.findFirst({
@@ -256,6 +376,7 @@ export class PaymentsService {
     if (!contract) {
       throw new NotFoundException("合同不存在");
     }
+    await this.assertSalesContract(contract.contractType);
 
     // 检查计划总金额
     const totalPlanAmount = plans.reduce(
@@ -296,6 +417,7 @@ export class PaymentsService {
     if (!contract) {
       throw new NotFoundException("合同不存在");
     }
+    await this.assertSalesContract(contract.contractType);
 
     // 合同必须是执行中状态
     if (contract.status !== ContractStatus.EXECUTING) {

@@ -69,7 +69,7 @@ export function parseTabularBuffer(
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) return [];
     const sheet = workbook.Sheets[sheetName];
-    const rows = xlsxUtils.sheet_to_json<any[]>(sheet, {
+    const rows = xlsxUtils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
       raw: false,
       defval: "",

@@ -12,9 +12,11 @@ import { QueryPaymentRequestDto } from "./dto/query-payment-request.dto";
 import { ApprovePaymentRequestDto } from "./dto/approve-payment-request.dto";
 import { Prisma } from "@prisma/client";
 import {
+  normalizePagination,
   parseDateRangeEnd,
   parseDateRangeStart,
 } from "../../common/utils/query.utils";
+import { isUniqueConflict } from "../../common/utils/prisma.utils";
 import { NotificationsService } from "../notifications/notifications.service";
 
 @Injectable()
@@ -23,6 +25,20 @@ export class PaymentRequestsService {
     private prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  private readonly approverRoles = ["MANAGER", "ADMIN"] as const;
+
+  private toNotificationContext(request: {
+    id: string;
+    requestNo: string;
+    applicantId: string;
+  }) {
+    return {
+      id: request.id,
+      requestNo: request.requestNo,
+      applicantId: request.applicantId,
+    };
+  }
 
   private isPurchaseContractType(contractType?: string | null): boolean {
     const raw = (contractType || "").trim();
@@ -52,11 +68,15 @@ export class PaymentRequestsService {
     return contract;
   }
 
-  private async notifyApproversForSubmit(request: any) {
+  private async notifyApproversForSubmit(request: {
+    id: string;
+    requestNo: string;
+    applicantId: string;
+  }) {
     const approvers = await this.prisma.user.findMany({
       where: {
         isActive: true,
-        role: { in: ["MANAGER", "ADMIN"] },
+        role: { in: [...this.approverRoles] },
       },
       select: { id: true },
     });
@@ -76,7 +96,11 @@ export class PaymentRequestsService {
   }
 
   private async notifyApplicant(
-    request: any,
+    request: {
+      id: string;
+      requestNo: string;
+      applicantId: string;
+    },
     title: string,
     content: string,
     type: "SYSTEM" | "APPROVAL" | "PAYMENT" | "ALERT",
@@ -124,10 +148,7 @@ export class PaymentRequestsService {
   }
 
   private isRequestNoConflict(error: unknown): boolean {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
-    if (error.code !== "P2002") return false;
-    const target = (error.meta?.target || []) as string[];
-    return target.includes("requestNo");
+    return isUniqueConflict(error, "requestNo");
   }
 
   /**
@@ -222,8 +243,13 @@ export class PaymentRequestsService {
       page = 1,
       pageSize = 10,
     } = query;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize, defaultPageSize: 10 });
 
-    const where: any = {
+    const where: Prisma.PaymentRequestWhereInput = {
       isDeleted: false,
     };
 
@@ -286,17 +312,17 @@ export class PaymentRequestsService {
           },
         },
         orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take: safePageSize,
       }),
     ]);
 
     return {
       items,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 
@@ -368,7 +394,7 @@ export class PaymentRequestsService {
     }
 
     // 构建更新数据
-    const updateData: any = {
+    const updateData: Prisma.PaymentRequestUpdateInput = {
       reason: updateDto.reason,
       amount: updateDto.amount,
       currency: updateDto.currency,
@@ -400,9 +426,10 @@ export class PaymentRequestsService {
     }
 
     // 移除 undefined 值
-    Object.keys(updateData).forEach((key) => {
-      if (updateData[key] === undefined) {
-        delete updateData[key];
+    const updateRecord = updateData as Record<string, unknown>;
+    Object.keys(updateRecord).forEach((key) => {
+      if (updateRecord[key] === undefined) {
+        delete updateRecord[key];
       }
     });
 
@@ -453,7 +480,7 @@ export class PaymentRequestsService {
       },
     });
 
-    await this.notifyApproversForSubmit(request);
+    await this.notifyApproversForSubmit(this.toNotificationContext(request));
     return updated;
   }
 
@@ -492,7 +519,7 @@ export class PaymentRequestsService {
 
     const isApproved = approveDto.status === "APPROVED";
     await this.notifyApplicant(
-      request,
+      this.toNotificationContext(request),
       isApproved ? "付款申请已审批通过" : "付款申请已被驳回",
       isApproved
         ? `付款申请 ${request.requestNo} 已审批通过`
@@ -531,7 +558,7 @@ export class PaymentRequestsService {
     });
 
     await this.notifyApplicant(
-      request,
+      this.toNotificationContext(request),
       "付款申请已完成付款",
       `付款申请 ${request.requestNo} 已完成付款处理`,
       "PAYMENT",

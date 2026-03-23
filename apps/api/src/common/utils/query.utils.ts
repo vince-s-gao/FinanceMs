@@ -1,6 +1,54 @@
 // InfFinanceMs - 查询工具函数
 
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const DEFAULT_PAGE = 1;
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
+type PaginationInput = {
+  page?: number | string | null;
+  pageSize?: number | string | null;
+  defaultPage?: number;
+  defaultPageSize?: number;
+  maxPageSize?: number;
+};
+
+function toFiniteNumber(value: number | string | null | undefined): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+  return NaN;
+}
+
+/**
+ * 统一规范分页参数，避免超大分页导致性能风险
+ */
+export function normalizePagination(input: PaginationInput): {
+  page: number;
+  pageSize: number;
+  skip: number;
+} {
+  const defaultPage = input.defaultPage ?? DEFAULT_PAGE;
+  const defaultPageSize = input.defaultPageSize ?? DEFAULT_PAGE_SIZE;
+  const maxPageSize = input.maxPageSize ?? MAX_PAGE_SIZE;
+
+  const parsedPage = Math.floor(toFiniteNumber(input.page));
+  const parsedPageSize = Math.floor(toFiniteNumber(input.pageSize));
+
+  const safePage = parsedPage > 0 ? parsedPage : defaultPage;
+  const safePageSize = Math.min(
+    Math.max(parsedPageSize > 0 ? parsedPageSize : defaultPageSize, 1),
+    maxPageSize,
+  );
+
+  return {
+    page: safePage,
+    pageSize: safePageSize,
+    skip: (safePage - 1) * safePageSize,
+  };
+}
 
 /**
  * 解析日期区间开始时间

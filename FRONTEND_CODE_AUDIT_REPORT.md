@@ -9,6 +9,7 @@
 ## 📊 审查概览
 
 ### 统计数据
+
 - **总组件文件数**: 32 个 .tsx 文件
 - **代码行数**: 约 8,000+ 行
 - **主要页面组件**: 15 个
@@ -16,9 +17,20 @@
 - **自定义 Hooks**: 2 个
 
 ### 严重程度分布
-- 🔴 **严重问题**: 8 个
-- 🟡 **中等问题**: 15 个
-- 🟢 **轻微问题**: 12 个
+
+- 🔴 **严重问题**: 7 个 ⬇️ (-1)
+- 🟡 **中等问题**: 13 个 ⬇️ (-2)
+- 🟢 **轻微问题**: 10 个 ⬇️ (-2)
+- **总计**: 30 个 ⬇️ (-5)
+
+### 已解决的问题
+
+- ✅ 缺少错误边界 - 已实现 AppErrorBoundary 组件
+- ✅ 缺少防抖和节流 - 已实现 useDebouncedValue Hook
+- ✅ 缺少加载状态和骨架屏 - 已使用 Skeleton 组件
+- ✅ 缺少响应式设计优化 - 已使用 Tailwind 响应式类
+- ✅ 使用 ESLint 和 Prettier - 已配置
+- ✅ 使用 Husky 和 lint-staged - 已配置
 
 ---
 
@@ -29,18 +41,21 @@
 **问题描述**: 多个组件文件超过 500 行，违反单一职责原则，难以维护和测试。
 
 **受影响文件**:
+
 - `contracts/page.tsx` - **1,042 行** ⚠️
 - `InvoiceManagementPage.tsx` - **949 行** ⚠️
 - `dashboard/page.tsx` - **590 行**
 - `customers/page.tsx` - **657 行**
 
 **影响**:
+
 - 代码可读性差
 - 难以进行单元测试
 - 修改风险高
 - 团队协作困难
 
 **优化建议**:
+
 ```typescript
 // ❌ 当前做法：所有逻辑在一个文件中
 export default function ContractsPage() {
@@ -53,7 +68,7 @@ export default function ContractsPage() {
   const { contracts, loading, fetchContracts } = useContracts();
   const { searchFilters, handleSearch, handleReset } = useContractSearch();
   const { importModal, handleImport } = useContractImport();
-  
+
   return (
     <ContractLayout>
       <ContractSearchBar {...searchFilters} />
@@ -91,34 +106,36 @@ export function ContractTable({ contracts, loading }: Props) {
 **问题描述**: `MainLayout.tsx` 中的 `useEffect` 没有清理函数，可能导致内存泄漏。
 
 **问题代码** (`MainLayout.tsx`):
+
 ```typescript
 // ❌ 问题代码
 useEffect(() => {
   const loadNotifications = async () => {
     // 加载通知逻辑
   };
-  
+
   loadNotifications();
   const interval = setInterval(loadNotifications, 60000); // 没有清理
 }, []);
 ```
 
 **修复方案**:
+
 ```typescript
 // ✅ 修复后
 useEffect(() => {
   const loadNotifications = async () => {
     try {
-      const res = await api.get('/notifications/unread');
+      const res = await api.get("/notifications/unread");
       setNotifications(res);
     } catch (error) {
-      console.error('加载通知失败', error);
+      console.error("加载通知失败", error);
     }
   };
-  
+
   loadNotifications();
   const interval = setInterval(loadNotifications, 60000);
-  
+
   // 添加清理函数
   return () => {
     clearInterval(interval);
@@ -127,104 +144,27 @@ useEffect(() => {
 ```
 
 **其他潜在内存泄漏点**:
+
 - 事件监听器未移除
 - WebSocket 连接未关闭
 - 订阅未取消
 
 ---
 
-### 3. 缺少错误边界
-
-**问题描述**: 只有全局错误处理 (`global-error.tsx`)，缺少组件级别的错误边界。
-
-**影响**.:
-- 单个组件错误会导致整个页面崩溃
-- 用户体验差
-- 难以定位和修复错误
-
-**优化建议**:
-```typescript
-// components/ErrorBoundary.tsx
-'use client';
-
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { Result, Button } from 'antd';
-
-interface Props {
-  children: ReactNode;
-  fallback?: ReactNode;
-}
-
-interface State {
-  hasError: boolean;
-  error?: Error;
-}
-
-export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught:', error, errorInfo);
-    // 可以发送错误日志到监控服务
-  }
-
-  handleReset = () => {
-    this.setState({ hasError: false, error: undefined });
-  };
-
-  render() {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
-
-      return (
-        <div className="p-8">
-          <Result
-            status="error"
-            title="组件加载失败"
-            subTitle={this.state.error?.message}
-            extra={
-              <Button type="primary" onClick={this.handleReset}>
-                重试
-              </Button>
-            }
-          />
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-// 使用示例
-<ErrorBoundary>
-  <ContractsPage />
-</ErrorBoundary>
-```
-
----
-
-### 4. TypeScript 类型定义不完整
+### 3. TypeScript 类型定义不完整
 
 **问题描述**: 大量使用 `any` 类型，缺少严格的类型检查。
 
 **问题代码示例**:
+
 ```typescript
 // ❌ 问题代码
 const params: any = { page, pageSize };
-const res = await api.get<any>('/customers', { params });
+const res = await api.get<any>("/customers", { params });
 ```
 
 **修复方案**:
+
 ```typescript
 // ✅ 定义完整的类型
 interface CustomerListParams {
@@ -243,10 +183,13 @@ interface PaginatedResponse<T> {
 
 // 使用类型
 const params: CustomerListParams = { page, pageSize, keyword, typeFilter };
-const res = await api.get<PaginatedResponse<Customer>>('/customers', { params });
+const res = await api.get<PaginatedResponse<Customer>>("/customers", {
+  params,
+});
 ```
 
 **建议创建共享类型文件**:
+
 ```typescript
 // types/api.ts
 export interface PaginationParams {
@@ -277,12 +220,14 @@ export interface ApiError {
 **问题描述**: 用户输入未经过充分验证和转义，存在安全风险。
 
 **问题代码**:
+
 ```typescript
 // ❌ 直接使用用户输入
 <div>{userInput}</div>
 ```
 
 **修复方案**:
+
 ```typescript
 // ✅ 使用 DOMPurify 清理 HTML
 import DOMPurify from 'dompurify';
@@ -308,50 +253,52 @@ const validateInput = (value: string): boolean => {
 **问题描述**: 错误处理方式不一致，有些使用 try-catch，有些依赖全局拦截器。
 
 **问题代码**:
+
 ```typescript
 // ❌ 不一致的错误处理
 try {
-  await api.post('/customers', values);
-  message.success('创建成功');
+  await api.post("/customers", values);
+  message.success("创建成功");
 } catch (error: any) {
-  message.error(error.response?.data?.message || error.message || '操作失败');
+  message.error(error.response?.data?.message || error.message || "操作失败");
 }
 ```
 
 **优化建议**:
+
 ```typescript
 // hooks/useApiMutation.ts
 export function useApiMutation<T, D = any>(
   endpoint: string,
   options: {
-    method?: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    method?: "POST" | "PUT" | "PATCH" | "DELETE";
     onSuccess?: (data: T) => void;
     onError?: (error: ApiError) => void;
     successMessage?: string;
-  } = {}
+  } = {},
 ) {
   const [loading, setLoading] = useState(false);
-  const { method = 'POST', onSuccess, onError, successMessage } = options;
+  const { method = "POST", onSuccess, onError, successMessage } = options;
 
   const mutate = async (data?: D): Promise<T> => {
     setLoading(true);
     try {
       let result: T;
       switch (method) {
-        case 'POST':
+        case "POST":
           result = await api.post<T>(endpoint, data);
           break;
-        case 'PUT':
+        case "PUT":
           result = await api.put<T>(endpoint, data);
           break;
-        case 'PATCH':
+        case "PATCH":
           result = await api.patch<T>(endpoint, data);
           break;
-        case 'DELETE':
+        case "DELETE":
           result = await api.delete<T>(endpoint);
           break;
       }
-      
+
       if (successMessage) {
         message.success(successMessage);
       }
@@ -359,7 +306,7 @@ export function useApiMutation<T, D = any>(
       return result;
     } catch (error: any) {
       const apiError = error as ApiError;
-      message.error(apiError.message || '操作失败');
+      message.error(apiError.message || "操作失败");
       onError?.(apiError);
       throw apiError;
     } finally {
@@ -371,54 +318,24 @@ export function useApiMutation<T, D = any>(
 }
 
 // 使用示例
-const { mutate: createCustomer, loading } = useApiMutation('/customers', {
-  method: 'POST',
-  successMessage: '创建成功',
+const { mutate: createCustomer, loading } = useApiMutation("/customers", {
+  method: "POST",
+  successMessage: "创建成功",
   onSuccess: () => {
     fetchCustomers();
     setModalVisible(false);
-  }
+  },
 });
 ```
 
 ---
 
-### 7. 缺少加载状态和骨架屏
-
-**问题描述**: 加载状态处理不统一，用户体验差。
-
-**优化建议**:
-```typescript
-// components/TableSkeleton.tsx
-export function TableSkeleton({ rows = 5, columns = 6 }: Props) {
-  return (
-    <div className="space-y-3">
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex gap-3">
-          {Array.from({ length: columns }).map((_, j) => (
-            <Skeleton key={j} active paragraph={{ rows: 0 }} />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// 使用示例
-{loading ? (
-  <TableSkeleton />
-) : (
-  <Table dataSource={data} columns={columns} />
-)}
-```
-
----
-
-### 8. 缺少响应式设计优化
+### 7. 缺少响应式设计优化
 
 **问题描述**: 部分页面在移动端显示效果不佳。
 
 **优化建议**:
+
 ```typescript
 // 使用 Ant Design 的响应式 Grid
 import { Row, Col } from 'antd';
@@ -447,6 +364,7 @@ import { Row, Col } from 'antd';
 **问题描述**: 大量使用内联函数和对象作为 props，导致子组件不必要的重渲染。
 
 **问题代码**:
+
 ```typescript
 // ❌ 每次渲染都创建新函数
 <Button onClick={() => handleDelete(record.id)}>删除</Button>
@@ -456,6 +374,7 @@ import { Row, Col } from 'antd';
 ```
 
 **修复方案**:
+
 ```typescript
 // ✅ 使用 useCallback
 const handleDelete = useCallback((id: string) => {
@@ -483,11 +402,13 @@ const MemoizedButton = React.memo(Button);
 **问题描述**: 多个页面有相似的 CRUD 操作代码。
 
 **受影响页面**:
+
 - `customers/page.tsx`
 - `suppliers/page.tsx`
 - `departments/page.tsx`
 
 **优化建议**:
+
 ```typescript
 // hooks/useCrud.ts
 export function useCrud<T>(endpoint: string) {
@@ -497,20 +418,23 @@ export function useCrud<T>(endpoint: string) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  const fetch = useCallback(async (params?: any) => {
-    setLoading(true);
-    try {
-      const res = await api.get<PaginatedResponse<T>>(endpoint, {
-        params: { page, pageSize, ...params }
-      });
-      setData(res.items);
-      setTotal(res.total);
-    } catch (error) {
-      message.error('加载失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [endpoint, page, pageSize]);
+  const fetch = useCallback(
+    async (params?: any) => {
+      setLoading(true);
+      try {
+        const res = await api.get<PaginatedResponse<T>>(endpoint, {
+          params: { page, pageSize, ...params },
+        });
+        setData(res.items);
+        setTotal(res.total);
+      } catch (error) {
+        message.error("加载失败");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [endpoint, page, pageSize],
+  );
 
   const create = async (item: Partial<T>) => {
     await api.post(endpoint, item);
@@ -538,13 +462,20 @@ export function useCrud<T>(endpoint: string) {
     fetch,
     create,
     update,
-    remove
+    remove,
   };
 }
 
 // 使用示例
 export default function Customers() {
-  const { data: customers, loading, fetch, create, update, remove } = useCrud<Customer>('/customers');
+  const {
+    data: customers,
+    loading,
+    fetch,
+    create,
+    update,
+    remove,
+  } = useCrud<Customer>("/customers");
   // ...
 }
 ```
@@ -556,6 +487,7 @@ export default function Customers() {
 **问题描述**: 表单验证规则不完整，缺少客户端验证。
 
 **优化建议**:
+
 ```typescript
 // utils/validators.ts
 export const validators = {
@@ -602,50 +534,17 @@ export const validators = {
 
 ---
 
-### 12. 缺少防抖和节流
-
-**问题描述**: 搜索输入框没有防抖，导致频繁请求。
-
-**优化建议**:
-```typescript
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-
-// hooks/useDebouncedValue.ts
-export function useDebouncedValue<T>(value: T, delay: number = 300): T {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    constHandler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-
-  return debouncedValue;
-}
-
-// 使用示例
-const [keyword, setKeyword] = useState('');
-const debouncedKeyword = useDebouncedValue(keyword, 300);
-
-useEffect(() => {
-  fetchCustomers({ keyword: debouncedKeyword });
-}, [debouncedKeyword]);
-```
-
----
-
-### 13. 缺少权限控制
+### 12. 缺少权限控制
 
 **问题描述**: 前端缺少细粒度的权限控制。
 
 **优化建议**:
+
 ```typescript
 // hooks/usePermissions.ts
 export function usePermissions() {
   const { user } = useAuth();
-  
+
   const hasPermission = (permission: string): boolean => {
     return user?.permissions?.includes(permission) || false;
   };
@@ -680,13 +579,14 @@ const { isAdmin } = usePermissions();
 **问题描述**: 所有文本都是硬编码的中文，不支持多语言。
 
 **优化建议**:
+
 ```typescript
 // 使用 next-intl
 import { useTranslations } from 'next-intl';
 
 export default function CustomersPage() {
   const t = useTranslations('customers');
-  
+
   return (
     <div>
       <h1>{t('title')}</h1>
@@ -711,6 +611,7 @@ export default function CustomersPage() {
 **问题描述**: 所有组件都没有单元测试。
 
 **优化建议**:
+
 ```typescript
 // __tests__/customers/page.test.tsx
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -719,7 +620,7 @@ import CustomersPage from '@/app/(dashboard)/customers/page';
 describe('CustomersPage', () => {
   it('should render customer list', async () => {
     render(<CustomersPage />);
-    
+
     await waitFor(() => {
       expect(screen.getByText('客户管理')).toBeInTheDocument();
     });
@@ -727,10 +628,10 @@ describe('CustomersPage', () => {
 
   it('should open add modal when clicking add button', async () => {
     render(<CustomersPage />);
-    
+
     const addButton = screen.getByText('新增客户');
     fireEvent.click(addButton);
-    
+
     await waitFor(() => {
       expect(screen.getByText('新增客户')).toBeInTheDocument();
     });
@@ -755,6 +656,7 @@ describe('CustomersPage', () => {
 **问题描述**: 复杂逻辑缺少注释。
 
 **优化建议**:
+
 ```typescript
 // ✅ 添加注释
 /**
@@ -769,7 +671,7 @@ const calculateAmounts = (
   productAmount: number,
   productTaxRate: number,
   serviceAmount: number,
-  serviceTaxRate: number
+  serviceTaxRate: number,
 ) => {
   // 计算逻辑
 };
@@ -782,6 +684,7 @@ const calculateAmounts = (
 **问题描述**: 错误只打印到控制台，缺少日志记录。
 
 **优化建议**:
+
 ```typescript
 // utils/logger.ts
 export const logger = {
@@ -789,15 +692,15 @@ export const logger = {
     console.log(`[INFO] ${message}`, data);
     // 发送到日志服务
   },
-  
+
   error: (message: string, error?: any) => {
     console.error(`[ERROR] ${message}`, error);
     // 发送到错误监控服务（如 Sentry）
   },
-  
+
   warn: (message: string, data?: any) => {
     console.warn(`[WARN] ${message}`, data);
-  }
+  },
 };
 ```
 
@@ -808,9 +711,10 @@ export const logger = {
 **问题描述**: 没有性能监控，难以发现性能瓶颈。
 
 **优化建议**:
+
 ```typescript
 // 使用 Web Vitals
-import { onCLS, onFID, onFCP, onLCP, onTTFB } from 'web-vitals';
+import { onCLS, onFID, onFCP, onLCP, onTTFB } from "web-vitals";
 
 onCLS(console.log);
 onFID(console.log);
@@ -826,10 +730,11 @@ onTTFB(console.log);
 **问题描述**: 没有 PWA 配置，无法离线使用。
 
 **优化建议**:
+
 ```typescript
 // next.config.js
-const withPWA = require('next-pwa')({
-  dest: 'public',
+const withPWA = require("next-pwa")({
+  dest: "public",
   register: true,
   skipWaiting: true,
 });
@@ -846,12 +751,15 @@ module.exports = withPWA({
 ### 1. 使用 React.memo 优化组件
 
 ```typescript
-export const ContractRow = React.memo(({ contract }: Props) => {
-  // 组件内容
-}, (prevProps, nextProps) => {
-  // 自定义比较函数
-  return prevProps.contract.id === nextProps.contract.id;
-});
+export const ContractRow = React.memo(
+  ({ contract }: Props) => {
+    // 组件内容
+  },
+  (prevProps, nextProps) => {
+    // 自定义比较函数
+    return prevProps.contract.id === nextProps.contract.id;
+  },
+);
 ```
 
 ### 2. 使用虚拟滚动处理大数据
@@ -909,16 +817,17 @@ module.exports = {
   async headers() {
     return [
       {
-        source: '/(.*)',
+        source: "/(.*)",
         headers: [
           {
-            key: 'Content-Security-Policy',
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline';"
-          }
-        ]
-      }
+            key: "Content-Security-Policy",
+            value:
+              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline';",
+          },
+        ],
+      },
     ];
-  }
+  },
 };
 ```
 
@@ -927,7 +836,7 @@ module.exports = {
 ```typescript
 // 不要在客户端存储敏感信息
 // ❌ 错误
-localStorage.setItem('token', token);
+localStorage.setItem("token", token);
 
 // ✅ 正确：使用 HttpOnly Cookie
 ```
@@ -966,10 +875,7 @@ localStorage.setItem('token', token);
 // package.json
 {
   "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ]
+    "*.{ts,tsx}": ["eslint --fix", "prettier --write"]
   }
 }
 ```
@@ -979,12 +885,14 @@ localStorage.setItem('token', token);
 ```javascript
 // commitlint.config.js
 module.exports = {
-  extends: ['@commitlint/config-conventional'],
+  extends: ["@commitlint/config-conventional"],
   rules: {
-    'type-enum': [2, 'always', [
-      'feat', 'fix', 'docs', 'style', 'refactor', 'test', 'chore'
-    ]]
-  }
+    "type-enum": [
+      2,
+      "always",
+      ["feat", "fix", "docs", "style", "refactor", "test", "chore"],
+    ],
+  },
 };
 ```
 
@@ -993,44 +901,65 @@ module.exports = {
 ## 🎯 优先级建议
 
 ### 高优先级（立即处理）
-1. ✅ 修复内存泄漏风险
-2. ✅ 添加错误边界
-3. ✅ 完善类型定义
-4. ✅ 统一错误处理
+
+1. 修复内存泄漏风险
+2. 完善类型定义
+3. 统一错误处理
+4. 拆分大型组件
 
 ### 中优先级（1-2周内）
-5. ✅ 拆分大型组件
-6. ✅ 添加性能优化
-7. ✅ 实现防抖节流
-8. ✅ 添加权限控制
+
+5. 添加性能优化（React.memo、useMemo、useCallback）
+6. 消除代码重复
+7. 添加表单验证
+8. 添加权限控制
 
 ### 低优先级（1个月内）
-9. ✅ 添加单元测试
-10. ✅ 实现国际化
-11. ✅ 添加 PWA 支持
-12. ✅ 完善文档
+
+9. 添加单元测试
+10. 实现国际化
+11. 添加性能监控
+12. 完善文档和注释
 
 ---
 
 ## 📊 总结
 
 ### 优点
+
 - ✅ 使用了现代技术栈（Next.js 14, TypeScript）
 - ✅ 组件结构清晰
 - ✅ 使用了 Ant Design 组件库
 - ✅ 实现了基本的 CRUD 功能
+- ✅ 已实现错误边界（AppErrorBoundary）
+- ✅ 已实现防抖功能（useDebouncedValue）
+- ✅ 已使用骨架屏（Skeleton）
+- ✅ 已配置 ESLint 和 Prettier
+- ✅ 已配置 Husky 和 lint-staged
+- ✅ 已使用 Tailwind 响应式设计
+- ✅ 已使用虚拟滚动（Ant Design Table virtual 属性）
 
 ### 需要改进
+
 - ❌ 组件过大，需要拆分
-- ❌ 缺少性能优化
+- ❌ 缺少性能优化（React.memo、useMemo、useCallback）
 - ❌ 类型定义不完整
-- ❌ 缺少错误边界
 - ❌ 缺少单元测试
+- ❌ 代码重复（DRY 原则违反）
+- ❌ 缺少表单验证
+- ❌ 缺少权限控制
+- ❌ 缺少国际化支持
+- ❌ 缺少代码注释
+- ❌ 缺少日志记录
+- ❌ 缺少性能监控
+- ❌ 缺少 PWA 支持
 
 ### 建议行动计划
-1. **第1周**: 修复严重问题（内存泄漏、错误边界、类型定义）
-2. **第2-3周**: 拆分大型组件，添加性能优化
-3. **第4周**: 添加单元测试，完善文档
+
+1. **第1周**: 修复严重问题（内存泄漏、类型定义、错误处理）
+2. **第2-3周**: 拆分大型组件，添加性能优化（React.memo、useMemo、useCallback）
+3. **第4周**: 消除代码重复，添加表单验证
+4. **第5-6周**: 添加单元测试，完善文档和注释
 
 ---
 

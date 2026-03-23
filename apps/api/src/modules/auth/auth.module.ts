@@ -11,6 +11,7 @@ import { JwtStrategy } from "./strategies/jwt.strategy";
 import { UsersModule } from "../users/users.module";
 import { PrismaModule } from "../../prisma/prisma.module";
 import { AuditModule } from "../audit/audit.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 const DEV_FALLBACK_JWT_SECRET = "development-only-jwt-secret-change-me";
 
@@ -19,6 +20,7 @@ const DEV_FALLBACK_JWT_SECRET = "development-only-jwt-secret-change-me";
     UsersModule,
     PrismaModule,
     AuditModule,
+    NotificationsModule,
     PassportModule.register({ defaultStrategy: "jwt" }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

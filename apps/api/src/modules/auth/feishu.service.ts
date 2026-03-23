@@ -2,15 +2,15 @@
 
 import { Injectable, UnauthorizedException, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../../prisma/prisma.service";
 import { randomUUID } from "crypto";
+import { AuthService, LoginMetadata } from "./auth.service";
 
 // 飞书用户信息接口
 interface FeishuUserInfo {
   open_id: string;
   union_id: string;
-  user_id: string;
+  user_id?: string;
   name: string;
   en_name?: string;
   avatar_url?: string;
@@ -37,9 +37,11 @@ interface FeishuTokenResponse {
 interface FeishuUserResponse {
   code: number;
   msg: string;
-  data?: {
-    user: FeishuUserInfo;
-  };
+  data?:
+    | FeishuUserInfo
+    | {
+        user?: FeishuUserInfo;
+      };
 }
 
 interface FeishuLoginResult {
@@ -72,7 +74,7 @@ export class FeishuService {
   constructor(
     private configService: ConfigService,
     private prisma: PrismaService,
-    private jwtService: JwtService,
+    private authService: AuthService,
   ) {
     this.appId = this.configService.get<string>("FEISHU_APP_ID", "");
     this.appSecret = this.configService.get<string>("FEISHU_APP_SECRET", "");
@@ -198,6 +200,33 @@ export class FeishuService {
   /**
    * 获取飞书用户信息
    */
+  private isFeishuUserInfo(value: unknown): value is FeishuUserInfo {
+    if (!value || typeof value !== "object") return false;
+    const user = value as Partial<FeishuUserInfo>;
+    return (
+      typeof user.open_id === "string" &&
+      (typeof user.user_id === "string" || user.user_id === undefined) &&
+      typeof user.union_id === "string" &&
+      typeof user.name === "string" &&
+      typeof user.tenant_key === "string"
+    );
+  }
+
+  private extractFeishuUser(
+    data: FeishuUserResponse["data"],
+  ): FeishuUserInfo | null {
+    if (!data) return null;
+    if (this.isFeishuUserInfo(data)) return data;
+    if (
+      typeof data === "object" &&
+      "user" in data &&
+      this.isFeishuUserInfo(data.user)
+    ) {
+      return data.user;
+    }
+    return null;
+  }
+
   private async getFeishuUserInfo(
     accessToken: string,
   ): Promise<FeishuUserInfo> {
@@ -212,19 +241,23 @@ export class FeishuService {
 
     const data: FeishuUserResponse = await response.json();
 
-    if (data.code !== 0 || !data.data?.user) {
+    const user = this.extractFeishuUser(data.data);
+    if (data.code !== 0 || !user) {
       this.logger.error("获取飞书用户信息失败", data);
       throw new UnauthorizedException("获取用户信息失败");
     }
 
-    return data.data.user;
+    return user;
   }
 
   /**
    * 飞书登录/注册
    * 使用授权码完成登录，如果用户不存在则自动创建
    */
-  async loginWithFeishu(code: string): Promise<FeishuLoginResult> {
+  async loginWithFeishu(
+    code: string,
+    metadata?: LoginMetadata,
+  ): Promise<FeishuLoginResult> {
     // 1. 获取用户访问令牌
     const tokenData = await this.getUserAccessToken(code);
 
@@ -234,13 +267,21 @@ export class FeishuService {
     this.logger.log(`飞书用户登录: ${feishuUser.name} (${feishuUser.open_id})`);
 
     // 3. 查找或创建本地用户
+    const orConditions: Array<{
+      feishuOpenId?: string;
+      feishuUserId?: string;
+      email?: string;
+    }> = [{ feishuOpenId: feishuUser.open_id }];
+    if (feishuUser.user_id) {
+      orConditions.push({ feishuUserId: feishuUser.user_id });
+    }
+    if (feishuUser.email) {
+      orConditions.push({ email: feishuUser.email });
+    }
+
     let user = await this.prisma.user.findFirst({
       where: {
-        OR: [
-          { feishuOpenId: feishuUser.open_id },
-          { feishuUserId: feishuUser.user_id },
-          { email: feishuUser.email },
-        ],
+        OR: orConditions,
       },
     });
 
@@ -252,7 +293,7 @@ export class FeishuService {
           name: feishuUser.name,
           phone: feishuUser.mobile,
           avatar: feishuUser.avatar_url,
-          feishuUserId: feishuUser.user_id,
+          feishuUserId: feishuUser.user_id || null,
           feishuOpenId: feishuUser.open_id,
           feishuUnionId: feishuUser.union_id,
           role: "EMPLOYEE", // 默认角色
@@ -265,7 +306,7 @@ export class FeishuService {
       user = await this.prisma.user.update({
         where: { id: user.id },
         data: {
-          feishuUserId: feishuUser.user_id,
+          feishuUserId: feishuUser.user_id || user.feishuUserId,
           feishuOpenId: feishuUser.open_id,
           feishuUnionId: feishuUser.union_id,
           avatar: feishuUser.avatar_url || user.avatar,
@@ -280,43 +321,7 @@ export class FeishuService {
       throw new UnauthorizedException("账号已被禁用");
     }
 
-    // 5. 生成JWT令牌
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    };
-
-    const accessToken = this.jwtService.sign({
-      ...payload,
-      type: "access",
-    });
-    const refreshToken = this.jwtService.sign(
-      {
-        ...payload,
-        type: "refresh",
-      },
-      {
-        expiresIn:
-          this.configService.get<string>("JWT_REFRESH_EXPIRES_IN") ||
-          this.configService.get<string>("JWT_REFRESH_TOKEN_EXPIRES_IN") ||
-          "30d",
-      },
-    );
-
-    return {
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        departmentId: user.departmentId,
-        avatar: user.avatar,
-        feishuUserId: user.feishuUserId,
-      },
-    };
+    return this.authService.issueLoginResult(user, metadata);
   }
 
   /**
@@ -343,7 +348,7 @@ export class FeishuService {
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: {
-        feishuUserId: feishuUser.user_id,
+        feishuUserId: feishuUser.user_id || null,
         feishuOpenId: feishuUser.open_id,
         feishuUnionId: feishuUser.union_id,
       },

@@ -10,9 +10,59 @@ import {
 } from "@nestjs/common";
 import { Request, Response } from "express";
 
+interface HttpExceptionResponsePayload {
+  message?: string | string[];
+  error?: string;
+  code?: string;
+  details?: unknown;
+}
+
+const SENSITIVE_KEYS = [
+  "password",
+  "token",
+  "secret",
+  "authorization",
+  "cookie",
+  "apiKey",
+  "accessToken",
+  "refreshToken",
+] as const;
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
+
+  private isSensitiveKey(key: string): boolean {
+    const lowered = key.toLowerCase();
+    return SENSITIVE_KEYS.some((item) => lowered.includes(item.toLowerCase()));
+  }
+
+  private sanitizeText(text: string): string {
+    return text
+      .replace(/(Bearer\\s+)[A-Za-z0-9\\-_.]+/gi, "$1***")
+      .replace(
+        /((?:access|refresh)?token\\s*[:=]\\s*)[A-Za-z0-9\\-_.]+/gi,
+        "$1***",
+      )
+      .replace(/(password\\s*[:=]\\s*)[^\\s,;]+/gi, "$1***")
+      .replace(/(secret\\s*[:=]\\s*)[^\\s,;]+/gi, "$1***");
+  }
+
+  private sanitizeValue(value: unknown): unknown {
+    if (value === null || value === undefined) return value;
+    if (typeof value === "string") return this.sanitizeText(value);
+    if (typeof value !== "object") return value;
+    if (Array.isArray(value))
+      return value.map((item) => this.sanitizeValue(item));
+
+    const result: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      result[key] = this.isSensitiveKey(key) ? "***" : this.sanitizeValue(item);
+    }
+    return result;
+  }
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
@@ -34,7 +84,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       if (typeof exceptionResponse === "string") {
         message = exceptionResponse;
       } else if (typeof exceptionResponse === "object") {
-        const responseObj = exceptionResponse as any;
+        const responseObj = exceptionResponse as HttpExceptionResponsePayload;
         message = responseObj.message || message;
         error = responseObj.error || error;
         code = responseObj.code || code;
@@ -63,17 +113,26 @@ export class HttpExceptionFilter implements ExceptionFilter {
       details = undefined;
     }
 
+    const sanitizedMessage = Array.isArray(message)
+      ? message.map((item) => this.sanitizeText(String(item)))
+      : this.sanitizeText(String(message));
+    const sanitizedDetails = this.sanitizeValue(details);
+    const sanitizedStack =
+      exception instanceof Error && exception.stack
+        ? this.sanitizeText(exception.stack)
+        : undefined;
+
     // 记录错误日志
     this.logger.error(
-      `${request.method} ${request.url} - Status: ${status} - Message: ${message}`,
-      exception instanceof Error ? exception.stack : undefined,
+      `${request.method} ${request.url} - Status: ${status} - Message: ${Array.isArray(sanitizedMessage) ? sanitizedMessage.join("; ") : sanitizedMessage}`,
+      sanitizedStack,
     );
 
     // 返回统一的错误响应
     const errorResponse = {
       code,
-      message,
-      details,
+      message: sanitizedMessage,
+      details: sanitizedDetails,
     };
 
     response.status(status).json({
@@ -82,9 +141,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
       path: request.url,
       ...errorResponse,
-      ...(isProduction
-        ? {}
-        : { stack: exception instanceof Error ? exception.stack : undefined }),
     });
   }
 }

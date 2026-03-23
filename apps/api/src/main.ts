@@ -10,7 +10,23 @@ import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { logger } from "./common/logger/winston.logger";
 import { AuditService } from "./modules/audit/audit.service";
 import { AuditLogInterceptor } from "./common/interceptors/audit-log.interceptor";
+import { TrimStringsPipe } from "./common/pipes/trim-strings.pipe";
 import { NextFunction, Request, Response } from "express";
+
+function parseDurationToSeconds(value: string | undefined): number | null {
+  if (!value) return null;
+  const matched = value.trim().match(/^(\d+)([smhd])$/i);
+  if (!matched) return null;
+  const amount = Number(matched[1]);
+  const unit = matched[2].toLowerCase();
+  const unitSeconds: Record<string, number> = {
+    s: 1,
+    m: 60,
+    h: 3600,
+    d: 86400,
+  };
+  return amount * (unitSeconds[unit] || 1);
+}
 
 function validateCriticalEnv(): void {
   const isProduction = process.env.NODE_ENV === "production";
@@ -40,6 +56,15 @@ function validateCriticalEnv(): void {
   if (isProduction && weakJwtSecret) {
     throw new Error("生产环境禁止使用默认 JWT_SECRET，请设置强随机密钥");
   }
+
+  if (isProduction) {
+    const accessExpireSeconds = parseDurationToSeconds(
+      process.env.JWT_EXPIRES_IN,
+    );
+    if (accessExpireSeconds && accessExpireSeconds > 24 * 3600) {
+      throw new Error("生产环境 JWT_EXPIRES_IN 不应超过 24 小时");
+    }
+  }
 }
 
 async function bootstrap() {
@@ -55,6 +80,7 @@ async function bootstrap() {
 
   // 全局验证管道
   app.useGlobalPipes(
+    new TrimStringsPipe(),
     new ValidationPipe({
       whitelist: true, // 自动剥离非白名单属性
       forbidNonWhitelisted: true, // 非白名单属性抛出错误

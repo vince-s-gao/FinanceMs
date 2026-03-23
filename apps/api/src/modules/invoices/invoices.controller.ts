@@ -26,7 +26,7 @@ import { InvoicesService } from "./invoices.service";
 import { CreateInvoiceDto } from "./dto/create-invoice.dto";
 import { QueryInvoiceDto } from "./dto/query-invoice.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles } from "../../common/decorators";
+import { Functions, Roles } from "../../common/decorators";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { buildMultiFileInterceptorOptions } from "../../common/utils/upload.utils";
@@ -75,6 +75,7 @@ export class InvoicesController {
 
   @Get()
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("invoice.view")
   @ApiOperation({ summary: "获取发票列表" })
   async findAll(@Query() query: QueryInvoiceDto) {
     return this.invoicesService.findAll(query);
@@ -82,6 +83,7 @@ export class InvoicesController {
 
   @Get("risk/:contractId")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("invoice.view")
   @ApiOperation({ summary: "获取合同开票风险预警" })
   async getInvoiceRisk(@Param("contractId") contractId: string) {
     return this.invoicesService.getInvoiceRisk(contractId);
@@ -89,6 +91,7 @@ export class InvoicesController {
 
   @Get(":id/attachment/download")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("invoice.view")
   @ApiOperation({ summary: "下载发票附件" })
   async downloadAttachment(@Param("id") id: string, @Res() res: Response) {
     const payload = await this.invoicesService.getAttachmentDownloadPayload(id);
@@ -104,6 +107,7 @@ export class InvoicesController {
 
   @Get(":id")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("invoice.view")
   @ApiOperation({ summary: "获取发票详情" })
   async findOne(@Param("id") id: string) {
     return this.invoicesService.findOne(id);
@@ -111,6 +115,7 @@ export class InvoicesController {
 
   @Post()
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("invoice.create")
   @ApiOperation({ summary: "创建发票" })
   async create(@Body() createInvoiceDto: CreateInvoiceDto) {
     return this.invoicesService.create(createInvoiceDto);
@@ -118,6 +123,7 @@ export class InvoicesController {
 
   @Post("import/preview")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("invoice.create")
   @UseInterceptors(
     FilesInterceptor(
       "files",
@@ -151,7 +157,7 @@ export class InvoicesController {
     @UploadedFiles() files: Express.Multer.File[],
     @Body("contractId") contractId?: string,
     @Body("expectedDirection") expectedDirection?: "INBOUND" | "OUTBOUND",
-  ): Promise<any> {
+  ): Promise<unknown> {
     if (!files?.length) {
       throw new BadRequestException("请至少上传一个发票文件");
     }
@@ -172,6 +178,7 @@ export class InvoicesController {
 
   @Post("import")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("invoice.create")
   @UseInterceptors(
     FilesInterceptor(
       "files",
@@ -205,7 +212,7 @@ export class InvoicesController {
     @Body("contractId") contractId?: string,
     @Body("expectedDirection") expectedDirection?: "INBOUND" | "OUTBOUND",
     @Body("allowPartial") allowPartialRaw?: string,
-  ): Promise<any> {
+  ): Promise<unknown> {
     if (!files?.length) {
       throw new BadRequestException("请至少上传一个发票文件");
     }
@@ -230,6 +237,7 @@ export class InvoicesController {
 
   @Patch(":id/void")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("invoice.void")
   @ApiOperation({ summary: "作废发票" })
   async void(@Param("id") id: string) {
     return this.invoicesService.void(id);
@@ -237,6 +245,7 @@ export class InvoicesController {
 
   @Delete(":id")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("invoice.delete")
   @ApiOperation({ summary: "删除发票" })
   async remove(@Param("id") id: string) {
     return this.invoicesService.remove(id);

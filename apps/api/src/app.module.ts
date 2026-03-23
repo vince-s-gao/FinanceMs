@@ -3,6 +3,7 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ServeStaticModule } from "@nestjs/serve-static";
+import { APP_GUARD } from "@nestjs/core";
 import { resolve } from "path";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./modules/auth/auth.module";
@@ -26,6 +27,7 @@ import { AuditModule } from "./modules/audit/audit.module";
 import { CsrfMiddleware } from "./common/middleware/csrf.middleware";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { SuppliersModule } from "./modules/suppliers/suppliers.module";
+import { PermissionsGuard } from "./common/guards/permissions.guard";
 
 @Module({
   imports: [
@@ -66,6 +68,12 @@ import { SuppliersModule } from "./modules/suppliers/suppliers.module";
     AuditModule, // 审计日志模块
     NotificationsModule, // 消息通知模块
     SuppliersModule, // 供应商模块
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
+    },
   ],
 })
 export class AppModule implements NestModule {

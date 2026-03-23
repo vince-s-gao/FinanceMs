@@ -18,7 +18,7 @@ import {
   ApiQuery,
 } from "@nestjs/swagger";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles, Role } from "../../common/decorators";
+import { Roles, Role, Functions } from "../../common/decorators";
 import { BankAccountsService } from "./bank-accounts.service";
 import { CreateBankAccountDto } from "./dto/create-bank-account.dto";
 import { UpdateBankAccountDto } from "./dto/update-bank-account.dto";
@@ -32,6 +32,7 @@ export class BankAccountsController {
 
   @Post()
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("bank-account.create")
   @ApiOperation({ summary: "创建银行账户" })
   @ApiResponse({ status: 201, description: "创建成功" })
   @ApiResponse({ status: 400, description: "银行账号已存在" })
@@ -41,6 +42,7 @@ export class BankAccountsController {
 
   @Get()
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("bank-account.view")
   @ApiOperation({ summary: "查询银行账户列表" })
   @ApiQuery({
     name: "onlyEnabled",
@@ -55,6 +57,7 @@ export class BankAccountsController {
 
   @Get(":id")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("bank-account.view")
   @ApiOperation({ summary: "获取银行账户详情" })
   @ApiResponse({ status: 200, description: "获取成功" })
   @ApiResponse({ status: 404, description: "银行账户不存在" })
@@ -64,6 +67,7 @@ export class BankAccountsController {
 
   @Put(":id")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("bank-account.edit")
   @ApiOperation({ summary: "更新银行账户" })
   @ApiResponse({ status: 200, description: "更新成功" })
   @ApiResponse({ status: 400, description: "银行账号已存在" })
@@ -73,6 +77,7 @@ export class BankAccountsController {
 
   @Post(":id/toggle-enabled")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("bank-account.edit")
   @ApiOperation({ summary: "启用/禁用银行账户" })
   @ApiResponse({ status: 200, description: "操作成功" })
   toggleEnabled(@Param("id") id: string) {
@@ -81,6 +86,7 @@ export class BankAccountsController {
 
   @Post(":id/set-default")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("bank-account.edit")
   @ApiOperation({ summary: "设置默认账户" })
   @ApiResponse({ status: 200, description: "设置成功" })
   setDefault(@Param("id") id: string) {
@@ -89,6 +95,7 @@ export class BankAccountsController {
 
   @Delete(":id")
   @Roles(Role.ADMIN)
+  @Functions("bank-account.delete")
   @ApiOperation({ summary: "删除银行账户" })
   @ApiResponse({ status: 200, description: "删除成功" })
   @ApiResponse({ status: 400, description: "账户已关联付款申请，无法删除" })

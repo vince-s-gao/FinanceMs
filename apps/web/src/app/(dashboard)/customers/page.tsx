@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 客户管理页面
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 import {
   Table,
   Button,
@@ -19,7 +19,7 @@ import {
   Descriptions,
   Spin,
   Upload,
-} from 'antd';
+} from "antd";
 import {
   PlusOutlined,
   SearchOutlined,
@@ -30,14 +30,17 @@ import {
   CloseOutlined,
   UploadOutlined,
   DownloadOutlined,
-} from '@ant-design/icons';
-import { api } from '@/lib/api';
-import { APPROVAL_STATUS_LABELS, APPROVAL_STATUS_COLORS } from '@/lib/constants';
-import { useExport } from '@/hooks/useExport';
-import { useEntityDelete } from '@/hooks/useEntityDelete';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { getErrorMessage } from '@/lib/error';
-import type { UploadProps } from 'antd';
+} from "@ant-design/icons";
+import { api } from "@/lib/api";
+import {
+  APPROVAL_STATUS_LABELS,
+  APPROVAL_STATUS_COLORS,
+} from "@/lib/constants";
+import { useExport } from "@/hooks/useExport";
+import { useEntityDelete } from "@/hooks/useEntityDelete";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useImportUpload } from "@/hooks/useImportUpload";
+import { getErrorMessage } from "@/lib/error";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -62,7 +65,7 @@ interface Customer {
   contactEmail?: string;
   address?: string;
   remark?: string;
-  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approvalStatus?: "PENDING" | "APPROVED" | "REJECTED";
   submittedBy?: string;
   submittedAt?: string;
   approvedBy?: string;
@@ -88,13 +91,6 @@ interface CustomerListResponse {
   total: number;
 }
 
-interface ImportResult {
-  total: number;
-  success: number;
-  failed: number;
-  errors: Array<{ row: number; message: string }>;
-}
-
 export default function CustomersPage() {
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -102,7 +98,7 @@ export default function CustomersPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [keyword, setKeyword] = useState('');
+  const [keyword, setKeyword] = useState("");
   const debouncedKeyword = useDebouncedValue(keyword, 300);
   const [typeFilter, setTypeFilter] = useState<string | undefined>();
 
@@ -111,35 +107,48 @@ export default function CustomersPage() {
 
   // 弹窗状态
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalTitle, setModalTitle] = useState('新增客户');
+  const [modalTitle, setModalTitle] = useState("新增客户");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState<CustomerDetail | null>(null);
-  const { exporting, handleExport: triggerExport } = useExport('/customers', 'customers');
-  const { deleteOne, deleteBatch, batchDeleting } = useEntityDelete('/customers', '客户');
+  const { exporting, handleExport: triggerExport } = useExport(
+    "/customers",
+    "customers",
+  );
+  const { deleteOne, deleteBatch, batchDeleting } = useEntityDelete(
+    "/customers",
+    "客户",
+  );
 
   // 加载客户类型字典
   const fetchCustomerTypes = useCallback(async () => {
     try {
-      const res = await api.get<DictionaryItem[]>('/dictionaries/by-type/CUSTOMER_TYPE');
+      const res = await api.get<DictionaryItem[]>(
+        "/dictionaries/by-type/CUSTOMER_TYPE",
+      );
       setCustomerTypes(res);
     } catch (error) {
-      console.error('加载客户类型失败', error);
+      console.error("加载客户类型失败", error);
       // 使用默认值
       setCustomerTypes([
-        { id: '1', code: 'ENTERPRISE', name: '企业', color: 'blue' },
-        { id: '2', code: 'INDIVIDUAL', name: '个人', color: 'green' },
+        { id: "1", code: "ENTERPRISE", name: "企业", color: "blue" },
+        { id: "2", code: "INDIVIDUAL", name: "个人", color: "green" },
       ]);
     }
   }, []);
 
   // 根据code获取客户类型信息
   const getCustomerType = (code: string) => {
-    return customerTypes.find((t) => t.code === code) || { code, name: code, color: 'default' };
+    return (
+      customerTypes.find((t) => t.code === code) || {
+        code,
+        name: code,
+        color: "default",
+      }
+    );
   };
 
   // 加载客户列表
@@ -150,11 +159,11 @@ export default function CustomersPage() {
       if (debouncedKeyword) params.keyword = debouncedKeyword;
       if (typeFilter) params.type = typeFilter;
 
-      const res = await api.get<CustomerListResponse>('/customers', { params });
+      const res = await api.get<CustomerListResponse>("/customers", { params });
       setCustomers(res.items);
       setTotal(res.total);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '加载失败'));
+      message.error(getErrorMessage(error, "加载失败"));
     } finally {
       setLoading(false);
     }
@@ -170,7 +179,7 @@ export default function CustomersPage() {
 
   // 打开新增弹窗
   const handleAdd = () => {
-    setModalTitle('新增客户');
+    setModalTitle("新增客户");
     setEditingId(null);
     form.resetFields();
     setModalVisible(true);
@@ -182,39 +191,14 @@ export default function CustomersPage() {
     if (typeFilter) params.type = typeFilter;
     await triggerExport(params);
   };
-
-  const uploadProps: UploadProps = {
-    showUploadList: false,
-    accept: '.csv,.xlsx,.xls',
-    customRequest: async ({ file, onSuccess, onError }) => {
-      const current = file as File;
-      setImporting(true);
-      try {
-        const formData = new FormData();
-        formData.append('file', current);
-        const result = await api.post<ImportResult>('/customers/import', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        if (result.failed > 0) {
-          const sample = result.errors.slice(0, 3).map((item) => `第${item.row}行: ${item.message}`).join('；');
-          message.warning(`导入完成：成功 ${result.success} 条，失败 ${result.failed} 条。${sample}`);
-        } else {
-          message.success(`导入成功：共 ${result.success} 条`);
-        }
-        await fetchCustomers();
-        onSuccess?.(result);
-      } catch (error: unknown) {
-        message.error(getErrorMessage(error, '导入失败'));
-        onError?.(error as Error);
-      } finally {
-        setImporting(false);
-      }
-    },
-  };
+  const { importing, uploadProps } = useImportUpload({
+    endpoint: "/customers/import",
+    onImported: fetchCustomers,
+  });
 
   // 打开编辑弹窗
   const handleEdit = (record: Customer) => {
-    setModalTitle('编辑客户');
+    setModalTitle("编辑客户");
     setEditingId(record.id);
     form.setFieldsValue(record);
     setModalVisible(true);
@@ -228,17 +212,17 @@ export default function CustomersPage() {
 
       if (editingId) {
         await api.patch(`/customers/${editingId}`, values);
-        message.success('更新成功');
+        message.success("更新成功");
       } else {
-        await api.post('/customers', values);
-        message.success('创建成功');
+        await api.post("/customers", values);
+        message.success("创建成功");
       }
 
       setModalVisible(false);
       fetchCustomers();
       setSelectedRowKeys([]);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '操作失败'));
+      message.error(getErrorMessage(error, "操作失败"));
     } finally {
       setSubmitting(false);
     }
@@ -263,12 +247,12 @@ export default function CustomersPage() {
     try {
       await api.patch(`/customers/${id}/approve`, {
         approved,
-        remark: approved ? undefined : '审批驳回',
+        remark: approved ? undefined : "审批驳回",
       });
-      message.success(approved ? '审批通过' : '已驳回');
+      message.success(approved ? "审批通过" : "已驳回");
       fetchCustomers();
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '审批失败'));
+      message.error(getErrorMessage(error, "审批失败"));
     }
   };
 
@@ -279,7 +263,7 @@ export default function CustomersPage() {
       const res = await api.get<CustomerDetail>(`/customers/${id}`);
       setDetailData(res);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '加载客户详情失败'));
+      message.error(getErrorMessage(error, "加载客户详情失败"));
       setDetailVisible(false);
       setDetailData(null);
     } finally {
@@ -290,65 +274,61 @@ export default function CustomersPage() {
   // 表格列定义
   const columns = [
     {
-      title: '客户编号',
-      dataIndex: 'code',
-      key: 'code',
+      title: "客户编号",
+      dataIndex: "code",
+      key: "code",
       width: 120,
     },
     {
-      title: '客户名称',
-      dataIndex: 'name',
-      key: 'name',
+      title: "客户名称",
+      dataIndex: "name",
+      key: "name",
       width: 300,
       ellipsis: true,
     },
     {
-      title: '客户类型',
-      dataIndex: 'type',
-      key: 'type',
+      title: "客户类型",
+      dataIndex: "type",
+      key: "type",
       width: 100,
       render: (type: string) => {
         const typeInfo = getCustomerType(type);
-        return (
-          <Tag color={typeInfo.color || 'default'}>
-            {typeInfo.name}
-          </Tag>
-        );
+        return <Tag color={typeInfo.color || "default"}>{typeInfo.name}</Tag>;
       },
     },
     {
-      title: '审批状态',
-      dataIndex: 'approvalStatus',
-      key: 'approvalStatus',
+      title: "审批状态",
+      dataIndex: "approvalStatus",
+      key: "approvalStatus",
       width: 100,
       render: (status: string) => (
-        <Tag color={APPROVAL_STATUS_COLORS[status] || 'default'}>
-          {APPROVAL_STATUS_LABELS[status] || '-'}
+        <Tag color={APPROVAL_STATUS_COLORS[status] || "default"}>
+          {APPROVAL_STATUS_LABELS[status] || "-"}
         </Tag>
       ),
     },
     {
-      title: '联系人',
-      dataIndex: 'contactName',
-      key: 'contactName',
+      title: "联系人",
+      dataIndex: "contactName",
+      key: "contactName",
       width: 100,
     },
     {
-      title: '联系电话',
-      dataIndex: 'contactPhone',
-      key: 'contactPhone',
+      title: "联系电话",
+      dataIndex: "contactPhone",
+      key: "contactPhone",
       width: 130,
     },
     {
-      title: '合同数',
-      dataIndex: ['_count', 'contracts'],
-      key: 'contracts',
+      title: "合同数",
+      dataIndex: ["_count", "contracts"],
+      key: "contracts",
       width: 80,
       render: (v: number) => v || 0,
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 200,
       render: (_: unknown, record: Customer) => (
         <Space size="small">
@@ -369,7 +349,7 @@ export default function CustomersPage() {
             编辑
           </Button>
           {/* 待审批状态显示审批按钮 */}
-          {record.approvalStatus === 'PENDING' && (
+          {record.approvalStatus === "PENDING" && (
             <>
               <Popconfirm
                 title="确定通过该客户吗？"
@@ -387,7 +367,12 @@ export default function CustomersPage() {
                 okText="确定"
                 cancelText="取消"
               >
-                <Button type="link" size="small" danger icon={<CloseOutlined />}>
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<CloseOutlined />}
+                >
                   驳回
                 </Button>
               </Popconfirm>
@@ -421,7 +406,11 @@ export default function CustomersPage() {
               批量上传
             </Button>
           </Upload>
-          <Button icon={<DownloadOutlined />} onClick={handleExport} loading={exporting}>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={handleExport}
+            loading={exporting}
+          >
             批量导出
           </Button>
           <Popconfirm
@@ -523,22 +512,43 @@ export default function CustomersPage() {
         ) : detailData ? (
           <div className="space-y-4">
             <Descriptions column={2} size="small" bordered>
-              <Descriptions.Item label="客户编号">{detailData.code || '-'}</Descriptions.Item>
-              <Descriptions.Item label="客户名称">{detailData.name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="客户编号">
+                {detailData.code || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="客户名称">
+                {detailData.name || "-"}
+              </Descriptions.Item>
               <Descriptions.Item label="客户类型">
-                {getCustomerType(detailData.type).name || detailData.type || '-'}
+                {getCustomerType(detailData.type).name ||
+                  detailData.type ||
+                  "-"}
               </Descriptions.Item>
               <Descriptions.Item label="审批状态">
-                {APPROVAL_STATUS_LABELS[detailData.approvalStatus || ''] || '-'}
+                {APPROVAL_STATUS_LABELS[detailData.approvalStatus || ""] || "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="联系人">{detailData.contactName || '-'}</Descriptions.Item>
-              <Descriptions.Item label="联系电话">{detailData.contactPhone || '-'}</Descriptions.Item>
-              <Descriptions.Item label="联系邮箱">{detailData.contactEmail || '-'}</Descriptions.Item>
-              <Descriptions.Item label="统一社会信用代码">{detailData.creditCode || '-'}</Descriptions.Item>
-              <Descriptions.Item label="地址" span={2}>{detailData.address || '-'}</Descriptions.Item>
-              <Descriptions.Item label="备注" span={2}>{detailData.remark || '-'}</Descriptions.Item>
+              <Descriptions.Item label="联系人">
+                {detailData.contactName || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="联系电话">
+                {detailData.contactPhone || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="联系邮箱">
+                {detailData.contactEmail || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="统一社会信用代码">
+                {detailData.creditCode || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="地址" span={2}>
+                {detailData.address || "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="备注" span={2}>
+                {detailData.remark || "-"}
+              </Descriptions.Item>
             </Descriptions>
-            <Card size="small" title={`最近合同（${detailData._count?.contracts || 0}）`}>
+            <Card
+              size="small"
+              title={`最近合同（${detailData._count?.contracts || 0}）`}
+            >
               {(detailData.contracts || []).length === 0 ? (
                 <div className="text-gray-500">暂无关联合同</div>
               ) : (
@@ -568,7 +578,7 @@ export default function CustomersPage() {
           <Form.Item
             name="name"
             label="客户名称"
-            rules={[{ required: true, message: '请输入客户名称' }]}
+            rules={[{ required: true, message: "请输入客户名称" }]}
           >
             <Input placeholder="请输入客户名称" />
           </Form.Item>
@@ -576,7 +586,7 @@ export default function CustomersPage() {
           <Form.Item
             name="type"
             label="客户类型"
-            rules={[{ required: true, message: '请选择客户类型' }]}
+            rules={[{ required: true, message: "请选择客户类型" }]}
           >
             <Select placeholder="请选择客户类型">
               {customerTypes.map((type) => (
@@ -593,7 +603,7 @@ export default function CustomersPage() {
             rules={[
               {
                 pattern: /^[0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10}$/,
-                message: '请输入有效的统一社会信用代码',
+                message: "请输入有效的统一社会信用代码",
               },
             ]}
           >
@@ -610,7 +620,7 @@ export default function CustomersPage() {
             rules={[
               {
                 pattern: /^1[3-9]\d{9}$/,
-                message: '请输入有效的手机号',
+                message: "请输入有效的手机号",
               },
             ]}
           >
@@ -620,7 +630,7 @@ export default function CustomersPage() {
           <Form.Item
             name="contactEmail"
             label="联系邮箱"
-            rules={[{ type: 'email', message: '请输入有效的邮箱地址' }]}
+            rules={[{ type: "email", message: "请输入有效的邮箱地址" }]}
           >
             <Input placeholder="请输入联系邮箱" />
           </Form.Item>

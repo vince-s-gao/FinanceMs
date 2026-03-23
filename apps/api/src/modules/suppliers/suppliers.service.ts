@@ -10,12 +10,16 @@ import { CreateSupplierDto } from "./dto/create-supplier.dto";
 import { UpdateSupplierDto } from "./dto/update-supplier.dto";
 import { QuerySupplierDto } from "./dto/query-supplier.dto";
 import { Prisma } from "@prisma/client";
-import { resolveSortField } from "../../common/utils/query.utils";
+import {
+  normalizePagination,
+  resolveSortField,
+} from "../../common/utils/query.utils";
 import {
   createWithGeneratedCode,
   generatePrefixedCode,
 } from "../../common/utils/code-generator.utils";
 import { isUniqueConflict } from "../../common/utils/prisma.utils";
+import { resolveErrorMessage } from "../../common/utils/error.utils";
 import {
   normalizeText,
   parseTabularBuffer,
@@ -53,9 +57,20 @@ const SUPPLIER_IMPORT_HEADER_ALIASES = {
   bankAccountNo: ["银行账号", "账号", "bank_account_no", "bankaccountno"],
   remark: ["备注", "remark"],
 } as const;
+const SUPPLIER_TYPE_LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
+const CONTRACT_TYPE_HINT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class SuppliersService {
+  private supplierTypeLookupCache: {
+    expiresAt: number;
+    lookup: Map<string, string>;
+  } | null = null;
+  private contractTypeHintsCache: {
+    expiresAt: number;
+    hintsByCode: Map<string, string[]>;
+  } | null = null;
+
   constructor(private prisma: PrismaService) {}
 
   private toLookupKey(value: string): string {
@@ -101,6 +116,14 @@ export class SuppliersService {
   }
 
   private async getSupplierTypeLookup(): Promise<Map<string, string>> {
+    const now = Date.now();
+    if (
+      this.supplierTypeLookupCache &&
+      this.supplierTypeLookupCache.expiresAt > now
+    ) {
+      return new Map(this.supplierTypeLookupCache.lookup);
+    }
+
     const map = new Map<string, string>();
     const dictItems = await this.prisma.dictionary.findMany({
       where: { type: "SUPPLIER_TYPE", isEnabled: true },
@@ -119,7 +142,45 @@ export class SuppliersService {
     map.set(this.toLookupKey("公司"), "CORPORATE");
     map.set(this.toLookupKey("个人"), "PERSONAL");
     map.set(this.toLookupKey("personal"), "PERSONAL");
+
+    this.supplierTypeLookupCache = {
+      expiresAt: now + SUPPLIER_TYPE_LOOKUP_CACHE_TTL_MS,
+      lookup: new Map(map),
+    };
+
     return map;
+  }
+
+  private async getContractTypeHintsByCode(): Promise<Map<string, string[]>> {
+    const now = Date.now();
+    if (
+      this.contractTypeHintsCache &&
+      this.contractTypeHintsCache.expiresAt > now
+    ) {
+      return new Map(this.contractTypeHintsCache.hintsByCode);
+    }
+
+    const contractTypeDictionaries = await this.prisma.dictionary.findMany({
+      where: { type: "CONTRACT_TYPE" },
+      select: { code: true, name: true, value: true },
+    });
+    const hintsByCode = new Map<string, string[]>();
+    contractTypeDictionaries.forEach((item) => {
+      const key = this.toLookupKey(item.code);
+      hintsByCode.set(
+        key,
+        [item.code, item.name || "", item.value || ""].filter(
+          (value) => !!normalizeText(value),
+        ),
+      );
+    });
+
+    this.contractTypeHintsCache = {
+      expiresAt: now + CONTRACT_TYPE_HINT_CACHE_TTL_MS,
+      hintsByCode: new Map(hintsByCode),
+    };
+
+    return hintsByCode;
   }
 
   private resolveSupplierTypeCode(
@@ -150,7 +211,11 @@ export class SuppliersService {
       sortBy = "createdAt",
       sortOrder = "desc",
     } = query;
-    const skip = (page - 1) * pageSize;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
     const safeSortBy = resolveSortField(
       sortBy,
       ALLOWED_SUPPLIER_SORT_FIELDS,
@@ -163,7 +228,7 @@ export class SuppliersService {
       this.prisma.supplier.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: { [safeSortBy]: sortOrder },
       }),
       this.prisma.supplier.count({ where }),
@@ -176,7 +241,7 @@ export class SuppliersService {
           .filter((name) => !!name),
       ),
     );
-    const [contracts, contractTypeDictionaries] = await Promise.all([
+    const [contracts, contractTypeHintsByCode] = await Promise.all([
       supplierNames.length > 0
         ? this.prisma.contract.findMany({
             where: {
@@ -193,21 +258,9 @@ export class SuppliersService {
             },
           })
         : Promise.resolve([]),
-      this.prisma.dictionary.findMany({
-        where: { type: "CONTRACT_TYPE" },
-        select: { code: true, name: true, value: true },
-      }),
+      this.getContractTypeHintsByCode(),
     ]);
-    const contractTypeHintsByCode = new Map<string, string[]>();
-    contractTypeDictionaries.forEach((item) => {
-      const key = this.toLookupKey(item.code);
-      contractTypeHintsByCode.set(
-        key,
-        [item.code, item.name || "", item.value || ""].filter(
-          (value) => !!normalizeText(value),
-        ),
-      );
-    });
+
     const contractCountBySupplier = new Map<string, number>();
     contracts.forEach((contract) => {
       if (
@@ -233,9 +286,9 @@ export class SuppliersService {
     return {
       items: itemsWithContractCount,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 
@@ -575,9 +628,8 @@ export class SuppliersService {
             new ConflictException("供应商编号生成失败，请重试"),
         });
         success += 1;
-      } catch (error: any) {
-        const message =
-          error?.response?.message || error?.message || "导入失败";
+      } catch (error: unknown) {
+        const message = resolveErrorMessage(error, "导入失败");
         errors.push({ row: rowNo, message: String(message) });
       }
     }

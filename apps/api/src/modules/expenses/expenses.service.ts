@@ -16,6 +16,7 @@ import { ApproveExpenseDto } from "./dto/approve-expense.dto";
 import { BudgetsService } from "../budgets/budgets.service";
 import { Decimal } from "@prisma/client/runtime/library";
 import {
+  normalizePagination,
   parseDateRangeEnd,
   parseDateRangeStart,
   resolveSortField,
@@ -28,7 +29,10 @@ import { isUniqueConflict as isPrismaUniqueConflict } from "../../common/utils/p
 import { generateExpenseNo as formatExpenseNo } from "@inffinancems/shared";
 
 // 导入 Prisma 生成的枚举类型
-import { ExpenseStatus as PrismaExpenseStatus } from "@prisma/client";
+import {
+  ExpenseStatus as PrismaExpenseStatus,
+  type Prisma,
+} from "@prisma/client";
 
 // 报销状态常量（使用 Prisma 枚举）
 const ExpenseStatus = PrismaExpenseStatus;
@@ -104,14 +108,18 @@ export class ExpensesService {
       sortBy = "createdAt",
       sortOrder = "desc",
     } = query;
-    const skip = (page - 1) * pageSize;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
     const safeSortBy = resolveSortField(
       sortBy,
       ALLOWED_EXPENSE_SORT_FIELDS,
       "createdAt",
     );
 
-    const where: any = {};
+    const where: Prisma.ExpenseWhereInput = {};
 
     // 员工只能看自己的报销
     if (userRole === Role.EMPLOYEE) {
@@ -142,7 +150,7 @@ export class ExpensesService {
       this.prisma.expense.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: { [safeSortBy]: sortOrder },
         include: {
           applicant: {
@@ -165,9 +173,9 @@ export class ExpensesService {
     return {
       items,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 

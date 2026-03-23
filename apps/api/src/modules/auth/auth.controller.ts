@@ -11,10 +11,12 @@ import {
   Res,
   Req,
   UnauthorizedException,
+  Delete,
+  Param,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
 import { Request, Response } from "express";
-import { AuthService } from "./auth.service";
+import { AuthService, LoginMetadata } from "./auth.service";
 import { FeishuService } from "./feishu.service";
 import { LoginDto } from "./dto/login.dto";
 import { FeishuLoginDto } from "./dto/feishu-login.dto";
@@ -24,7 +26,7 @@ import { CurrentUser } from "../../common/decorators";
 import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "crypto";
 import { ERROR_CODE } from "@inffinancems/shared";
-import { AuditService } from "../audit/audit.service";
+import type { AuthenticatedUser } from "../../common/types/auth-user.type";
 
 // 公开接口装饰器
 const Public = () => SetMetadata("isPublic", true);
@@ -36,11 +38,18 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly feishuService: FeishuService,
     private readonly configService: ConfigService,
-    private readonly auditService: AuditService,
   ) {}
 
   private isProduction() {
     return this.configService.get<string>("NODE_ENV") === "production";
+  }
+
+  private extractRequestMetadata(req: Request): LoginMetadata {
+    const userAgent = req.headers["user-agent"];
+    return {
+      ipAddress: req.ip,
+      userAgent: typeof userAgent === "string" ? userAgent : undefined,
+    };
   }
 
   private parseDurationToSeconds(
@@ -141,20 +150,6 @@ export class AuthController {
     return decodeURIComponent(target.substring(name.length + 1));
   }
 
-  private async logLogin(user: { id: string; email: string }, req: Request) {
-    const userAgent = req.headers["user-agent"];
-    await this.auditService.log(
-      user.id,
-      "LOGIN",
-      "auth",
-      user.id,
-      null,
-      { email: user.email },
-      req.ip,
-      typeof userAgent === "string" ? userAgent : undefined,
-    );
-  }
-
   @Public()
   @Post("login")
   @ApiOperation({ summary: "用户登录（邮箱密码）" })
@@ -163,12 +158,14 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.login(loginDto);
+    const result = await this.authService.login(
+      loginDto,
+      this.extractRequestMetadata(req),
+    );
     this.setAuthCookies(res, {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
     });
-    await this.logLogin(result.user, req);
     return {
       user: result.user,
     };
@@ -223,10 +220,13 @@ export class AuthController {
     }
 
     try {
-      const result = await this.feishuService.loginWithFeishu(code);
+      const result = await this.feishuService.loginWithFeishu(
+        code,
+        this.extractRequestMetadata(req),
+      );
       const ticket = this.feishuService.createLoginTicket(result);
       res.redirect(`${frontendUrl}/login/callback?ticket=${ticket}`);
-    } catch (error) {
+    } catch {
       res.redirect(`${frontendUrl}/login?error=feishu_auth_failed`);
     }
   }
@@ -238,15 +238,15 @@ export class AuthController {
     @Body() feishuLoginDto: FeishuLoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<any> {
+  ): Promise<unknown> {
     const result = await this.feishuService.loginWithFeishu(
       feishuLoginDto.code,
+      this.extractRequestMetadata(req),
     );
     this.setAuthCookies(res, {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
     });
-    await this.logLogin(result.user, req);
     return {
       user: result.user,
     };
@@ -257,15 +257,13 @@ export class AuthController {
   @ApiOperation({ summary: "使用一次性 ticket 交换登录令牌" })
   async exchangeFeishuTicket(
     @Body() exchangeDto: ExchangeFeishuTicketDto,
-    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<any> {
+  ): Promise<unknown> {
     const result = this.feishuService.exchangeLoginTicket(exchangeDto.ticket);
     this.setAuthCookies(res, {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
     });
-    await this.logLogin(result.user, req);
     return {
       user: result.user,
     };
@@ -288,7 +286,10 @@ export class AuthController {
         message: "缺少刷新令牌",
       });
     }
-    const result = await this.authService.refresh(refreshToken);
+    const result = await this.authService.refresh(
+      refreshToken,
+      this.extractRequestMetadata(req),
+    );
     this.setAuthCookies(res, {
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
@@ -319,7 +320,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: "绑定飞书账号" })
   async bindFeishu(
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() feishuLoginDto: FeishuLoginDto,
   ) {
     return this.feishuService.bindFeishuAccount(user.id, feishuLoginDto.code);
@@ -329,8 +330,37 @@ export class AuthController {
   @Post("feishu/unbind")
   @ApiBearerAuth()
   @ApiOperation({ summary: "解绑飞书账号" })
-  async unbindFeishu(@CurrentUser() user: any) {
+  async unbindFeishu(@CurrentUser() user: AuthenticatedUser) {
     return this.feishuService.unbindFeishuAccount(user.id);
+  }
+
+  // ==================== 会话管理 ====================
+
+  @UseGuards(JwtAuthGuard)
+  @Get("sessions")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "获取当前账号活跃会话" })
+  async listSessions(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.listSessions(user.id, user.sessionId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete("sessions/:sessionId")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "登出指定会话" })
+  async revokeSession(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("sessionId") sessionId: string,
+  ) {
+    return this.authService.revokeSession(user.id, sessionId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("sessions/revoke-others")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "登出当前账号其他会话" })
+  async revokeOtherSessions(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.revokeOtherSessions(user.id, user.sessionId);
   }
 
   // ==================== 通用接口 ====================
@@ -339,7 +369,7 @@ export class AuthController {
   @Get("me")
   @ApiBearerAuth()
   @ApiOperation({ summary: "获取当前用户信息" })
-  async getCurrentUser(@CurrentUser() user: any) {
+  async getCurrentUser(@CurrentUser() user: AuthenticatedUser) {
     return {
       id: user.id,
       email: user.email,
@@ -354,7 +384,12 @@ export class AuthController {
   @Post("logout")
   @ApiOperation({ summary: "用户登出" })
   @Public()
-  async logout(@Res({ passthrough: true }) res: Response) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const refreshToken = this.getCookieValue(
+      req.headers.cookie,
+      "refreshToken",
+    );
+    await this.authService.logout(refreshToken);
     this.clearAuthCookies(res);
     return { message: "登出成功" };
   }

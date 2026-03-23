@@ -16,7 +16,11 @@ import { ApprovalStatus, Prisma } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { UploadService } from "../upload/upload.service";
-import { toCsv, toXlsxBuffer } from "../../common/utils/tabular.utils";
+import {
+  normalizeText,
+  toCsv,
+  toXlsxBuffer,
+} from "../../common/utils/tabular.utils";
 import { generatePrefixedCode } from "../../common/utils/code-generator.utils";
 import { isUniqueConflict } from "../../common/utils/prisma.utils";
 import {
@@ -106,8 +110,15 @@ import type {
   PreparedImportResult,
 } from "./contracts.import.types";
 
+const CONTRACT_TYPE_HINT_CACHE_TTL_MS = 5 * 60 * 1000;
+
 @Injectable()
 export class ContractsService {
+  private readonly contractTypeHintsCache = new Map<
+    string,
+    { hints: string[]; expiresAt: number }
+  >();
+
   constructor(
     private prisma: PrismaService,
     private uploadService: UploadService,
@@ -401,8 +412,17 @@ export class ContractsService {
   private async resolveContractTypeHintsByCode(
     contractTypeCode?: string,
   ): Promise<string[]> {
-    return resolveContractTypeHintsByCodeByDeps({
-      contractTypeCode,
+    const normalizedCode = normalizeText(contractTypeCode || "").toUpperCase();
+    if (!normalizedCode) return [];
+
+    const now = Date.now();
+    const cached = this.contractTypeHintsCache.get(normalizedCode);
+    if (cached && cached.expiresAt > now) {
+      return cached.hints;
+    }
+
+    const hints = await resolveContractTypeHintsByCodeByDeps({
+      contractTypeCode: normalizedCode,
       findContractTypeByCode: (code: string) =>
         this.prisma.dictionary.findFirst({
           where: {
@@ -412,6 +432,13 @@ export class ContractsService {
           select: { name: true, value: true },
         }),
     });
+
+    this.contractTypeHintsCache.set(normalizedCode, {
+      hints,
+      expiresAt: now + CONTRACT_TYPE_HINT_CACHE_TTL_MS,
+    });
+
+    return hints;
   }
 
   private async isSalesByContractType(args: {
@@ -533,12 +560,18 @@ export class ContractsService {
   /**
    * 获取合同列表
    */
-  async findAll(query: QueryContractDto) {
+  async findAll(
+    query: QueryContractDto,
+    options?: {
+      maxPageSize?: number;
+    },
+  ) {
     const { page, pageSize, skip, safeSortBy, sortOrder, where } =
       buildContractListQueryContext({
         query,
         allowedSortFields: ALLOWED_CONTRACT_SORT_FIELDS,
         defaultSortBy: "createdAt",
+        maxPageSize: options?.maxPageSize,
       });
 
     const [items, total] = await Promise.all([
@@ -585,7 +618,9 @@ export class ContractsService {
    * 导出合同列表 CSV
    */
   async exportCsv(query: QueryContractDto) {
-    const data = await this.findAll(buildContractExportQuery(query));
+    const data = await this.findAll(buildContractExportQuery(query), {
+      maxPageSize: 10000,
+    });
 
     const rows = buildContractExportRows(data.items, CONTRACT_STATUS_LABELS);
 
@@ -596,7 +631,9 @@ export class ContractsService {
    * 导出合同列表 Excel
    */
   async exportExcel(query: QueryContractDto): Promise<Buffer> {
-    const data = await this.findAll(buildContractExportQuery(query));
+    const data = await this.findAll(buildContractExportQuery(query), {
+      maxPageSize: 10000,
+    });
 
     const rows = buildContractExportRows(data.items, CONTRACT_STATUS_LABELS);
 

@@ -17,7 +17,7 @@ import { CreateDepartmentDto } from "./dto/create-department.dto";
 import { UpdateDepartmentDto } from "./dto/update-department.dto";
 import { QueryDepartmentDto } from "./dto/query-department.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles } from "../../common/decorators";
+import { Functions, Roles } from "../../common/decorators";
 
 // 角色常量
 const Role = {
@@ -64,6 +64,7 @@ export class DepartmentsController {
 
   @Post()
   @Roles(Role.ADMIN)
+  @Functions("department.manage")
   @ApiOperation({ summary: "创建部门" })
   async create(@Body() createDepartmentDto: CreateDepartmentDto) {
     return this.departmentsService.create(createDepartmentDto);
@@ -71,6 +72,7 @@ export class DepartmentsController {
 
   @Patch(":id")
   @Roles(Role.ADMIN)
+  @Functions("department.manage")
   @ApiOperation({ summary: "更新部门" })
   async update(
     @Param("id") id: string,
@@ -81,6 +83,7 @@ export class DepartmentsController {
 
   @Patch(":id/toggle")
   @Roles(Role.ADMIN)
+  @Functions("department.manage")
   @ApiOperation({ summary: "启用/禁用部门" })
   async toggleActive(@Param("id") id: string) {
     return this.departmentsService.toggleActive(id);
@@ -88,6 +91,7 @@ export class DepartmentsController {
 
   @Delete(":id")
   @Roles(Role.ADMIN)
+  @Functions("department.manage")
   @ApiOperation({ summary: "删除部门" })
   async remove(@Param("id") id: string) {
     return this.departmentsService.remove(id);
@@ -109,6 +113,7 @@ export class DepartmentsController {
 
   @Post(":id/members/:userId")
   @Roles(Role.ADMIN)
+  @Functions("department.manage")
   @ApiOperation({ summary: "添加部门成员" })
   async addMember(@Param("id") id: string, @Param("userId") userId: string) {
     return this.departmentsService.addMember(id, userId);
@@ -116,6 +121,7 @@ export class DepartmentsController {
 
   @Delete(":id/members/:userId")
   @Roles(Role.ADMIN)
+  @Functions("department.manage")
   @ApiOperation({ summary: "移除部门成员" })
   async removeMember(@Param("id") id: string, @Param("userId") userId: string) {
     return this.departmentsService.removeMember(id, userId);
@@ -123,6 +129,7 @@ export class DepartmentsController {
 
   @Patch(":id/manager")
   @Roles(Role.ADMIN)
+  @Functions("department.manage")
   @ApiOperation({ summary: "设置部门负责人" })
   async setManager(
     @Param("id") id: string,

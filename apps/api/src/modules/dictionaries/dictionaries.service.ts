@@ -5,6 +5,7 @@ import {
   NotFoundException,
   ConflictException,
 } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateDictionaryDto } from "./dto/create-dictionary.dto";
 import { UpdateDictionaryDto } from "./dto/update-dictionary.dto";
@@ -68,7 +69,7 @@ export class DictionariesService {
   async findAll(query: QueryDictionaryDto) {
     const { type, isEnabled } = query;
 
-    const where: any = {};
+    const where: Prisma.DictionaryWhereInput = {};
 
     if (type) {
       where.type = type;

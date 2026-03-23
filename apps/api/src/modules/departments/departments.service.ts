@@ -6,7 +6,9 @@ import {
   BadRequestException,
   ConflictException,
 } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { normalizePagination } from "../../common/utils/query.utils";
 import { CreateDepartmentDto } from "./dto/create-department.dto";
 import { UpdateDepartmentDto } from "./dto/update-department.dto";
 import { QueryDepartmentDto } from "./dto/query-department.dto";
@@ -15,6 +17,19 @@ import {
   generatePrefixedCode,
 } from "../../common/utils/code-generator.utils";
 import { isUniqueConflict as isPrismaUniqueConflict } from "../../common/utils/prisma.utils";
+
+type DepartmentTreeItem = Prisma.DepartmentGetPayload<{
+  include: {
+    manager: {
+      select: { id: true; name: true; email: true };
+    };
+    _count: {
+      select: { members: true };
+    };
+  };
+}> & {
+  children: DepartmentTreeItem[];
+};
 
 @Injectable()
 export class DepartmentsService {
@@ -42,9 +57,13 @@ export class DepartmentsService {
    */
   async findAll(query: QueryDepartmentDto) {
     const { page = 1, pageSize = 20, keyword, isActive } = query;
-    const skip = (page - 1) * pageSize;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
 
-    const where: any = {};
+    const where: Prisma.DepartmentWhereInput = {};
 
     if (keyword) {
       where.OR = [
@@ -61,7 +80,7 @@ export class DepartmentsService {
       this.prisma.department.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
         include: {
           parent: {
@@ -81,9 +100,9 @@ export class DepartmentsService {
     return {
       items,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 
@@ -105,8 +124,8 @@ export class DepartmentsService {
     });
 
     // 组装任意层级树，避免固定 include 深度导致的层级截断
-    const nodeMap = new Map<string, any>();
-    const roots: any[] = [];
+    const nodeMap = new Map<string, DepartmentTreeItem>();
+    const roots: DepartmentTreeItem[] = [];
 
     for (const dept of departments) {
       nodeMap.set(dept.id, { ...dept, children: [] });
@@ -124,7 +143,7 @@ export class DepartmentsService {
       roots.push(node);
     }
 
-    const sortTree = (nodes: any[]) => {
+    const sortTree = (nodes: DepartmentTreeItem[]) => {
       nodes.sort(
         (a, b) =>
           a.sortOrder - b.sortOrder ||

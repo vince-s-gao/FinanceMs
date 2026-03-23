@@ -13,7 +13,7 @@ function createExtensionFilter(allowedExtensions: string[]) {
   return (
     _req: unknown,
     file: Express.Multer.File,
-    cb: (error: any, acceptFile: boolean) => void,
+    cb: (error: Error | null, acceptFile: boolean) => void,
   ) => {
     const ext = path.extname(file.originalname || "").toLowerCase();
     if (!ext || !allowed.has(ext)) {

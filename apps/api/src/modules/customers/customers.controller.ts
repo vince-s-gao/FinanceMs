@@ -28,11 +28,12 @@ import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { QueryCustomerDto } from "./dto/query-customer.dto";
 import { ApproveCustomerDto } from "./dto/approve-customer.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles, CurrentUser, Role } from "../../common/decorators";
+import { Functions, Roles, CurrentUser, Role } from "../../common/decorators";
 import { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { isSupportedTabularFile } from "../../common/utils/tabular.utils";
 import { buildSingleFileInterceptorOptions } from "../../common/utils/upload.utils";
+import type { AuthenticatedUser } from "../../common/types/auth-user.type";
 
 @ApiTags("客户管理")
 @ApiBearerAuth()
@@ -74,6 +75,7 @@ export class CustomersController {
 
   @Get()
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("customer.view")
   @ApiOperation({ summary: "获取客户列表" })
   async findAll(@Query() query: QueryCustomerDto) {
     return this.customersService.findAll(query);
@@ -81,6 +83,7 @@ export class CustomersController {
 
   @Get("export/csv")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("customer.export")
   @ApiOperation({ summary: "批量导出客户（CSV）" })
   async exportCsv(@Query() query: QueryCustomerDto, @Res() res: Response) {
     const csv = await this.customersService.exportCsv(query);
@@ -89,6 +92,7 @@ export class CustomersController {
 
   @Get("export/excel")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("customer.export")
   @ApiOperation({ summary: "批量导出客户（Excel）" })
   async exportExcel(@Query() query: QueryCustomerDto, @Res() res: Response) {
     const buffer = await this.customersService.exportExcel(query);
@@ -97,6 +101,7 @@ export class CustomersController {
 
   @Post("import")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("customer.create")
   @UseInterceptors(
     FileInterceptor(
       "file",
@@ -116,7 +121,7 @@ export class CustomersController {
   @ApiOperation({ summary: "批量导入客户（CSV/Excel）" })
   async importCustomers(
     @UploadedFile() file: Express.Multer.File | undefined,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     if (!file) {
       throw new BadRequestException("请上传导入文件");
@@ -133,6 +138,7 @@ export class CustomersController {
 
   @Get("options")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("customer.view")
   @ApiOperation({ summary: "获取客户选项列表" })
   async getOptions() {
     return this.customersService.getOptions();
@@ -140,6 +146,7 @@ export class CustomersController {
 
   @Get("pending-approval")
   @Roles(Role.MANAGER, Role.ADMIN)
+  @Functions("customer.view")
   @ApiOperation({ summary: "获取待审批客户列表" })
   async findPendingApproval(@Query() query: QueryCustomerDto) {
     return this.customersService.findPendingApproval(query);
@@ -147,6 +154,7 @@ export class CustomersController {
 
   @Get(":id")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("customer.view")
   @ApiOperation({ summary: "获取客户详情" })
   async findOne(@Param("id") id: string) {
     return this.customersService.findOne(id);
@@ -154,27 +162,30 @@ export class CustomersController {
 
   @Post()
   @Roles(Role.SALES, Role.FINANCE, Role.ADMIN)
+  @Functions("customer.create")
   @ApiOperation({ summary: "创建客户" })
   async create(
     @Body() createCustomerDto: CreateCustomerDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.customersService.create(createCustomerDto, user.id);
   }
 
   @Patch(":id/approve")
   @Roles(Role.MANAGER, Role.ADMIN)
+  @Functions("customer.approve")
   @ApiOperation({ summary: "审批客户" })
   async approve(
     @Param("id") id: string,
     @Body() approveDto: ApproveCustomerDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.customersService.approve(id, approveDto, user.id);
   }
 
   @Patch(":id")
-  @Roles(Role.FINANCE, Role.ADMIN)
+  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("customer.edit")
   @ApiOperation({ summary: "更新客户" })
   async update(
     @Param("id") id: string,
@@ -185,6 +196,7 @@ export class CustomersController {
 
   @Delete(":id")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("customer.delete")
   @ApiOperation({ summary: "删除客户" })
   async remove(@Param("id") id: string) {
     return this.customersService.remove(id);

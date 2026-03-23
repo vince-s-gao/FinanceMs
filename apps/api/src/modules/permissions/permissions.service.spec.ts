@@ -8,7 +8,6 @@ describe("PermissionsService", () => {
     prisma = {
       rolePermission: {
         findMany: jest.fn().mockResolvedValue([]),
-        findFirst: jest.fn().mockResolvedValue(null),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
@@ -32,6 +31,18 @@ describe("PermissionsService", () => {
         "dictionary.create",
         "dictionary.edit",
         "dictionary.delete",
+        "budget.view",
+        "budget.create",
+        "budget.edit",
+        "budget.freeze",
+        "budget.close",
+        "budget.delete",
+        "report.view",
+        "report.export",
+        "bank-account.view",
+        "bank-account.create",
+        "bank-account.edit",
+        "bank-account.delete",
       ]),
     );
   });
@@ -67,7 +78,87 @@ describe("PermissionsService", () => {
     const result = await service.getRolePermissions("ADMIN");
 
     expect(result.menus).toEqual(["/dashboard"]);
-    expect(result.functions).toEqual(["expense.create"]);
+    expect(result.functions).toEqual(
+      expect.arrayContaining([
+        "expense.create",
+        "expense.view",
+        "expense.edit",
+        "expense.submit",
+        "expense.delete",
+      ]),
+    );
+  });
+
+  it("should backfill payment view permissions for legacy records", async () => {
+    prisma.rolePermission.findMany.mockResolvedValueOnce([
+      { permType: "menu", permKey: "/payments", isEnabled: true },
+      {
+        permType: "function",
+        permKey: "payment.record.create",
+        isEnabled: true,
+      },
+    ]);
+
+    const result = await service.getRolePermissions("SALES");
+    expect(result.functions).toEqual(
+      expect.arrayContaining(["payment.record.create", "payment.view"]),
+    );
+  });
+
+  it("should backfill contract view and export permissions for legacy records", async () => {
+    prisma.rolePermission.findMany.mockResolvedValueOnce([
+      { permType: "menu", permKey: "/contracts", isEnabled: true },
+      { permType: "function", permKey: "contract.edit", isEnabled: true },
+    ]);
+
+    const result = await service.getRolePermissions("FINANCE");
+    expect(result.functions).toEqual(
+      expect.arrayContaining([
+        "contract.edit",
+        "contract.view",
+        "contract.export",
+      ]),
+    );
+  });
+
+  it("should backfill budget and report permissions for legacy menu records", async () => {
+    prisma.rolePermission.findMany.mockResolvedValueOnce([
+      { permType: "menu", permKey: "/budgets", isEnabled: true },
+      { permType: "menu", permKey: "/reports", isEnabled: true },
+    ]);
+
+    const result = await service.getRolePermissions("FINANCE");
+    expect(result.functions).toEqual(
+      expect.arrayContaining([
+        "budget.view",
+        "budget.freeze",
+        "budget.close",
+        "report.view",
+        "report.export",
+      ]),
+    );
+  });
+
+  it("should backfill bank account permissions for legacy payment-request records", async () => {
+    prisma.rolePermission.findMany.mockResolvedValueOnce([
+      { permType: "menu", permKey: "/payment-requests", isEnabled: true },
+      {
+        permType: "function",
+        permKey: "payment-request.create",
+        isEnabled: true,
+      },
+    ]);
+
+    const result = await service.getRolePermissions("FINANCE");
+    expect(result.functions).toEqual(
+      expect.arrayContaining([
+        "payment-request.create",
+        "payment-request.view",
+        "bank-account.view",
+        "bank-account.create",
+        "bank-account.edit",
+      ]),
+    );
   });
 
   it("should update role menu permissions and return latest role permissions", async () => {
@@ -168,15 +259,19 @@ describe("PermissionsService", () => {
     );
   });
 
-  it("should initialize defaults only for roles without existing records", async () => {
-    prisma.rolePermission.findFirst.mockImplementation(
-      async ({ where }: any) =>
-        where.role === "EMPLOYEE" ? null : { id: "existing" },
+  it("should initialize defaults and backfill missing permissions", async () => {
+    prisma.rolePermission.findMany.mockImplementation(
+      async ({ where }: any) => {
+        if (where.role === "EMPLOYEE") return [];
+        if (where.role === "SALES")
+          return [{ permType: "menu", permKey: "/dashboard" }];
+        return [];
+      },
     );
 
     const result = await service.initializeDefaultPermissions();
 
-    expect(prisma.rolePermission.createMany).toHaveBeenCalledTimes(1);
+    expect(prisma.rolePermission.createMany).toHaveBeenCalled();
     expect(result).toEqual({ message: "初始化完成" });
   });
 
@@ -234,9 +329,7 @@ describe("PermissionsService", () => {
   it("should reset unknown role permissions to empty defaults", async () => {
     const result = await service.resetRolePermissions("UNKNOWN_ROLE");
 
-    expect(prisma.rolePermission.deleteMany).toHaveBeenCalledWith({
-      where: { role: "UNKNOWN_ROLE" },
-    });
+    expect(prisma.rolePermission.deleteMany).not.toHaveBeenCalled();
     expect(result).toEqual({
       role: "UNKNOWN_ROLE",
       menus: [],

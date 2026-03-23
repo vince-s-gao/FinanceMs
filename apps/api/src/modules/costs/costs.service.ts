@@ -15,6 +15,7 @@ import {
 } from "@inffinancems/shared";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
+  normalizePagination,
   parseDateRangeEnd,
   parseDateRangeStart,
   resolveSortField,
@@ -170,7 +171,11 @@ export class CostsService {
       sortBy = "createdAt",
       sortOrder = "desc",
     } = query;
-    const skip = (page - 1) * pageSize;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
     const safeSortBy = resolveSortField(
       sortBy,
       ALLOWED_COST_SORT_FIELDS,
@@ -182,7 +187,7 @@ export class CostsService {
       this.prisma.cost.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: { [safeSortBy]: sortOrder },
         include: {
           project: {
@@ -202,9 +207,9 @@ export class CostsService {
     return {
       items,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 

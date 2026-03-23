@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 预算管理页面
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 import {
   Table,
   Button,
@@ -21,7 +21,7 @@ import {
   Row,
   Col,
   Statistic,
-} from 'antd';
+} from "antd";
 import {
   PlusOutlined,
   SearchOutlined,
@@ -30,25 +30,31 @@ import {
   LockOutlined,
   UnlockOutlined,
   StopOutlined,
-} from '@ant-design/icons';
-import { api } from '@/lib/api';
-import { FEE_TYPE_LABELS, formatAmount } from '@/lib/constants';
+} from "@ant-design/icons";
+import { api } from "@/lib/api";
+import { FEE_TYPE_LABELS, formatAmount } from "@/lib/constants";
+import { getErrorMessage } from "@/lib/error";
+import {
+  formatLocaleMoney,
+  formatThousandSeparated,
+  parseCurrencySeparated,
+} from "@/lib/number";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
 // 预算状态标签
 const BUDGET_STATUS_LABELS: Record<string, string> = {
-  ACTIVE: '生效中',
-  FROZEN: '已冻结',
-  CLOSED: '已关闭',
+  ACTIVE: "生效中",
+  FROZEN: "已冻结",
+  CLOSED: "已关闭",
 };
 
 // 预算状态颜色
 const BUDGET_STATUS_COLORS: Record<string, string> = {
-  ACTIVE: 'success',
-  FROZEN: 'warning',
-  CLOSED: 'default',
+  ACTIVE: "success",
+  FROZEN: "warning",
+  CLOSED: "default",
 };
 
 interface Budget {
@@ -66,39 +72,58 @@ interface Budget {
   remark?: string;
 }
 
+interface BudgetListResponse {
+  items: Budget[];
+  total: number;
+}
+
+interface BudgetSummary {
+  year: number;
+  department: string;
+  totalBudget: number;
+  totalUsed: number;
+  totalRemaining: number;
+  usageRate: number;
+  byFeeType: Record<string, { budget: number; used: number; rate: number }>;
+}
+
 export default function BudgetsPage() {
   const [loading, setLoading] = useState(false);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear());
-  const [departmentFilter, setDepartmentFilter] = useState<string | undefined>();
+  const [yearFilter, setYearFilter] = useState<number>(
+    new Date().getFullYear(),
+  );
+  const [departmentFilter, setDepartmentFilter] = useState<
+    string | undefined
+  >();
   const [departments, setDepartments] = useState<string[]>([]);
 
   // 弹窗状态
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalTitle, setModalTitle] = useState('新增预算');
+  const [modalTitle, setModalTitle] = useState("新增预算");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
 
   // 汇总数据
-  const [summary, setSummary] = useState<any>(null);
+  const [summary, setSummary] = useState<BudgetSummary | null>(null);
 
   // 加载预算列表
   const fetchBudgets = useCallback(async () => {
     setLoading(true);
     try {
-      const params: any = { page, pageSize };
+      const params: Record<string, unknown> = { page, pageSize };
       if (yearFilter) params.year = yearFilter;
       if (departmentFilter) params.department = departmentFilter;
 
-      const res = await api.get<any>('/budgets', { params });
+      const res = await api.get<BudgetListResponse>("/budgets", { params });
       setBudgets(res.items);
       setTotal(res.total);
-    } catch (error: any) {
-      message.error(error.message || '加载失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "加载失败"));
     } finally {
       setLoading(false);
     }
@@ -107,10 +132,10 @@ export default function BudgetsPage() {
   // 加载部门列表
   const fetchDepartments = useCallback(async () => {
     try {
-      const res = await api.get<string[]>('/budgets/departments');
+      const res = await api.get<string[]>("/budgets/departments");
       setDepartments(res);
     } catch (error) {
-      console.error('加载部门列表失败', error);
+      console.error("加载部门列表失败", error);
     }
   }, []);
 
@@ -121,10 +146,12 @@ export default function BudgetsPage() {
       return;
     }
     try {
-      const res = await api.get(`/budgets/summary/${yearFilter}/${departmentFilter}`);
+      const res = await api.get<BudgetSummary>(
+        `/budgets/summary/${yearFilter}/${departmentFilter}`,
+      );
       setSummary(res);
     } catch (error) {
-      console.error('加载汇总失败', error);
+      console.error("加载汇总失败", error);
     }
   }, [departmentFilter, yearFilter]);
 
@@ -139,7 +166,7 @@ export default function BudgetsPage() {
 
   // 打开新增弹窗
   const handleAdd = () => {
-    setModalTitle('新增预算');
+    setModalTitle("新增预算");
     setEditingId(null);
     form.resetFields();
     form.setFieldsValue({ year: new Date().getFullYear() });
@@ -148,7 +175,7 @@ export default function BudgetsPage() {
 
   // 打开编辑弹窗
   const handleEdit = (record: Budget) => {
-    setModalTitle('编辑预算');
+    setModalTitle("编辑预算");
     setEditingId(record.id);
     form.setFieldsValue({
       budgetAmount: record.budgetAmount,
@@ -168,19 +195,17 @@ export default function BudgetsPage() {
           budgetAmount: values.budgetAmount,
           remark: values.remark,
         });
-        message.success('更新成功');
+        message.success("更新成功");
       } else {
-        await api.post('/budgets', values);
-        message.success('创建成功');
+        await api.post("/budgets", values);
+        message.success("创建成功");
       }
 
       setModalVisible(false);
       fetchBudgets();
       fetchSummary();
-    } catch (error: any) {
-      if (error.message) {
-        message.error(error.message);
-      }
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "操作失败"));
     } finally {
       setSubmitting(false);
     }
@@ -190,10 +215,10 @@ export default function BudgetsPage() {
   const handleToggleFreeze = async (id: string) => {
     try {
       await api.patch(`/budgets/${id}/freeze`);
-      message.success('操作成功');
+      message.success("操作成功");
       fetchBudgets();
-    } catch (error: any) {
-      message.error(error.message || '操作失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "操作失败"));
     }
   };
 
@@ -201,10 +226,10 @@ export default function BudgetsPage() {
   const handleClose = async (id: string) => {
     try {
       await api.patch(`/budgets/${id}/close`);
-      message.success('已关闭');
+      message.success("已关闭");
       fetchBudgets();
-    } catch (error: any) {
-      message.error(error.message || '操作失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "操作失败"));
     }
   };
 
@@ -212,87 +237,93 @@ export default function BudgetsPage() {
   const handleDelete = async (id: string) => {
     try {
       await api.delete(`/budgets/${id}`);
-      message.success('删除成功');
+      message.success("删除成功");
       fetchBudgets();
-    } catch (error: any) {
-      message.error(error.message || '删除失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "删除失败"));
     }
   };
 
   // 表格列定义
   const columns = [
     {
-      title: '年度',
-      dataIndex: 'year',
-      key: 'year',
+      title: "年度",
+      dataIndex: "year",
+      key: "year",
       width: 80,
     },
     {
-      title: '月份',
-      dataIndex: 'month',
-      key: 'month',
+      title: "月份",
+      dataIndex: "month",
+      key: "month",
       width: 80,
-      render: (v: number) => (v ? `${v}月` : '全年'),
+      render: (v: number) => (v ? `${v}月` : "全年"),
     },
     {
-      title: '部门',
-      dataIndex: 'department',
-      key: 'department',
+      title: "部门",
+      dataIndex: "department",
+      key: "department",
       width: 120,
     },
     {
-      title: '费用类型',
-      dataIndex: 'feeType',
-      key: 'feeType',
+      title: "费用类型",
+      dataIndex: "feeType",
+      key: "feeType",
       width: 100,
       render: (v: string) => FEE_TYPE_LABELS[v] || v,
     },
     {
-      title: '预算金额',
-      dataIndex: 'budgetAmount',
-      key: 'budgetAmount',
+      title: "预算金额",
+      dataIndex: "budgetAmount",
+      key: "budgetAmount",
       width: 120,
       render: (v: number) => `¥${formatAmount(v)}`,
     },
     {
-      title: '已使用',
-      dataIndex: 'usedAmount',
-      key: 'usedAmount',
+      title: "已使用",
+      dataIndex: "usedAmount",
+      key: "usedAmount",
       width: 120,
       render: (v: number, record: Budget) => (
-        <Text type={record.isOverBudget ? 'danger' : undefined}>
+        <Text type={record.isOverBudget ? "danger" : undefined}>
           ¥{formatAmount(v)}
         </Text>
       ),
     },
     {
-      title: '使用率',
-      key: 'usageRate',
+      title: "使用率",
+      key: "usageRate",
       width: 150,
-      render: (_: any, record: Budget) => (
+      render: (_: unknown, record: Budget) => (
         <Progress
           percent={Math.min(record.usageRate, 100)}
           size="small"
-          status={record.isOverBudget ? 'exception' : record.usageRate > 80 ? 'active' : 'normal'}
+          status={
+            record.isOverBudget
+              ? "exception"
+              : record.usageRate > 80
+                ? "active"
+                : "normal"
+          }
           format={() => `${record.usageRate}%`}
         />
       ),
     },
     {
-      title: '剩余',
-      dataIndex: 'remainingAmount',
-      key: 'remainingAmount',
+      title: "剩余",
+      dataIndex: "remainingAmount",
+      key: "remainingAmount",
       width: 120,
       render: (v: number, record: Budget) => (
-        <Text type={record.isOverBudget ? 'danger' : 'success'}>
+        <Text type={record.isOverBudget ? "danger" : "success"}>
           ¥{formatAmount(v)}
         </Text>
       ),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
       width: 90,
       render: (status: string) => (
         <Tag color={BUDGET_STATUS_COLORS[status]}>
@@ -301,12 +332,12 @@ export default function BudgetsPage() {
       ),
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 180,
-      render: (_: any, record: Budget) => (
+      render: (_: unknown, record: Budget) => (
         <Space size="small">
-          {record.status === 'ACTIVE' && (
+          {record.status === "ACTIVE" && (
             <>
               <Button
                 type="link"
@@ -326,7 +357,7 @@ export default function BudgetsPage() {
               </Popconfirm>
             </>
           )}
-          {record.status === 'FROZEN' && (
+          {record.status === "FROZEN" && (
             <Button
               type="link"
               size="small"
@@ -336,7 +367,7 @@ export default function BudgetsPage() {
               解冻
             </Button>
           )}
-          {record.status !== 'CLOSED' && (
+          {record.status !== "CLOSED" && (
             <Popconfirm
               title="确定关闭该预算吗？关闭后不可恢复"
               onConfirm={() => handleClose(record.id)}
@@ -348,7 +379,7 @@ export default function BudgetsPage() {
               </Button>
             </Popconfirm>
           )}
-          {record.status === 'ACTIVE' && (
+          {record.status === "ACTIVE" && (
             <Popconfirm
               title="确定删除该预算吗？"
               description="删除后数据将无法恢复"
@@ -391,7 +422,7 @@ export default function BudgetsPage() {
                 value={summary.totalBudget}
                 prefix="¥"
                 precision={2}
-                formatter={(value) => value?.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                formatter={(value) => formatLocaleMoney(value)}
               />
             </Col>
             <Col span={6}>
@@ -400,8 +431,13 @@ export default function BudgetsPage() {
                 value={summary.totalUsed}
                 prefix="¥"
                 precision={2}
-                valueStyle={{ color: summary.totalUsed > summary.totalBudget ? '#ff4d4f' : '#1890ff' }}
-                formatter={(value) => value?.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                valueStyle={{
+                  color:
+                    summary.totalUsed > summary.totalBudget
+                      ? "#ff4d4f"
+                      : "#1890ff",
+                }}
+                formatter={(value) => formatLocaleMoney(value)}
               />
             </Col>
             <Col span={6}>
@@ -410,8 +446,10 @@ export default function BudgetsPage() {
                 value={summary.totalRemaining}
                 prefix="¥"
                 precision={2}
-                valueStyle={{ color: summary.totalRemaining < 0 ? '#ff4d4f' : '#52c41a' }}
-                formatter={(value) => value?.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                valueStyle={{
+                  color: summary.totalRemaining < 0 ? "#ff4d4f" : "#52c41a",
+                }}
+                formatter={(value) => formatLocaleMoney(value)}
               />
             </Col>
             <Col span={6}>
@@ -420,7 +458,14 @@ export default function BudgetsPage() {
                 value={summary.usageRate}
                 suffix="%"
                 precision={2}
-                valueStyle={{ color: summary.usageRate > 100 ? '#ff4d4f' : summary.usageRate > 80 ? '#faad14' : '#52c41a' }}
+                valueStyle={{
+                  color:
+                    summary.usageRate > 100
+                      ? "#ff4d4f"
+                      : summary.usageRate > 80
+                        ? "#faad14"
+                        : "#52c41a",
+                }}
               />
             </Col>
           </Row>
@@ -476,7 +521,7 @@ export default function BudgetsPage() {
           },
         }}
         scroll={{ x: 1300 }}
-        rowClassName={(record) => (record.isOverBudget ? 'bg-red-50' : '')}
+        rowClassName={(record) => (record.isOverBudget ? "bg-red-50" : "")}
       />
 
       {/* 新增/编辑弹窗 */}
@@ -494,7 +539,7 @@ export default function BudgetsPage() {
               <Form.Item
                 name="year"
                 label="预算年度"
-                rules={[{ required: true, message: '请选择年度' }]}
+                rules={[{ required: true, message: "请选择年度" }]}
               >
                 <Select>
                   {yearOptions.map((y) => (
@@ -518,7 +563,7 @@ export default function BudgetsPage() {
               <Form.Item
                 name="department"
                 label="部门"
-                rules={[{ required: true, message: '请输入部门' }]}
+                rules={[{ required: true, message: "请输入部门" }]}
               >
                 <Input placeholder="请输入部门名称" />
               </Form.Item>
@@ -526,7 +571,7 @@ export default function BudgetsPage() {
               <Form.Item
                 name="feeType"
                 label="费用类型"
-                rules={[{ required: true, message: '请选择费用类型' }]}
+                rules={[{ required: true, message: "请选择费用类型" }]}
               >
                 <Select placeholder="请选择费用类型">
                   {Object.entries(FEE_TYPE_LABELS).map(([k, v]) => (
@@ -542,16 +587,16 @@ export default function BudgetsPage() {
           <Form.Item
             name="budgetAmount"
             label="预算金额"
-            rules={[{ required: true, message: '请输入预算金额' }]}
+            rules={[{ required: true, message: "请输入预算金额" }]}
           >
-            <InputNumber
+            <InputNumber<number>
               placeholder="请输入预算金额"
               min={0}
               precision={2}
-              style={{ width: '100%' }}
+              style={{ width: "100%" }}
               prefix="¥"
-              formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-              parser={(value) => value!.replace(/[¥,]/g, '') as any}
+              formatter={formatThousandSeparated}
+              parser={parseCurrencySeparated}
             />
           </Form.Item>
 

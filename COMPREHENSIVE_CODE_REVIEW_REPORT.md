@@ -12,25 +12,45 @@
 
 ### 关键指标
 
-| 指标 | 当前状态 | 目标状态 | 差距 |
-|------|---------|---------|------|
-| 代码质量评分 | 6.5/10 | 8.5/10 | -2.0 |
-| 性能评分 | 6.0/10 | 8.5/10 | -2.5 |
-| 安全评分 | 7.2/10 | 9.0/10 | -1.8 |
-| 测试覆盖率 | ~10% | 80% | -70% |
+| 指标         | 当前状态 | 目标状态 | 差距 |
+| ------------ | -------- | -------- | ---- |
+| 代码质量评分 | 6.5/10   | 8.5/10   | -2.0 |
+| 性能评分     | 6.0/10   | 8.5/10   | -2.5 |
+| 安全评分     | 7.2/10   | 9.0/10   | -1.8 |
+| 测试覆盖率   | ~10%     | 80%      | -70% |
 
 ### 问题统计
 
-| 严重程度 | 前端 | 后端 | 数据库 | 安全性 | 总计 |
-|---------|------|------|--------|--------|------|
-| 🔴 严重 | 8 | 3 | 2 | 3 | 16 |
-| 🟡 中等 | 15 | 6 | 3 | 4 | 28 |
-| 🟢 轻微 | 12 | 5 | 2 | 3 | 22 |
-| **总计** | **35** | **14** | **7** | **10** | **66** |
+| 严重程度 | 前端   | 后端   | 数据库 | 安全性 | 总计   |
+| -------- | ------ | ------ | ------ | ------ | ------ |
+| 🔴 严重  | 7      | 3      | 2      | 2      | 14     |
+| 🟡 中等  | 13     | 6      | 3      | 4      | 26     |
+| 🟢 轻微  | 10     | 5      | 2      | 3      | 20     |
+| **总计** | **30** | **14** | **7**  | **9**  | **60** |
+
+### 已解决的问题
+
+以下问题已在之前的优化中解决：
+
+#### 安全性
+
+- ✅ 移除硬编码的默认密码
+- ✅ 配置 HTTPS 强制
+- ✅ 添加请求速率限制
+- ✅ 启用安全头配置
+
+#### 前端
+
+- ✅ 添加错误边界（AppErrorBoundary）
+- ✅ 添加请求防抖（useDebouncedValue）
+- ✅ 实现虚拟滚动（Ant Design Table virtual 属性）
+- ✅ 使用 ESLint 和 Prettier
+- ✅ 使用 Husky 和 lint-staged
 
 ### 预期改进效果
 
 实施所有优化建议后，预期可达到：
+
 - **性能提升**: 40-60%
 - **代码质量提升**: 30-40%
 - **安全性提升**: 25-35%
@@ -43,42 +63,48 @@
 ### P0 - 立即处理（1-2周内）
 
 #### 1. 修复内存泄漏风险
+
 **位置**: `apps/web/src/components/layout/MainLayout.tsx`
 **问题**: useEffect 中的定时器未清理
 **影响**: 内存泄漏，页面卡顿
 **修复**:
+
 ```typescript
 useEffect(() => {
   const loadNotifications = async () => {
     // 加载通知逻辑
   };
-  
+
   loadNotifications();
   const interval = setInterval(loadNotifications, 60000);
-  
+
   return () => clearInterval(interval); // 添加清理函数
 }, []);
 ```
 
 #### 2. 移除硬编码的默认密码
+
 **位置**: `packages/database/prisma/seed.ts`
 **问题**: 种子数据中硬编码了默认密码
 **影响**: 生产环境安全风险
 **修复**:
+
 ```typescript
 const adminPassword = await bcrypt.hash(
   process.env.ADMIN_INITIAL_PASSWORD || generateRandomPassword(),
-  10
+  10,
 );
 ```
 
 #### 3. 配置 HTTPS 强制
+
 **位置**: `apps/api/src/main.ts`
 **问题**: 未强制使用 HTTPS
 **影响**: 敏感数据可能被窃取
 **修复**:
+
 ```typescript
-if (process.env.NODE_ENV === 'production') {
+if (process.env.NODE_ENV === "production") {
   app.use((req, res, next) => {
     if (!req.secure) {
       return res.redirect(301, `https://${req.headers.host}${req.url}`);
@@ -89,27 +115,31 @@ if (process.env.NODE_ENV === 'production') {
 ```
 
 #### 4. 添加请求速率限制
+
 **位置**: `apps/api/src/main.ts`
 **问题**: API 端点未实现速率限制
 **影响**: 容易遭受 DDoS 攻击
 **修复**:
+
 ```typescript
-import rateLimit from 'express-rate-limit';
+import rateLimit from "express-rate-limit";
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  message: '请求过于频繁，请稍后再试',
+  message: "请求过于频繁，请稍后再试",
 });
 
 app.use(limiter);
 ```
 
 #### 5. 解决 N+1 查询问题
+
 **位置**: `apps/api/src/modules/contracts/contracts.service.ts`
 **问题**: 在循环中执行数据库查询
 **影响**: 数据库负载高，响应慢
 **修复**:
+
 ```typescript
 // 使用 include 预加载关联数据
 const contracts = await this.prisma.contract.findMany({
@@ -122,10 +152,12 @@ const contracts = await this.prisma.contract.findMany({
 ```
 
 #### 6. 添加数据库索引
+
 **位置**: `packages/database/prisma/schema.prisma`
 **问题**: 缺少关键索引
 **影响**: 查询性能差
 **修复**:
+
 ```prisma
 model Contract {
   // ... 现有字段
@@ -136,12 +168,14 @@ model Contract {
 ```
 
 #### 7. 添加错误边界
+
 **位置**: 前端组件
 **问题**: 缺少组件级别的错误边界
 **影响**: 单个组件错误会导致整个页面崩溃
 **修复**: 创建 `ErrorBoundary` 组件并包裹关键组件
 
 #### 8. 完善 TypeScript 类型定义
+
 **位置**: 多个前端文件
 **问题**: 大量使用 `any` 类型
 **影响**: 类型安全性差
@@ -152,7 +186,9 @@ model Contract {
 ### P1 - 近期处理（2-4周内）
 
 #### 9. 拆分大型组件
-**位置**: 
+
+**位置**:
+
 - `apps/web/src/app/(dashboard)/contracts/page.tsx` (1042行)
 - `apps/web/src/components/invoices/InvoiceManagementPage.tsx` (949行)
 
@@ -161,10 +197,12 @@ model Contract {
 **修复**: 拆分为多个子组件和自定义 Hooks
 
 #### 10. 添加 Redis 缓存层
+
 **位置**: 后端服务
 **问题**: 所有请求都直接查询数据库
 **影响**: API 响应时间增加 50-200%
-**修复**: 
+**修复**:
+
 ```typescript
 @Injectable()
 export class ContractsService {
@@ -172,12 +210,12 @@ export class ContractsService {
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private prisma: PrismaService,
   ) {}
-  
+
   async findAll(query: QueryContractDto) {
     const cacheKey = `contracts:${JSON.stringify(query)}`;
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) return cached;
-    
+
     const result = await this.prisma.contract.findMany({...});
     await this.cacheManager.set(cacheKey, result, 300);
     return result;
@@ -186,39 +224,46 @@ export class ContractsService {
 ```
 
 #### 11. 启用安全头配置
+
 **位置**: `apps/api/src/main.ts`
 **问题**: 缺少 CSP、HSTS 等安全头
 **影响**: 可能受到 XSS、点击劫持等攻击
 **修复**:
-```typescript
-import helmet from 'helmet';
 
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
+```typescript
+import helmet from "helmet";
+
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+      },
     },
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-  },
-}));
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+    },
+  }),
+);
 ```
 
 #### 12. 统一错误处理
+
 **位置**: 前端和后端
 **问题**: 错误处理方式不一致
 **影响**: 用户体验差，难以调试
 **修复**: 创建统一的错误处理机制
 
 #### 13. 添加输入验证
+
 **位置**: 多个 DTO 文件
 **问题**: 部分 DTO 缺少完整的输入验证装饰器
 **影响**: 可能接受恶意输入
 **修复**:
+
 ```typescript
 export class CreateCustomerDto {
   @IsString()
@@ -227,7 +272,7 @@ export class CreateCustomerDto {
   @MaxLength(100)
   @Transform(({ value }) => value?.trim())
   name: string;
-  
+
   @IsEmail()
   @Transform(({ value }) => value?.trim())
   contactEmail?: string;
@@ -235,18 +280,21 @@ export class CreateCustomerDto {
 ```
 
 #### 14. 优化组件渲染性能
+
 **位置**: 前端组件
 **问题**: 不必要的重渲染
 **影响**: 页面卡顿
 **修复**: 使用 `React.memo`、`useMemo`、`useCallback`
 
 #### 15. 实现流式文件处理
+
 **位置**: `apps/api/src/modules/reports/reports.service.ts`
 **问题**: 大文件导出一次性加载所有数据到内存
 **影响**: 内存溢出风险
 **修复**: 使用流式处理，分批查询和写入
 
 #### 16. 缩短 JWT 访问令牌过期时间
+
 **位置**: `apps/api/src/modules/auth/auth.module.ts`
 **问题**: 访问令牌过期时间过长（7天）
 **影响**: 令牌被盗后有效期过长
@@ -257,48 +305,56 @@ export class CreateCustomerDto {
 ### P2 - 中期优化（1-2个月内）
 
 #### 17. 添加单元测试
+
 **位置**: 前端和后端
 **问题**: 测试覆盖率低（~10%）
 **影响**: 代码质量保障不足
 **修复**: 提高测试覆盖率至 80% 以上
 
 #### 18. 实现虚拟滚动
+
 **位置**: 大数据表格组件
 **问题**: 大数据表格渲染所有行
 **影响**: 长列表渲染慢
 **修复**: 使用 `@tanstack/react-virtual` 实现虚拟滚动
 
 #### 19. 添加请求防抖
+
 **位置**: 搜索功能
 **问题**: 搜索输入框没有防抖
 **影响**: 频繁请求
 **修复**: 使用 `useDebouncedValue` Hook
 
 #### 20. 实现异步队列
+
 **位置**: 耗时操作（导入、导出）
 **问题**: 长时间操作同步执行
 **影响**: 阻塞主线程
 **修复**: 使用 Bull 队列实现异步处理
 
 #### 21. 优化数据库连接池
+
 **位置**: `apps/api/src/prisma/prisma.service.ts`
 **问题**: 连接池使用默认配置
 **影响**: 并发能力受限
 **修复**: 根据实际负载调整连接池配置
 
 #### 22. 添加 CDN 支持
+
 **位置**: 前端配置
 **问题**: 未使用 CDN
 **影响**: 资源加载慢
 **修复**: 配置 CDN 加速静态资源
 
 #### 23. 实现异常登录检测
+
 **位置**: 认证相关代码
 **问题**: 缺少异常登录检测机制
 **影响**: 无法及时发现安全威胁
 **修复**: 实现 IP 变更、设备变更检测
 
 #### 24. 增强密码策略
+
 **位置**: `apps/api/src/modules/auth/auth.service.ts`
 **问题**: 密码复杂度策略不够严格
 **影响**: 用户可能设置弱密码
@@ -309,36 +365,42 @@ export class CreateCustomerDto {
 ### P3 - 长期改进（2-3个月内）
 
 #### 25. 实现多因素认证
+
 **位置**: 认证模块
 **问题**: 未实现 MFA
 **影响**: 安全性不足
 **修复**: 实现 SMS、TOTP 等多因素认证
 
 #### 26. 实现数据加密
+
 **位置**: 数据库和文件存储
 **问题**: 敏感数据未加密
 **影响**: 数据泄露风险
 **修复**: 实现数据库透明加密和敏感字段加密
 
 #### 27. 添加国际化支持
+
 **位置**: 前端
 **问题**: 所有文本都是硬编码的中文
 **影响**: 不支持多语言
 **修复**: 使用 next-intl 实现国际化
 
 #### 28. 实现 PWA 支持
+
 **位置**: 前端配置
 **问题**: 没有 PWA 配置
 **影响**: 无法离线使用
 **修复**: 配置 PWA，支持离线访问
 
 #### 29. 集成性能监控
+
 **位置**: 前端和后端
 **问题**: 没有性能监控
 **影响**: 难以发现性能瓶颈
 **修复**: 集成 Web Vitals、Prometheus 等监控工具
 
 #### 30. 实现会话管理
+
 **位置**: 认证模块
 **问题**: 缺少会话管理功能
 **影响**: 无法管理用户的多设备登录
@@ -351,6 +413,7 @@ export class CreateCustomerDto {
 ### 前端问题（35个）
 
 #### 严重问题（8个）
+
 1. 过大的组件文件（4个文件超过500行）
 2. 内存泄漏风险（MainLayout.tsx）
 3. 缺少错误边界
@@ -361,6 +424,7 @@ export class CreateCustomerDto {
 8. 缺少响应式设计优化
 
 #### 中等问题（15个）
+
 9. 不必要的重渲染
 10. 代码重复（DRY 原则违反）
 11. 缺少表单验证
@@ -378,6 +442,7 @@ export class CreateCustomerDto {
 23. 缺少代码分割
 
 #### 轻微问题（12个）
+
 24. 魔法数字
 25. 硬编码的值
 26. 未优化的资源加载
@@ -396,11 +461,13 @@ export class CreateCustomerDto {
 ### 后端问题（14个）
 
 #### 严重问题（3个）
+
 1. 缺少请求速率限制
 2. 敏感操作缺少二次验证
 3. 文件上传缺少类型和大小验证
 
 #### 中等问题（6个）
+
 4. 部分API端点缺少认证保护
 5. 缺少API版本控制
 6. 错误信息泄露敏感数据
@@ -409,6 +476,7 @@ export class CreateCustomerDto {
 9. 缺少响应数据脱敏
 
 #### 轻微问题（5个）
+
 10. 缺少缓存策略
 11. 事务处理不完整
 12. 缺少输入数据清理
@@ -420,15 +488,18 @@ export class CreateCustomerDto {
 ### 数据库问题（7个）
 
 #### 严重问题（2个）
+
 1. 缺少关键索引
 2. N+1 查询问题
 
 #### 中等问题（3个）
+
 3. 大数据量分页性能差
 4. 缺少查询优化
 5. 连接池配置未优化
 
 #### 轻微问题（2个）
+
 6. 缺少定期维护
 7. 缺少数据归档策略
 
@@ -437,17 +508,20 @@ export class CreateCustomerDto {
 ### 安全性问题（10个）
 
 #### 严重问题（3个）
+
 1. 硬编码的默认密码
 2. 缺少 HTTPS 强制
 3. 敏感信息泄露
 
 #### 中等问题（4个）
+
 4. 缺少速率限制
 5. 缺少输入验证
 6. JWT 访问令牌过期时间过长
 7. 缺少安全头配置
 
 #### 轻微问题（3个）
+
 8. 缺少密码复杂度策略
 9. 缺少会话管理
 10. 缺少异常登录检测
@@ -459,6 +533,7 @@ export class CreateCustomerDto {
 ### 前端性能优化
 
 #### 1. 代码分割和懒加载
+
 **预期提升**: 初始包体积减少 40-60%，首屏加载时间减少 30-50%
 
 ```javascript
@@ -466,26 +541,30 @@ export class CreateCustomerDto {
 const nextConfig = {
   swcMinify: true,
   experimental: {
-    optimizePackageImports: ['antd', '@ant-design/icons'],
+    optimizePackageImports: ["antd", "@ant-design/icons"],
   },
   compress: true,
   images: {
-    formats: ['image/avif', 'image/webp'],
+    formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 60,
   },
 };
 ```
 
 #### 2. 组件渲染优化
+
 **预期提升**: 渲染性能提升 50-70%
 
 ```typescript
 // 使用 React.memo
-export const ContractRow = React.memo(({ contract }: Props) => {
-  // 组件内容
-}, (prevProps, nextProps) => {
-  return prevProps.contract.id === nextProps.contract.id;
-});
+export const ContractRow = React.memo(
+  ({ contract }: Props) => {
+    // 组件内容
+  },
+  (prevProps, nextProps) => {
+    return prevProps.contract.id === nextProps.contract.id;
+  },
+);
 
 // 使用 useMemo
 const contractTypeMap = useMemo(() => {
@@ -502,21 +581,22 @@ const handleSearch = useCallback(() => {
 ```
 
 #### 3. 虚拟滚动
+
 **预期提升**: 大列表渲染性能提升 80-90%
 
 ```typescript
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 function VirtualTable({ data }: { data: Contract[] }) {
   const parentRef = useRef<HTMLDivElement>(null);
-  
+
   const virtualizer = useVirtualizer({
     count: data.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 50,
     overscan: 5,
   });
-  
+
   // 渲染虚拟化列表
 }
 ```
@@ -526,6 +606,7 @@ function VirtualTable({ data }: { data: Contract[] }) {
 ### 后端性能优化
 
 #### 1. 添加 Redis 缓存
+
 **预期提升**: API 响应时间减少 50-80%
 
 ```typescript
@@ -535,17 +616,17 @@ export class DictionariesService {
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private prisma: PrismaService,
   ) {}
-  
+
   async findByType(type: string) {
     const cacheKey = `dict:${type}`;
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) return cached;
-    
+
     const data = await this.prisma.dictionary.findMany({
       where: { type, isEnabled: true },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: { sortOrder: "asc" },
     });
-    
+
     await this.cacheManager.set(cacheKey, data, 3600);
     return data;
   }
@@ -553,6 +634,7 @@ export class DictionariesService {
 ```
 
 #### 2. 批量操作优化
+
 **预期提升**: 批量操作性能提升 10-50 倍
 
 ```typescript
@@ -580,26 +662,29 @@ async importContracts(rows: ContractRow[]) {
 ```
 
 #### 3. 异步队列处理
+
 **预期提升**: 长时间操作不阻塞主线程
 
 ```typescript
 @Injectable()
 export class ContractImportService {
-  constructor(
-    @InjectQueue('contract-import') private importQueue: Queue,
-  ) {}
-  
+  constructor(@InjectQueue("contract-import") private importQueue: Queue) {}
+
   async importCsv(file: Buffer, operatorId: string) {
-    const job = await this.importQueue.add('import', {
-      file,
-      operatorId,
-    }, {
-      priority: 1,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 2000 },
-    });
-    
-    return { jobId: job.id, status: 'queued' };
+    const job = await this.importQueue.add(
+      "import",
+      {
+        file,
+        operatorId,
+      },
+      {
+        priority: 1,
+        attempts: 3,
+        backoff: { type: "exponential", delay: 2000 },
+      },
+    );
+
+    return { jobId: job.id, status: "queued" };
   }
 }
 ```
@@ -609,6 +694,7 @@ export class ContractImportService {
 ### 数据库性能优化
 
 #### 1. 添加复合索引
+
 **预期提升**: 查询性能提升 3-10 倍
 
 ```prisma
@@ -633,6 +719,7 @@ model PaymentRecord {
 ```
 
 #### 2. 查询优化
+
 **预期提升**: 查询速度提升 30-50%
 
 ```typescript
@@ -652,13 +739,14 @@ const [items, total] = await Promise.all([
     where: this.buildWhere(query),
     skip: (page.page - 1) * page.pageSize,
     take: page.pageSize,
-    orderBy: { signDate: 'desc' },
+    orderBy: { signDate: "desc" },
   }),
   this.prisma.contract.count({ where: this.buildWhere(query) }),
 ]);
 ```
 
 #### 3. 连接池优化
+
 **预期提升**: 并发处理能力提升 2-3 倍
 
 ```typescript
@@ -679,32 +767,34 @@ datasource db {
 ### 1. 认证加固
 
 #### 实现令牌黑名单
+
 ```typescript
 @Injectable()
 export class TokenBlacklistService {
   constructor(private redis: Redis) {}
 
   async addToBlacklist(token: string, expiresIn: number) {
-    await this.redis.setex(`blacklist:${token}`, expiresIn, '1');
+    await this.redis.setex(`blacklist:${token}`, expiresIn, "1");
   }
 
   async isBlacklisted(token: string): Promise<boolean> {
-    return await this.redis.exists(`blacklist:${token}`) === 1;
+    return (await this.redis.exists(`blacklist:${token}`)) === 1;
   }
 }
 ```
 
 #### 实现设备指纹
+
 ```typescript
 @Injectable()
 export class DeviceFingerprintService {
   generateFingerprint(req: Request): string {
-    const userAgent = req.headers['user-agent'];
+    const userAgent = req.headers["user-agent"];
     const ip = req.ip;
     return crypto
-      .createHash('sha256')
+      .createHash("sha256")
       .update(`${userAgent}-${ip}`)
-      .digest('hex');
+      .digest("hex");
   }
 }
 ```
@@ -712,6 +802,7 @@ export class DeviceFingerprintService {
 ### 2. 授权加固
 
 #### 实现数据权限
+
 ```typescript
 @Injectable()
 export class DataPermissionGuard implements CanActivate {
@@ -721,11 +812,11 @@ export class DataPermissionGuard implements CanActivate {
     const entityId = request.params.id;
 
     const hasPermission = await this.checkDataPermission(user, entityId);
-    
+
     if (!hasPermission) {
-      throw new ForbiddenException('无权访问该数据');
+      throw new ForbiddenException("无权访问该数据");
     }
-    
+
     return true;
   }
 }
@@ -734,6 +825,7 @@ export class DataPermissionGuard implements CanActivate {
 ### 3. 输入验证加固
 
 #### 增强 DTO 验证
+
 ```typescript
 export class CreateCustomerDto {
   @IsString()
@@ -742,11 +834,11 @@ export class CreateCustomerDto {
   @MaxLength(100)
   @Transform(({ value }) => value?.trim())
   name: string;
-  
+
   @IsEmail()
   @Transform(({ value }) => value?.trim())
   contactEmail?: string;
-  
+
   @IsOptional()
   @Matches(/^[0-9A-Z]{18}$/)
   creditCode?: string;
@@ -756,25 +848,27 @@ export class CreateCustomerDto {
 ### 4. 安全头配置
 
 ```typescript
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://open.feishu.cn"],
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "https://open.feishu.cn"],
+      },
     },
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true,
-  },
-  frameguard: { action: 'deny' },
-  noSniff: true,
-  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-}));
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    frameguard: { action: "deny" },
+    noSniff: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  }),
+);
 ```
 
 ---
@@ -784,6 +878,7 @@ app.use(helmet({
 ### 1. TypeScript 类型安全
 
 #### 启用严格模式
+
 ```json
 {
   "compilerOptions": {
@@ -800,6 +895,7 @@ app.use(helmet({
 ```
 
 #### 定义完整的类型
+
 ```typescript
 interface CustomerListParams {
   page: number;
@@ -820,6 +916,7 @@ interface PaginatedResponse<T> {
 ### 2. 错误处理
 
 #### 统一错误处理
+
 ```typescript
 export class BusinessException extends HttpException {
   constructor(message: string, code: string) {
@@ -837,29 +934,31 @@ export class ResourceNotFoundException extends HttpException {
 ### 3. 代码组织
 
 #### 提取公共基类
+
 ```typescript
 export abstract class BaseController<T> {
   protected abstract service: BaseService<T>;
-  
+
   @Get()
   findAll(@Query() query: PaginationDto) {
     return this.service.findAll(query);
   }
-  
-  @Get(':id')
-  findOne(@Param('id') id: string) {
+
+  @Get(":id")
+  findOne(@Param("id") id: string) {
     return this.service.findOne(id);
   }
 }
 ```
 
 #### 提取工具函数
+
 ```typescript
 export function buildPaginationParams(query: PaginationDto) {
   const page = Math.max(query.page || 1, 1);
   const pageSize = Math.min(query.pageSize || 20, 100);
   const skip = (page - 1) * pageSize;
-  
+
   return { page, pageSize, skip };
 }
 
@@ -867,7 +966,7 @@ export function buildPaginatedResponse<T>(
   items: T[],
   total: number,
   page: number,
-  pageSize: number
+  pageSize: number,
 ): PaginatedResponseDto<T> {
   return new PaginatedResponseDto(items, total, page, pageSize);
 }
@@ -880,6 +979,7 @@ export function buildPaginatedResponse<T>(
 ### 1. 单元测试
 
 #### 前端单元测试
+
 ```typescript
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import CustomersPage from '@/app/(dashboard)/customers/page';
@@ -887,7 +987,7 @@ import CustomersPage from '@/app/(dashboard)/customers/page';
 describe('CustomersPage', () => {
   it('should render customer list', async () => {
     render(<CustomersPage />);
-    
+
     await waitFor(() => {
       expect(screen.getByText('客户管理')).toBeInTheDocument();
     });
@@ -895,10 +995,10 @@ describe('CustomersPage', () => {
 
   it('should open add modal when clicking add button', async () => {
     render(<CustomersPage />);
-    
+
     const addButton = screen.getByText('新增客户');
     fireEvent.click(addButton);
-    
+
     await waitFor(() => {
       expect(screen.getByText('新增客户')).toBeInTheDocument();
     });
@@ -907,8 +1007,9 @@ describe('CustomersPage', () => {
 ```
 
 #### 后端单元测试
+
 ```typescript
-describe('CustomersService', () => {
+describe("CustomersService", () => {
   let service: CustomersService;
   let prisma: PrismaService;
 
@@ -921,11 +1022,11 @@ describe('CustomersService', () => {
     prisma = module.get<PrismaService>(PrismaService);
   });
 
-  it('should create a customer', async () => {
-    const dto = { name: 'Test Customer', code: 'TEST001' };
+  it("should create a customer", async () => {
+    const dto = { name: "Test Customer", code: "TEST001" };
     const result = await service.create(dto);
-    
-    expect(result).toHaveProperty('id');
+
+    expect(result).toHaveProperty("id");
     expect(result.name).toBe(dto.name);
   });
 });
@@ -934,7 +1035,7 @@ describe('CustomersService', () => {
 ### 2. 集成测试
 
 ```typescript
-describe('CustomersController (e2e)', () => {
+describe("CustomersController (e2e)", () => {
   let app: INestApplication;
 
   beforeEach(async () => {
@@ -946,9 +1047,9 @@ describe('CustomersController (e2e)', () => {
     await app.init();
   });
 
-  it('/customers (GET)', () => {
+  it("/customers (GET)", () => {
     return request(app.getHttpServer())
-      .get('/customers')
+      .get("/customers")
       .expect(200)
       .expect((res) => {
         expect(Array.isArray(res.body)).toBe(true);
@@ -964,8 +1065,9 @@ describe('CustomersController (e2e)', () => {
 ### 1. 性能监控
 
 #### 前端性能监控
+
 ```typescript
-import { getCLS, getFID, getFCP, getLCP, getTTFB } from 'web-vitals';
+import { getCLS, getFID, getFCP, getLCP, getTTFB } from "web-vitals";
 
 getCLS(console.log);
 getFID(console.log);
@@ -975,22 +1077,23 @@ getTTFB(console.log);
 ```
 
 #### 后端性能监控
+
 ```typescript
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { Counter, Histogram } from 'prom-client';
+import { Injectable, OnModuleInit } from "@nestjs/common";
+import { Counter, Histogram } from "prom-client";
 
 @Injectable()
 export class MetricsService implements OnModuleInit {
   private httpRequestDuration = new Histogram({
-    name: 'http_request_duration_seconds',
-    help: 'Duration of HTTP requests in seconds',
-    labelNames: ['method', 'route', 'status_code'],
+    name: "http_request_duration_seconds",
+    help: "Duration of HTTP requests in seconds",
+    labelNames: ["method", "route", "status_code"],
   });
-  
+
   private httpRequestTotal = new Counter({
-    name: 'http_requests_total',
-    help: 'Total number of HTTP requests',
-    labelNames: ['method', 'route', 'status_code'],
+    name: "http_requests_total",
+    help: "Total number of HTTP requests",
+    labelNames: ["method", "route", "status_code"],
   });
 }
 ```
@@ -998,19 +1101,20 @@ export class MetricsService implements OnModuleInit {
 ### 2. 日志记录
 
 #### 统一日志格式
+
 ```typescript
 export const logger = {
   info: (message: string, data?: any) => {
     console.log(`[INFO] ${message}`, data);
   },
-  
+
   error: (message: string, error?: any) => {
     console.error(`[ERROR] ${message}`, error);
   },
-  
+
   warn: (message: string, data?: any) => {
     console.warn(`[WARN] ${message}`, data);
-  }
+  },
 };
 ```
 
@@ -1021,6 +1125,7 @@ export const logger = {
 ### 1. Docker 化
 
 #### 前端 Dockerfile
+
 ```dockerfile
 FROM node:18-alpine AS base
 
@@ -1047,6 +1152,7 @@ CMD ["node", "server.js"]
 ```
 
 #### 后端 Dockerfile
+
 ```dockerfile
 FROM node:18-alpine AS base
 
@@ -1074,6 +1180,7 @@ CMD ["node", "dist/main.js"]
 ### 2. CI/CD 配置
 
 #### GitHub Actions
+
 ```yaml
 name: CI/CD
 
@@ -1090,7 +1197,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: "18"
       - run: npm ci
       - run: npm run lint
       - run: npm run test
@@ -1114,11 +1221,12 @@ jobs:
 ### 1. API 文档
 
 #### Swagger 配置
+
 ```typescript
 const config = new DocumentBuilder()
-  .setTitle('财务管理系统 API')
-  .setDescription('财务管理系统的 RESTful API 文档')
-  .setVersion('1.0')
+  .setTitle("财务管理系统 API")
+  .setDescription("财务管理系统的 RESTful API 文档")
+  .setVersion("1.0")
   .addBearerAuth()
   .build();
 ```
@@ -1126,6 +1234,7 @@ const config = new DocumentBuilder()
 ### 2. 代码文档
 
 #### JSDoc 注释
+
 ```typescript
 /**
  * 计算合同金额
@@ -1139,7 +1248,7 @@ const calculateAmounts = (
   productAmount: number,
   productTaxRate: number,
   serviceAmount: number,
-  serviceTaxRate: number
+  serviceTaxRate: number,
 ) => {
   // 计算逻辑
 };
@@ -1150,6 +1259,7 @@ const calculateAmounts = (
 ## 🎯 实施路线图
 
 ### 第一阶段（1-2周）- 紧急修复
+
 - [ ] 修复内存泄漏风险
 - [ ] 移除硬编码密码
 - [ ] 配置 HTTPS 强制
@@ -1160,6 +1270,7 @@ const calculateAmounts = (
 - [ ] 完善 TypeScript 类型定义
 
 ### 第二阶段（2-4周）- 性能优化
+
 - [ ] 拆分大型组件
 - [ ] 添加 Redis 缓存层
 - [ ] 启用安全头配置
@@ -1170,6 +1281,7 @@ const calculateAmounts = (
 - [ ] 缩短 JWT 过期时间
 
 ### 第三阶段（1-2个月）- 功能增强
+
 - [ ] 添加单元测试
 - [ ] 实现虚拟滚动
 - [ ] 添加请求防抖
@@ -1180,6 +1292,7 @@ const calculateAmounts = (
 - [ ] 增强密码策略
 
 ### 第四阶段（2-3个月）- 长期改进
+
 - [ ] 实现多因素认证
 - [ ] 实现数据加密
 - [ ] 添加国际化支持
@@ -1194,24 +1307,28 @@ const calculateAmounts = (
 ## 📈 预期收益
 
 ### 性能收益
+
 - 首屏加载时间减少 40-60%
 - API 响应时间减少 50-80%
 - 数据库查询性能提升 3-10 倍
 - 并发处理能力提升 2-3 倍
 
 ### 质量收益
+
 - 代码可维护性提升 50-70%
 - 测试覆盖率从 10% 提升至 80%
 - 代码重复率降低 40-60%
 - Bug 率降低 30-50%
 
 ### 安全收益
+
 - 安全评分从 7.2 提升至 9.0
 - 消除所有高危安全漏洞
 - 实现完整的审计日志
 - 增强数据保护能力
 
 ### 用户体验收益
+
 - 页面响应速度提升 40-60%
 - 操作流畅度提升 50-70%
 - 错误提示更加友好

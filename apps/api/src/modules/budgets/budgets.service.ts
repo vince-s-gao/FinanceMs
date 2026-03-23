@@ -7,18 +7,18 @@ import {
   ConflictException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { normalizePagination } from "../../common/utils/query.utils";
 import { CreateBudgetDto } from "./dto/create-budget.dto";
 import { UpdateBudgetDto } from "./dto/update-budget.dto";
 import { QueryBudgetDto } from "./dto/query-budget.dto";
-import { Prisma } from "@prisma/client";
+import {
+  Prisma,
+  BudgetStatus as PrismaBudgetStatus,
+  FeeType as PrismaFeeType,
+} from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 
-// 预算状态常量
-const BudgetStatus = {
-  ACTIVE: "ACTIVE",
-  FROZEN: "FROZEN",
-  CLOSED: "CLOSED",
-};
+const BudgetStatus = PrismaBudgetStatus;
 
 @Injectable()
 export class BudgetsService {
@@ -37,9 +37,13 @@ export class BudgetsService {
       feeType,
       status,
     } = query;
-    const skip = (page - 1) * pageSize;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
 
-    const where: any = {};
+    const where: Prisma.BudgetWhereInput = {};
 
     if (year) where.year = year;
     if (month !== undefined) where.month = month;
@@ -51,7 +55,7 @@ export class BudgetsService {
       this.prisma.budget.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: [{ year: "desc" }, { month: "desc" }, { department: "asc" }],
       }),
       this.prisma.budget.count({ where }),
@@ -77,9 +81,9 @@ export class BudgetsService {
     return {
       items: itemsWithRate,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 
@@ -192,7 +196,7 @@ export class BudgetsService {
 
     return this.prisma.budget.update({
       where: { id },
-      data: { status: newStatus as any },
+      data: { status: newStatus },
     });
   }
 
@@ -208,7 +212,7 @@ export class BudgetsService {
 
     return this.prisma.budget.update({
       where: { id },
-      data: { status: BudgetStatus.CLOSED as any },
+      data: { status: BudgetStatus.CLOSED },
     });
   }
 
@@ -288,6 +292,7 @@ export class BudgetsService {
     tx?: Prisma.TransactionClient,
   ) {
     const db = tx ?? this.prisma;
+    const normalizedFeeType = this.toFeeType(feeType);
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
 
@@ -297,8 +302,8 @@ export class BudgetsService {
         year,
         month,
         department,
-        feeType: feeType as any,
-        status: BudgetStatus.ACTIVE as any,
+        feeType: normalizedFeeType,
+        status: BudgetStatus.ACTIVE,
       },
     });
 
@@ -309,8 +314,8 @@ export class BudgetsService {
           year,
           month: null,
           department,
-          feeType: feeType as any,
-          status: BudgetStatus.ACTIVE as any,
+          feeType: normalizedFeeType,
+          status: BudgetStatus.ACTIVE,
         },
       });
     }
@@ -325,5 +330,12 @@ export class BudgetsService {
         },
       });
     }
+  }
+
+  private toFeeType(feeType: string): PrismaFeeType {
+    if ((Object.values(PrismaFeeType) as string[]).includes(feeType)) {
+      return feeType as PrismaFeeType;
+    }
+    throw new BadRequestException(`无效的费用类型: ${feeType}`);
   }
 }

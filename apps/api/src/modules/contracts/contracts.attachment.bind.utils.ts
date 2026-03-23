@@ -1,17 +1,9 @@
-import { HttpException } from "@nestjs/common";
 import type { ContractAttachmentTarget } from "./contracts.import.types";
 import { normalizeContractNoKey } from "./contracts.attachment.utils";
+import { resolveErrorMessage } from "../../common/utils/error.utils";
 
 export function resolveBatchAttachmentErrorMessage(error: unknown): string {
-  if (error instanceof HttpException) {
-    const response = error.getResponse() as any;
-    if (typeof response === "string" && response) return response;
-    if (Array.isArray(response?.message)) return response.message.join("; ");
-    if (typeof response?.message === "string" && response.message)
-      return response.message;
-  }
-  if (error instanceof Error && error.message) return error.message;
-  return "附件绑定失败";
+  return resolveErrorMessage(error, "附件绑定失败");
 }
 
 export function resolveContractByAttachmentFileName(

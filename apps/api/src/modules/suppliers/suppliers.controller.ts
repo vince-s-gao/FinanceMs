@@ -27,7 +27,7 @@ import { CreateSupplierDto } from "./dto/create-supplier.dto";
 import { UpdateSupplierDto } from "./dto/update-supplier.dto";
 import { QuerySupplierDto } from "./dto/query-supplier.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles, Role } from "../../common/decorators";
+import { Functions, Roles, Role } from "../../common/decorators";
 import { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { isSupportedTabularFile } from "../../common/utils/tabular.utils";
@@ -73,6 +73,7 @@ export class SuppliersController {
 
   @Get()
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("supplier.view")
   @ApiOperation({ summary: "获取供应商列表" })
   async findAll(@Query() query: QuerySupplierDto) {
     return this.suppliersService.findAll(query);
@@ -80,6 +81,7 @@ export class SuppliersController {
 
   @Get("export/csv")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("supplier.export")
   @ApiOperation({ summary: "批量导出供应商（CSV）" })
   async exportCsv(@Query() query: QuerySupplierDto, @Res() res: Response) {
     const csv = await this.suppliersService.exportCsv(query);
@@ -88,6 +90,7 @@ export class SuppliersController {
 
   @Get("export/excel")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("supplier.export")
   @ApiOperation({ summary: "批量导出供应商（Excel）" })
   async exportExcel(@Query() query: QuerySupplierDto, @Res() res: Response) {
     const buffer = await this.suppliersService.exportExcel(query);
@@ -96,6 +99,7 @@ export class SuppliersController {
 
   @Post("import")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("supplier.create")
   @UseInterceptors(
     FileInterceptor(
       "file",
@@ -125,6 +129,7 @@ export class SuppliersController {
 
   @Get("options")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("supplier.view")
   @ApiOperation({ summary: "获取供应商选项列表" })
   async getOptions() {
     return this.suppliersService.getOptions();
@@ -132,6 +137,7 @@ export class SuppliersController {
 
   @Get(":id")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("supplier.view")
   @ApiOperation({ summary: "获取供应商详情" })
   async findOne(@Param("id") id: string) {
     return this.suppliersService.findOne(id);
@@ -139,6 +145,7 @@ export class SuppliersController {
 
   @Post()
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("supplier.create")
   @ApiOperation({ summary: "创建供应商" })
   async create(@Body() createSupplierDto: CreateSupplierDto) {
     return this.suppliersService.create(createSupplierDto);
@@ -146,6 +153,7 @@ export class SuppliersController {
 
   @Patch(":id")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("supplier.edit")
   @ApiOperation({ summary: "更新供应商" })
   async update(
     @Param("id") id: string,
@@ -156,6 +164,7 @@ export class SuppliersController {
 
   @Delete(":id")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("supplier.delete")
   @ApiOperation({ summary: "删除供应商" })
   async remove(@Param("id") id: string) {
     return this.suppliersService.remove(id);

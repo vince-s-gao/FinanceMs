@@ -21,6 +21,7 @@ import {
 } from "@ant-design/icons";
 import type { UploadFile, UploadProps } from "antd/es/upload/interface";
 import apiClient, { api } from "@/lib/api";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
   INVOICE_DIRECTION_COLORS,
   INVOICE_DIRECTION_LABELS,
@@ -74,6 +75,7 @@ export default function InvoiceManagementPage({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [keyword, setKeyword] = useState("");
+  const debouncedKeyword = useDebouncedValue(keyword, 300);
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [directionFilter, setDirectionFilter] = useState<
     InvoiceDirection | undefined
@@ -121,7 +123,7 @@ export default function InvoiceManagementPage({
     setLoading(true);
     try {
       const params: Record<string, string | number> = { page, pageSize };
-      if (keyword) params.keyword = keyword;
+      if (debouncedKeyword) params.keyword = debouncedKeyword;
       if (statusFilter) params.status = statusFilter;
 
       const effectiveDirection = fixedDirection || directionFilter;
@@ -137,7 +139,14 @@ export default function InvoiceManagementPage({
     } finally {
       setLoading(false);
     }
-  }, [directionFilter, fixedDirection, keyword, page, pageSize, statusFilter]);
+  }, [
+    debouncedKeyword,
+    directionFilter,
+    fixedDirection,
+    page,
+    pageSize,
+    statusFilter,
+  ]);
 
   const fetchContracts = useCallback(
     async (searchKeyword?: string) => {

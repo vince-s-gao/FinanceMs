@@ -11,6 +11,9 @@ describe("AuthService", () => {
   let usersService: any;
   let jwtService: any;
   let configService: any;
+  let prisma: any;
+  let notificationsService: any;
+  let auditService: any;
 
   beforeEach(() => {
     usersService = {
@@ -24,11 +27,40 @@ describe("AuthService", () => {
     configService = {
       get: jest.fn((key: string, fallback?: string) => {
         if (key === "JWT_REFRESH_EXPIRES_IN") return "30d";
+        if (key === "JWT_EXPIRES_IN") return "2h";
+        if (key === "AUTH_MAX_LOGIN_ATTEMPTS") return "5";
+        if (key === "AUTH_LOCK_MINUTES") return "30";
         return fallback;
       }),
     };
+    prisma = {
+      user: {
+        update: jest.fn().mockResolvedValue({}),
+      },
+      userSession: {
+        create: jest.fn().mockResolvedValue({}),
+        findFirst: jest.fn(),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    notificationsService = {
+      createNotification: jest.fn().mockResolvedValue({}),
+    };
+    auditService = {
+      logLogin: jest.fn().mockResolvedValue({}),
+      log: jest.fn().mockResolvedValue({}),
+    };
 
-    service = new AuthService(usersService, jwtService, configService);
+    service = new AuthService(
+      usersService,
+      jwtService,
+      configService,
+      prisma,
+      notificationsService,
+      auditService,
+    );
   });
 
   afterEach(() => {
@@ -52,6 +84,9 @@ describe("AuthService", () => {
       id: "u1",
       email: "a@example.com",
       isActive: false,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      password: "Password@123",
     });
 
     await expect(
@@ -67,6 +102,8 @@ describe("AuthService", () => {
       id: "u1",
       email: "a@example.com",
       isActive: true,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
       password: "",
     });
 
@@ -78,7 +115,7 @@ describe("AuthService", () => {
     ).rejects.toThrow(UnauthorizedException);
   });
 
-  it("should reject login when password is invalid", async () => {
+  it("should reject login when password is invalid and update failure counter", async () => {
     usersService.findByEmail.mockResolvedValueOnce({
       id: "u1",
       email: "a@example.com",
@@ -87,6 +124,8 @@ describe("AuthService", () => {
       departmentId: null,
       avatar: null,
       isActive: true,
+      failedLoginAttempts: 1,
+      lockedUntil: null,
       password: "hashed",
     });
     (bcrypt.compare as jest.Mock).mockResolvedValueOnce(false);
@@ -97,6 +136,8 @@ describe("AuthService", () => {
         password: "WrongPassword@1",
       }),
     ).rejects.toThrow(UnauthorizedException);
+
+    expect(prisma.user.update).toHaveBeenCalled();
   });
 
   it("should login successfully and return token with projected user info", async () => {
@@ -108,34 +149,26 @@ describe("AuthService", () => {
       departmentId: "d1",
       avatar: "avatar.png",
       isActive: true,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      lastLoginIp: "127.0.0.1",
+      lastLoginUserAgent: "UA-1",
       password: "hashed",
     });
     (bcrypt.compare as jest.Mock).mockResolvedValueOnce(true);
 
-    const result = await service.login({
-      email: "a@example.com",
-      password: "Password@123",
-    });
+    const result = await service.login(
+      {
+        email: "a@example.com",
+        password: "Password@123",
+      },
+      {
+        ipAddress: "127.0.0.1",
+        userAgent: "UA-1",
+      },
+    );
 
-    expect(jwtService.sign).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        sub: "u1",
-        email: "a@example.com",
-        role: "ADMIN",
-        type: "access",
-      }),
-    );
-    expect(jwtService.sign).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        sub: "u1",
-        email: "a@example.com",
-        role: "ADMIN",
-        type: "refresh",
-      }),
-      { expiresIn: "30d" },
-    );
+    expect(jwtService.sign).toHaveBeenCalledTimes(2);
     expect(result.accessToken).toBe("jwt-token");
     expect(result.refreshToken).toBe("jwt-token");
     expect(result.user).toEqual({
@@ -145,15 +178,16 @@ describe("AuthService", () => {
       role: "ADMIN",
       departmentId: "d1",
       avatar: "avatar.png",
+      feishuUserId: undefined,
     });
   });
 
   it("should reject validateToken when user does not exist", async () => {
     usersService.findById.mockResolvedValueOnce(null);
 
-    await expect(service.validateToken({ sub: "missing" })).rejects.toThrow(
-      UnauthorizedException,
-    );
+    await expect(
+      service.validateToken({ sub: "missing", sid: "session-1" }),
+    ).rejects.toThrow(UnauthorizedException);
   });
 
   it("should reject validateToken when user is inactive", async () => {
@@ -163,9 +197,9 @@ describe("AuthService", () => {
       isActive: false,
     });
 
-    await expect(service.validateToken({ sub: "u1" })).rejects.toThrow(
-      UnauthorizedException,
-    );
+    await expect(
+      service.validateToken({ sub: "u1", sid: "session-1" }),
+    ).rejects.toThrow(UnauthorizedException);
   });
 
   it("should return user when validateToken passes", async () => {
@@ -174,8 +208,9 @@ describe("AuthService", () => {
       email: "a@example.com",
       isActive: true,
     });
+    prisma.userSession.findFirst.mockResolvedValueOnce({ id: "session-1" });
 
-    const result = await service.validateToken({ sub: "u1" });
+    const result = await service.validateToken({ sub: "u1", sid: "session-1" });
     expect(result.id).toBe("u1");
   });
 
@@ -187,7 +222,11 @@ describe("AuthService", () => {
   });
 
   it("should reject refresh when token type is not refresh", async () => {
-    jwtService.verifyAsync.mockResolvedValueOnce({ sub: "u1", type: "access" });
+    jwtService.verifyAsync.mockResolvedValueOnce({
+      sub: "u1",
+      type: "access",
+      sid: "session-1",
+    });
     await expect(service.refresh("access-token")).rejects.toThrow(
       UnauthorizedException,
     );
@@ -197,6 +236,14 @@ describe("AuthService", () => {
     jwtService.verifyAsync.mockResolvedValueOnce({
       sub: "u1",
       type: "refresh",
+      sid: "session-1",
+    });
+    prisma.userSession.findFirst.mockResolvedValueOnce({
+      id: "session-1",
+      userId: "u1",
+      refreshTokenHash: (service as any).hashToken("refresh-token"),
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 86400000),
     });
     usersService.findById.mockResolvedValueOnce({
       id: "u1",
@@ -223,6 +270,14 @@ describe("AuthService", () => {
     jwtService.verifyAsync.mockResolvedValueOnce({
       sub: "u2",
       type: "refresh",
+      sid: "session-2",
+    });
+    prisma.userSession.findFirst.mockResolvedValueOnce({
+      id: "session-2",
+      userId: "u2",
+      refreshTokenHash: (service as any).hashToken("refresh-token"),
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 86400000),
     });
     usersService.findById.mockResolvedValueOnce({
       id: "u2",

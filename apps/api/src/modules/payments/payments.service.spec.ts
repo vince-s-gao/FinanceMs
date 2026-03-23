@@ -13,6 +13,12 @@ describe("PaymentsService", () => {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
       },
+      dictionary: {
+        findMany: jest.fn().mockResolvedValue([
+          { code: "SALES", name: "销售", value: "销售合同" },
+          { code: "PURCHASE", name: "采购", value: "采购合同" },
+        ]),
+      },
       paymentPlan: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
@@ -43,6 +49,7 @@ describe("PaymentsService", () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
         id: "c1",
+        contractType: "SALES",
         contractNo: "HT-001",
         name: "合同A",
         customer: { id: "u1", name: "客户A", code: "CUS000001" },
@@ -75,6 +82,7 @@ describe("PaymentsService", () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
         id: "c0",
+        contractType: "SALES",
         contractNo: "HT-000",
         name: "零金额合同",
         customer: { id: "u1", name: "客户A", code: "CUS000001" },
@@ -91,7 +99,47 @@ describe("PaymentsService", () => {
     expect(result.summary.completionRate).toBe(0);
   });
 
+  it("should exclude non-sales contracts from statistics", async () => {
+    prisma.contract.findMany.mockResolvedValueOnce([
+      {
+        id: "sales-1",
+        contractType: "SALES",
+        contractNo: "HT-SALES-001",
+        name: "销售合同",
+        customer: { id: "u1", name: "客户A", code: "CUS000001" },
+        amountWithTax: new Decimal(1000),
+        paymentPlans: [],
+        paymentRecords: [],
+        signDate: new Date("2025-01-01T00:00:00.000Z"),
+        status: "EXECUTING",
+      },
+      {
+        id: "purchase-1",
+        contractType: "PURCHASE",
+        contractNo: "HT-PURCHASE-001",
+        name: "采购合同",
+        customer: { id: "u2", name: "供应商A", code: "SUP000001" },
+        amountWithTax: new Decimal(9999),
+        paymentPlans: [],
+        paymentRecords: [],
+        signDate: new Date("2025-01-02T00:00:00.000Z"),
+        status: "EXECUTING",
+      },
+    ]);
+
+    const result = await service.getStatistics();
+
+    expect(result.summary.contractCount).toBe(1);
+    expect(result.contracts).toHaveLength(1);
+    expect(result.contracts[0].id).toBe("sales-1");
+    expect(result.summary.totalContractAmount.toNumber()).toBe(1000);
+  });
+
   it("should compute paid and remaining amount in findPlansByContract", async () => {
+    prisma.contract.findFirst.mockResolvedValueOnce({
+      id: "c1",
+      contractType: "SALES",
+    });
     prisma.paymentPlan.findMany.mockResolvedValueOnce([
       {
         id: "p1",
@@ -112,6 +160,10 @@ describe("PaymentsService", () => {
   });
 
   it("should query payment records by contract", async () => {
+    prisma.contract.findFirst.mockResolvedValueOnce({
+      id: "c1",
+      contractType: "SALES",
+    });
     await service.findRecordsByContract("c1");
 
     expect(prisma.paymentRecord.findMany).toHaveBeenCalledWith({
@@ -134,9 +186,27 @@ describe("PaymentsService", () => {
     ).rejects.toThrow(NotFoundException);
   });
 
+  it("should reject createPlan for non-sales contract", async () => {
+    prisma.contract.findFirst.mockResolvedValueOnce({
+      id: "c1",
+      contractType: "PURCHASE",
+      amountWithTax: new Decimal(1000),
+    });
+
+    await expect(
+      service.createPlan({
+        contractId: "c1",
+        period: 1,
+        planAmount: new Decimal(100),
+        planDate: "2026-01-01",
+      } as any),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   it("should reject duplicate period in createPlan", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       amountWithTax: new Decimal(1000),
     });
     prisma.paymentPlan.findFirst.mockResolvedValueOnce({ id: "p1" });
@@ -154,6 +224,7 @@ describe("PaymentsService", () => {
   it("should reject createPlan when total planned amount exceeds contract amount", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       amountWithTax: new Decimal(500),
     });
     prisma.paymentPlan.findFirst.mockResolvedValueOnce(null);
@@ -174,6 +245,7 @@ describe("PaymentsService", () => {
   it("should create plan when validations pass", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       amountWithTax: new Decimal(1000),
     });
     prisma.paymentPlan.findFirst.mockResolvedValueOnce(null);
@@ -202,6 +274,7 @@ describe("PaymentsService", () => {
   it("should treat null existing plan amount as zero in createPlan", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       amountWithTax: new Decimal(1000),
     });
     prisma.paymentPlan.findFirst.mockResolvedValueOnce(null);
@@ -228,9 +301,28 @@ describe("PaymentsService", () => {
     );
   });
 
+  it("should reject createPlans for non-sales contract", async () => {
+    prisma.contract.findFirst.mockResolvedValueOnce({
+      id: "c1",
+      contractType: "PURCHASE",
+      amountWithTax: new Decimal(300),
+    });
+
+    await expect(
+      service.createPlans("c1", [
+        {
+          period: 1,
+          planAmount: new Decimal(200),
+          planDate: "2026-01-01",
+        } as any,
+      ]),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   it("should reject createPlans when total exceeds contract amount", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       amountWithTax: new Decimal(300),
     });
 
@@ -253,6 +345,7 @@ describe("PaymentsService", () => {
   it("should replace plans in createPlans when validations pass", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       amountWithTax: new Decimal(800),
     });
     prisma.paymentPlan.deleteMany.mockResolvedValueOnce({ count: 2 });
@@ -295,9 +388,27 @@ describe("PaymentsService", () => {
     ).rejects.toThrow(NotFoundException);
   });
 
+  it("should reject createRecord for non-sales contract", async () => {
+    prisma.contract.findFirst.mockResolvedValueOnce({
+      id: "c1",
+      contractType: "PURCHASE",
+      status: "EXECUTING",
+      amountWithTax: new Decimal(1000),
+    });
+
+    await expect(
+      service.createRecord({
+        contractId: "c1",
+        amount: new Decimal(100),
+        paymentDate: "2026-01-01",
+      } as any),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   it("should throw when createRecord contract is not executing", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       status: "DRAFT",
       amountWithTax: new Decimal(1000),
     });
@@ -314,6 +425,7 @@ describe("PaymentsService", () => {
   it("should throw when createRecord plan does not exist", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       status: "EXECUTING",
       amountWithTax: new Decimal(1000),
     });
@@ -332,6 +444,7 @@ describe("PaymentsService", () => {
   it("should throw when createRecord plan does not belong to contract", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       status: "EXECUTING",
       amountWithTax: new Decimal(1000),
     });
@@ -353,6 +466,7 @@ describe("PaymentsService", () => {
   it("should reject createRecord when new paid amount exceeds contract amount", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       status: "EXECUTING",
       amountWithTax: new Decimal(300),
     });
@@ -372,6 +486,7 @@ describe("PaymentsService", () => {
   it("should createRecord and refresh plan status to PARTIAL", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       status: "EXECUTING",
       amountWithTax: new Decimal(1000),
     });
@@ -419,6 +534,7 @@ describe("PaymentsService", () => {
   it("should createRecord with null paid aggregate fallback and no plan refresh", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       status: "EXECUTING",
       amountWithTax: new Decimal(1000),
     });
@@ -451,6 +567,7 @@ describe("PaymentsService", () => {
   it("should skip refreshPlanStatus update when plan is missing inside transaction", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       status: "EXECUTING",
       amountWithTax: new Decimal(1000),
     });
@@ -490,6 +607,7 @@ describe("PaymentsService", () => {
   it("should refresh plan to PENDING when aggregate amount is null", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
+      contractType: "SALES",
       status: "EXECUTING",
       amountWithTax: new Decimal(1000),
     });

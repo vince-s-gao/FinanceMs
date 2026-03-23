@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 新建付款申请页面
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
 import {
   Form,
   Input,
@@ -22,7 +22,7 @@ import {
   Empty,
   Radio,
   Cascader,
-} from 'antd';
+} from "antd";
 import {
   ArrowLeftOutlined,
   UploadOutlined,
@@ -30,101 +30,105 @@ import {
   PlusOutlined,
   SearchOutlined,
   BankOutlined,
-} from '@ant-design/icons';
-import type { UploadFile } from 'antd/es/upload/interface';
+} from "@ant-design/icons";
+import type { UploadFile } from "antd/es/upload/interface";
+import type { UploadProps } from "antd";
+import { getErrorMessage } from "@/lib/error";
+import { isFormValidationError } from "@/lib/form";
+import { resolveUploadFileMeta } from "@/lib/upload";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 // 付款方式选项
 const paymentMethods = [
-  { value: 'TRANSFER', label: '银行转账' },
-  { value: 'CASH', label: '现金' },
-  { value: 'CHECK', label: '支票' },
-  { value: 'DRAFT', label: '汇票' },
-  { value: 'OTHER', label: '其他' },
+  { value: "TRANSFER", label: "银行转账" },
+  { value: "CASH", label: "现金" },
+  { value: "CHECK", label: "支票" },
+  { value: "DRAFT", label: "汇票" },
+  { value: "OTHER", label: "其他" },
 ];
 
 // 币种选项
 const currencies = [
-  { value: 'CNY', label: 'CNY-人民币元' },
-  { value: 'USD', label: 'USD-美元' },
-  { value: 'EUR', label: 'EUR-欧元' },
-  { value: 'HKD', label: 'HKD-港币' },
+  { value: "CNY", label: "CNY-人民币元" },
+  { value: "USD", label: "USD-美元" },
+  { value: "EUR", label: "EUR-欧元" },
+  { value: "HKD", label: "HKD-港币" },
 ];
 
 // 账户类型选项
 const accountTypes = [
-  { value: 'PERSONAL', label: '个人账户' },
-  { value: 'CORPORATE', label: '对公账户' },
+  { value: "PERSONAL", label: "个人账户" },
+  { value: "CORPORATE", label: "对公账户" },
 ];
 
 // 银行列表
 const bankOptions = [
-  { value: 'ICBC', label: '中国工商银行' },
-  { value: 'CCB', label: '中国建设银行' },
-  { value: 'ABC', label: '中国农业银行' },
-  { value: 'BOC', label: '中国银行' },
-  { value: 'BOCOM', label: '交通银行' },
-  { value: 'CMB', label: '招商银行' },
-  { value: 'CITIC', label: '中信银行' },
-  { value: 'CEB', label: '光大银行' },
-  { value: 'CMBC', label: '民生银行' },
-  { value: 'PAB', label: '平安银行' },
-  { value: 'SPDB', label: '浦发银行' },
-  { value: 'CIB', label: '兴业银行' },
-  { value: 'HXB', label: '华夏银行' },
-  { value: 'GDB', label: '广发银行' },
-  { value: 'PSBC', label: '中国邮政储蓄银行' },
-  { value: 'OTHER', label: '其他银行' },
+  { value: "ICBC", label: "中国工商银行" },
+  { value: "CCB", label: "中国建设银行" },
+  { value: "ABC", label: "中国农业银行" },
+  { value: "BOC", label: "中国银行" },
+  { value: "BOCOM", label: "交通银行" },
+  { value: "CMB", label: "招商银行" },
+  { value: "CITIC", label: "中信银行" },
+  { value: "CEB", label: "光大银行" },
+  { value: "CMBC", label: "民生银行" },
+  { value: "PAB", label: "平安银行" },
+  { value: "SPDB", label: "浦发银行" },
+  { value: "CIB", label: "兴业银行" },
+  { value: "HXB", label: "华夏银行" },
+  { value: "GDB", label: "广发银行" },
+  { value: "PSBC", label: "中国邮政储蓄银行" },
+  { value: "OTHER", label: "其他银行" },
 ];
 
 // 地区选项（省市级联）
 const regionOptions = [
   {
-    value: 'beijing',
-    label: '北京市',
-    children: [{ value: 'beijing', label: '北京市' }],
+    value: "beijing",
+    label: "北京市",
+    children: [{ value: "beijing", label: "北京市" }],
   },
   {
-    value: 'shanghai',
-    label: '上海市',
-    children: [{ value: 'shanghai', label: '上海市' }],
+    value: "shanghai",
+    label: "上海市",
+    children: [{ value: "shanghai", label: "上海市" }],
   },
   {
-    value: 'guangdong',
-    label: '广东省',
+    value: "guangdong",
+    label: "广东省",
     children: [
-      { value: 'guangzhou', label: '广州市' },
-      { value: 'shenzhen', label: '深圳市' },
-      { value: 'dongguan', label: '东莞市' },
-      { value: 'foshan', label: '佛山市' },
+      { value: "guangzhou", label: "广州市" },
+      { value: "shenzhen", label: "深圳市" },
+      { value: "dongguan", label: "东莞市" },
+      { value: "foshan", label: "佛山市" },
     ],
   },
   {
-    value: 'zhejiang',
-    label: '浙江省',
+    value: "zhejiang",
+    label: "浙江省",
     children: [
-      { value: 'hangzhou', label: '杭州市' },
-      { value: 'ningbo', label: '宁波市' },
-      { value: 'wenzhou', label: '温州市' },
+      { value: "hangzhou", label: "杭州市" },
+      { value: "ningbo", label: "宁波市" },
+      { value: "wenzhou", label: "温州市" },
     ],
   },
   {
-    value: 'jiangsu',
-    label: '江苏省',
+    value: "jiangsu",
+    label: "江苏省",
     children: [
-      { value: 'nanjing', label: '南京市' },
-      { value: 'suzhou', label: '苏州市' },
-      { value: 'wuxi', label: '无锡市' },
+      { value: "nanjing", label: "南京市" },
+      { value: "suzhou", label: "苏州市" },
+      { value: "wuxi", label: "无锡市" },
     ],
   },
   {
-    value: 'sichuan',
-    label: '四川省',
+    value: "sichuan",
+    label: "四川省",
     children: [
-      { value: 'chengdu', label: '成都市' },
-      { value: 'mianyang', label: '绵阳市' },
+      { value: "chengdu", label: "成都市" },
+      { value: "mianyang", label: "绵阳市" },
     ],
   },
 ];
@@ -144,17 +148,21 @@ interface PurchaseContract {
   customer?: { id: string; name: string; code?: string };
 }
 
+interface ProjectListResponse {
+  items: Project[];
+}
+
 // 银行账户/收款方信息接口（合并后的结构）
 interface BankAccount {
   id: string;
-  accountType: string;    // 账户类型：PERSONAL/CORPORATE
-  accountName: string;    // 户名
-  accountNo: string;      // 账号
-  bankCode?: string;      // 银行代码
-  bankName: string;       // 银行名称
-  region?: string[];      // 银行所在地区 [省, 市]
-  bankBranch?: string;    // 支行名称
-  remark?: string;        // 备注
+  accountType: string; // 账户类型：PERSONAL/CORPORATE
+  accountName: string; // 户名
+  accountNo: string; // 账号
+  bankCode?: string; // 银行代码
+  bankName: string; // 银行名称
+  region?: string[]; // 银行所在地区 [省, 市]
+  bankBranch?: string; // 支行名称
+  remark?: string; // 备注
   currency: string;
   isDefault: boolean;
 }
@@ -171,10 +179,12 @@ export default function NewPaymentRequestPage() {
   const [addAccountForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [purchaseContracts, setPurchaseContracts] = useState<PurchaseContract[]>([]);
+  const [purchaseContracts, setPurchaseContracts] = useState<
+    PurchaseContract[]
+  >([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchKeyword, setSearchKeyword] = useState("");
   const [addAccountModalVisible, setAddAccountModalVisible] = useState(false);
   const [addAccountLoading, setAddAccountLoading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -182,36 +192,43 @@ export default function NewPaymentRequestPage() {
   // 加载项目列表
   const loadProjects = useCallback(async () => {
     try {
-      const res = await api.get<any>('/projects', { params: { pageSize: 100, status: 'ACTIVE' } });
-      setProjects(res.items || res || []);
+      const res = await api.get<ProjectListResponse>("/projects", {
+        params: { pageSize: 100, status: "ACTIVE" },
+      });
+      setProjects(res.items || []);
     } catch (error) {
-      console.error('加载项目列表失败', error);
+      console.error("加载项目列表失败", error);
     }
   }, []);
 
   // 加载采购合同列表
   const loadPurchaseContracts = useCallback(async () => {
     try {
-      const contracts = await api.get<PurchaseContract[]>('/payment-requests/purchase-contract-options');
+      const contracts = await api.get<PurchaseContract[]>(
+        "/payment-requests/purchase-contract-options",
+      );
       setPurchaseContracts(contracts || []);
     } catch (error) {
-      console.error('加载采购合同失败', error);
-      message.error({ key: 'payment-contract-options-load', content: '加载采购合同失败' });
+      console.error("加载采购合同失败", error);
+      message.error({
+        key: "payment-contract-options-load",
+        content: "加载采购合同失败",
+      });
     }
   }, []);
 
   // 加载银行账户列表
   const loadBankAccounts = useCallback(async () => {
     try {
-      const accounts = await api.get<BankAccount[]>('/bank-accounts');
+      const accounts = await api.get<BankAccount[]>("/bank-accounts");
       setBankAccounts(accounts);
       // 设置默认账户
       const defaultAccount = accounts.find((a) => a.isDefault);
       if (defaultAccount) {
-        form.setFieldValue('bankAccountId', defaultAccount.id);
+        form.setFieldValue("bankAccountId", defaultAccount.id);
       }
-    } catch (error: any) {
-      message.error('加载银行账户失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "加载银行账户失败"));
     }
   }, [form]);
 
@@ -231,7 +248,7 @@ export default function NewPaymentRequestPage() {
       (account) =>
         account.accountName.toLowerCase().includes(keyword) ||
         account.accountNo.toLowerCase().includes(keyword) ||
-        account.bankName.toLowerCase().includes(keyword)
+        account.bankName.toLowerCase().includes(keyword),
     );
   }, [bankAccounts, searchKeyword]);
 
@@ -240,37 +257,39 @@ export default function NewPaymentRequestPage() {
     try {
       const values = await addAccountForm.validateFields();
       setAddAccountLoading(true);
-      
+
       // 获取银行名称
-      const bankName = bankOptions.find(b => b.value === values.bankCode)?.label || values.bankCode;
-      
-      const response = await api.post<BankAccount>('/bank-accounts', {
+      const bankName =
+        bankOptions.find((b) => b.value === values.bankCode)?.label ||
+        values.bankCode;
+
+      const response = await api.post<BankAccount>("/bank-accounts", {
         accountType: values.accountType,
         accountName: values.accountName,
         accountNo: values.accountNo,
         bankCode: values.bankCode,
         bankName: bankName,
         region: values.region,
-        bankBranch: values.branchName,  // 后端字段名为 bankBranch
+        bankBranch: values.branchName, // 后端字段名为 bankBranch
         remark: values.remark,
-        currency: 'CNY',
+        currency: "CNY",
         isDefault: false,
       });
-      
-      message.success('收款账户添加成功');
+
+      message.success("收款账户添加成功");
       setAddAccountModalVisible(false);
       addAccountForm.resetFields();
       // 重新加载银行账户列表
       await loadBankAccounts();
       // 自动选中新添加的账户
-      form.setFieldValue('bankAccountId', response.id);
-    } catch (error: any) {
-      if (error.errorFields) {
+      form.setFieldValue("bankAccountId", response.id);
+    } catch (error: unknown) {
+      if (isFormValidationError(error)) {
         // 表单验证错误，不需要额外提示
         return;
       }
-      message.error('添加收款账户失败');
-      console.error('添加收款账户失败:', error);
+      message.error(getErrorMessage(error, "添加收款账户失败"));
+      console.error("添加收款账户失败:", error);
     } finally {
       setAddAccountLoading(false);
     }
@@ -282,7 +301,7 @@ export default function NewPaymentRequestPage() {
       <div className="flex items-center gap-2">
         <span className="font-medium">{account.accountName}</span>
         <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded">
-          {account.accountType === 'PERSONAL' ? '个人' : '对公'}
+          {account.accountType === "PERSONAL" ? "个人" : "对公"}
         </span>
       </div>
       <div className="text-xs text-gray-500">
@@ -312,7 +331,9 @@ export default function NewPaymentRequestPage() {
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={searchKeyword ? '未找到匹配的收款方' : '暂无收款方账户'}
+            description={
+              searchKeyword ? "未找到匹配的收款方" : "暂无收款方账户"
+            }
             className="py-4"
           />
         )}
@@ -335,36 +356,50 @@ export default function NewPaymentRequestPage() {
   );
 
   // 处理文件上传
-  const handleUpload = async (options: any) => {
+  const handleUpload: UploadProps["customRequest"] = async (options) => {
     const { file, onSuccess, onError } = options;
+    const {
+      name: fileName,
+      size: fileSize,
+      uid,
+      blob,
+    } = resolveUploadFileMeta(file);
 
     // 检查文件大小限制 (100MB)
-    if (file.size > 100 * 1024 * 1024) {
-      message.error(`文件 ${file.name} 超过100MB限制`);
-      onError(new Error('文件过大'));
+    if (fileSize > 100 * 1024 * 1024) {
+      message.error(`文件 ${fileName} 超过100MB限制`);
+      onError?.(new Error("文件过大"));
       return;
     }
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
-      const result = await api.post<{ url: string; filename: string }>('/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      
+      if (!blob) {
+        onError?.(new Error("不支持的文件类型"));
+        return;
+      }
+      formData.append("file", blob);
+      const result = await api.post<{ url: string; filename: string }>(
+        "/upload",
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        },
+      );
+
       // 更新文件列表
       const newFile: UploadFile = {
-        uid: file.uid,
-        name: file.name,
-        status: 'done',
+        uid,
+        name: fileName,
+        status: "done",
         url: result.url,
-        size: file.size,
+        size: fileSize,
       };
       setFileList((prev) => [...prev, newFile]);
-      onSuccess(result, file);
-    } catch (error: any) {
-      message.error(`上传 ${file.name} 失败`);
-      onError(error);
+      onSuccess?.(result, blob as File);
+    } catch (error: unknown) {
+      message.error(`上传 ${fileName} 失败`);
+      onError?.(error as Error);
     }
   };
 
@@ -383,7 +418,7 @@ export default function NewPaymentRequestPage() {
       // 构建附件数据
       const attachments: Attachment[] = fileList.map((f) => ({
         name: f.name,
-        url: f.url || '',
+        url: f.url || "",
         size: f.size,
       }));
 
@@ -393,31 +428,34 @@ export default function NewPaymentRequestPage() {
         contractId: values.contractId,
         reason: values.reason,
         amount: values.amount,
-        currency: values.currency || 'CNY',
+        currency: values.currency || "CNY",
         paymentMethod: values.paymentMethod,
-        paymentDate: values.paymentDate.format('YYYY-MM-DD'),
+        paymentDate: values.paymentDate.format("YYYY-MM-DD"),
         bankAccountId: values.bankAccountId,
         remark: values.remark,
         attachments,
       };
 
-      const result = await api.post<{ id: string }>('/payment-requests', payload);
+      const result = await api.post<{ id: string }>(
+        "/payment-requests",
+        payload,
+      );
 
       // 如果不是草稿，直接提交
       if (!isDraft) {
         await api.post(`/payment-requests/${result.id}/submit`);
-        message.success('付款申请已提交');
+        message.success("付款申请已提交");
       } else {
-        message.success('付款申请已保存为草稿');
+        message.success("付款申请已保存为草稿");
       }
 
-      router.push('/payment-requests');
-    } catch (error: any) {
-      if (error.errorFields) {
+      router.push("/payment-requests");
+    } catch (error: unknown) {
+      if (isFormValidationError(error)) {
         // 表单验证错误
         return;
       }
-      message.error(error.message || '保存失败');
+      message.error(getErrorMessage(error, "保存失败"));
     } finally {
       setLoading(false);
     }
@@ -433,16 +471,14 @@ export default function NewPaymentRequestPage() {
           onClick={() => router.back()}
         />
         <div>
-          <Title level={4} style={{ margin: 0 }}>付款申请</Title>
+          <Title level={4} style={{ margin: 0 }}>
+            付款申请
+          </Title>
           <Text type="secondary">现金、支票等各类（对公）付款申请</Text>
         </div>
       </div>
 
-      <Form
-        form={form}
-        layout="vertical"
-        initialValues={{ currency: 'CNY' }}
-      >
+      <Form form={form} layout="vertical" initialValues={{ currency: "CNY" }}>
         {/* 申请详情 */}
         <Card title="申请详情">
           <Row gutter={24}>
@@ -450,7 +486,7 @@ export default function NewPaymentRequestPage() {
               <Form.Item
                 name="projectId"
                 label="关联项目"
-                rules={[{ required: true, message: '请选择关联项目' }]}
+                rules={[{ required: true, message: "请选择关联项目" }]}
                 extra="付款申请需关联到具体项目"
               >
                 <Select
@@ -458,7 +494,9 @@ export default function NewPaymentRequestPage() {
                   showSearch
                   optionFilterProp="children"
                   filterOption={(input, option) =>
-                    (option?.children as unknown as string)?.toLowerCase().includes(input.toLowerCase())
+                    (option?.children as unknown as string)
+                      ?.toLowerCase()
+                      .includes(input.toLowerCase())
                   }
                 >
                   {projects.map((p) => (
@@ -474,7 +512,7 @@ export default function NewPaymentRequestPage() {
               <Form.Item
                 name="contractId"
                 label="关联合同（采购）"
-                rules={[{ required: true, message: '请选择采购合同' }]}
+                rules={[{ required: true, message: "请选择采购合同" }]}
                 extra="付款申请仅支持关联采购合同"
               >
                 <Select
@@ -483,7 +521,7 @@ export default function NewPaymentRequestPage() {
                   optionFilterProp="label"
                   options={purchaseContracts.map((contract) => ({
                     value: contract.id,
-                    label: `${contract.contractNo} - ${contract.name}（${contract.customer?.name || '未命名主体'}）`,
+                    label: `${contract.contractNo} - ${contract.name}（${contract.customer?.name || "未命名主体"}）`,
                   }))}
                 />
               </Form.Item>
@@ -493,7 +531,7 @@ export default function NewPaymentRequestPage() {
               <Form.Item
                 name="reason"
                 label="付款事由"
-                rules={[{ required: true, message: '请输入付款事由' }]}
+                rules={[{ required: true, message: "请输入付款事由" }]}
               >
                 <Input placeholder="请输入" />
               </Form.Item>
@@ -503,11 +541,11 @@ export default function NewPaymentRequestPage() {
               <Form.Item
                 name="amount"
                 label="付款金额"
-                rules={[{ required: true, message: '请输入付款金额' }]}
+                rules={[{ required: true, message: "请输入付款金额" }]}
               >
                 <InputNumber
                   placeholder="请输入金额"
-                  style={{ width: '100%' }}
+                  style={{ width: "100%" }}
                   min={0.01}
                   precision={2}
                 />
@@ -523,7 +561,7 @@ export default function NewPaymentRequestPage() {
               <Form.Item
                 name="paymentMethod"
                 label="付款方式"
-                rules={[{ required: true, message: '请选择付款方式' }]}
+                rules={[{ required: true, message: "请选择付款方式" }]}
               >
                 <Select placeholder="请选择" options={paymentMethods} />
               </Form.Item>
@@ -532,9 +570,9 @@ export default function NewPaymentRequestPage() {
               <Form.Item
                 name="paymentDate"
                 label="付款日期"
-                rules={[{ required: true, message: '请选择付款日期' }]}
+                rules={[{ required: true, message: "请选择付款日期" }]}
               >
-                <DatePicker style={{ width: '100%' }} />
+                <DatePicker style={{ width: "100%" }} />
               </Form.Item>
             </Col>
 
@@ -542,7 +580,7 @@ export default function NewPaymentRequestPage() {
               <Form.Item
                 name="bankAccountId"
                 label="收款方账户"
-                rules={[{ required: true, message: '请选择收款方账户' }]}
+                rules={[{ required: true, message: "请选择收款方账户" }]}
                 extra="包含收款方名称、账号、开户行信息"
               >
                 <Select
@@ -573,7 +611,10 @@ export default function NewPaymentRequestPage() {
         </Card>
 
         {/* 附件 */}
-        <Card title="附件" extra={<Text type="secondary">上限30个文件，最大100MB/个</Text>}>
+        <Card
+          title="附件"
+          extra={<Text type="secondary">上限30个文件，最大100MB/个</Text>}
+        >
           <Upload
             customRequest={handleUpload}
             fileList={fileList}
@@ -597,7 +638,11 @@ export default function NewPaymentRequestPage() {
             <Button onClick={() => handleSubmit(true)} loading={loading}>
               保存草稿
             </Button>
-            <Button type="primary" onClick={() => handleSubmit(false)} loading={loading}>
+            <Button
+              type="primary"
+              onClick={() => handleSubmit(false)}
+              loading={loading}
+            >
               提交
             </Button>
           </Space>
@@ -623,33 +668,33 @@ export default function NewPaymentRequestPage() {
           form={addAccountForm}
           layout="vertical"
           className="mt-4"
-          initialValues={{ accountType: 'PERSONAL' }}
+          initialValues={{ accountType: "PERSONAL" }}
         >
           <Form.Item
             name="accountType"
             label="账户类型"
-            rules={[{ required: true, message: '请选择账户类型' }]}
+            rules={[{ required: true, message: "请选择账户类型" }]}
           >
             <Radio.Group options={accountTypes} />
           </Form.Item>
           <Form.Item
             name="accountName"
             label="户名"
-            rules={[{ required: true, message: '请输入收款人姓名' }]}
+            rules={[{ required: true, message: "请输入收款人姓名" }]}
           >
             <Input placeholder="请输入收款人姓名" />
           </Form.Item>
           <Form.Item
             name="accountNo"
             label="账号"
-            rules={[{ required: true, message: '请输入收款人账号' }]}
+            rules={[{ required: true, message: "请输入收款人账号" }]}
           >
             <Input placeholder="请输入收款人账号" />
           </Form.Item>
           <Form.Item
             name="bankCode"
             label="银行"
-            rules={[{ required: true, message: '请选择银行' }]}
+            rules={[{ required: true, message: "请选择银行" }]}
           >
             <Select
               placeholder="请选择银行"
@@ -661,24 +706,18 @@ export default function NewPaymentRequestPage() {
           <Form.Item
             name="region"
             label="银行所在地区"
-            rules={[{ required: true, message: '请选择银行所在地区' }]}
+            rules={[{ required: true, message: "请选择银行所在地区" }]}
           >
-            <Cascader
-              placeholder="请选择"
-              options={regionOptions}
-            />
+            <Cascader placeholder="请选择" options={regionOptions} />
           </Form.Item>
           <Form.Item
             name="branchName"
             label="银行支行"
-            rules={[{ required: true, message: '请输入银行支行' }]}
+            rules={[{ required: true, message: "请输入银行支行" }]}
           >
             <Input placeholder="请输入银行支行名称" />
           </Form.Item>
-          <Form.Item
-            name="remark"
-            label="备注"
-          >
+          <Form.Item name="remark" label="备注">
             <Input.TextArea
               placeholder="请输入"
               rows={3}

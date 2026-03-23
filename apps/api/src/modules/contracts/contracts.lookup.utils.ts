@@ -36,10 +36,12 @@ export function toImportErrors(
   raw: unknown,
 ): Array<{ row: number; message: string }> {
   if (!Array.isArray(raw)) return [];
+  const isObject = (value: unknown): value is Record<string, unknown> =>
+    !!value && typeof value === "object";
   return raw
     .map((item) => ({
-      row: Number((item as any)?.row || 0),
-      message: String((item as any)?.message || ""),
+      row: Number(isObject(item) ? item.row || 0 : 0),
+      message: String(isObject(item) ? item.message || "" : ""),
     }))
     .filter((item) => item.row > 0 && item.message);
 }

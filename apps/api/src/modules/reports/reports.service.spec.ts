@@ -10,6 +10,12 @@ describe("ReportsService", () => {
     jest.setSystemTime(new Date("2026-03-17T08:00:00.000Z"));
 
     prisma = {
+      dictionary: {
+        findMany: jest.fn().mockResolvedValue([
+          { code: "SALES", name: "销售合同", value: "销售" },
+          { code: "PURCHASE", name: "采购合同", value: "采购" },
+        ]),
+      },
       contract: {
         findMany: jest.fn(),
         count: jest.fn(),
@@ -23,6 +29,7 @@ describe("ReportsService", () => {
       },
       paymentRecord: {
         aggregate: jest.fn(),
+        findMany: jest.fn(),
       },
       paymentPlan: {
         findMany: jest.fn(),
@@ -40,6 +47,7 @@ describe("ReportsService", () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
         id: "c1",
+        contractType: "SALES",
         amountWithTax: new Decimal(1000),
         paymentPlans: [
           {
@@ -63,6 +71,7 @@ describe("ReportsService", () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
         id: "c-normal",
+        contractType: "SALES",
         amountWithTax: new Decimal(1000),
         paymentPlans: [
           {
@@ -74,6 +83,7 @@ describe("ReportsService", () => {
       },
       {
         id: "c-30",
+        contractType: "SALES",
         amountWithTax: new Decimal(1000),
         paymentPlans: [
           {
@@ -91,10 +101,35 @@ describe("ReportsService", () => {
     expect(result.agingDistribution.days0to30).toBe(500);
   });
 
+  it("should ignore non-sales contracts in receivables overview", async () => {
+    prisma.contract.findMany.mockResolvedValueOnce([
+      {
+        id: "sales-1",
+        contractType: "SALES",
+        amountWithTax: new Decimal(500),
+        paymentPlans: [],
+        paymentRecords: [{ amount: new Decimal(100) }],
+      },
+      {
+        id: "nda-1",
+        contractType: "NDA",
+        amountWithTax: new Decimal(999),
+        paymentPlans: [],
+        paymentRecords: [{ amount: new Decimal(999) }],
+      },
+    ]);
+
+    const result = await service.getReceivablesOverview();
+    expect(result.totalContractAmount).toBe(500);
+    expect(result.totalReceived).toBe(100);
+    expect(result.totalReceivable).toBe(400);
+  });
+
   it("should classify receivables into 31-90 bucket and skip non-positive receivable", async () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
         id: "c-31-90",
+        contractType: "SALES",
         amountWithTax: new Decimal(1000),
         paymentPlans: [
           {
@@ -106,6 +141,7 @@ describe("ReportsService", () => {
       },
       {
         id: "c-zero",
+        contractType: "SALES",
         amountWithTax: new Decimal(100),
         paymentPlans: [],
         paymentRecords: [{ amount: new Decimal(100) }],
@@ -122,6 +158,7 @@ describe("ReportsService", () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
         id: "c-sort-normal",
+        contractType: "SALES",
         amountWithTax: new Decimal(300),
         paymentPlans: [
           {
@@ -147,6 +184,7 @@ describe("ReportsService", () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
         id: "c-normal-switch",
+        contractType: "SALES",
         amountWithTax: new Decimal(500),
         paymentPlans: [
           {
@@ -166,6 +204,7 @@ describe("ReportsService", () => {
     prisma.contract.findMany.mockResolvedValueOnce([
       {
         id: "c-str-date",
+        contractType: "SALES",
         amountWithTax: new Decimal(500),
         paymentPlans: [
           {
@@ -234,14 +273,20 @@ describe("ReportsService", () => {
   });
 
   it("should calculate contract dashboard fields", async () => {
-    prisma.contract.count.mockResolvedValueOnce(3);
-    prisma.contract.aggregate.mockResolvedValueOnce({
-      _sum: { amountWithTax: new Decimal(900) },
-      _count: 2,
-    });
-    prisma.paymentRecord.aggregate.mockResolvedValueOnce({
-      _sum: { amount: new Decimal(600) },
-    });
+    prisma.contract.findMany
+      .mockResolvedValueOnce([
+        { id: "c1", contractType: "SALES" },
+        { id: "c2", contractType: "PURCHASE" },
+        { id: "c3", contractType: "销售合同" },
+      ])
+      .mockResolvedValueOnce([
+        { amountWithTax: new Decimal(500), contractType: "SALES" },
+        { amountWithTax: new Decimal(400), contractType: "PURCHASE" },
+      ]);
+    prisma.paymentRecord.findMany.mockResolvedValueOnce([
+      { amount: new Decimal(300), contract: { contractType: "SALES" } },
+      { amount: new Decimal(300), contract: { contractType: "PURCHASE" } },
+    ]);
     prisma.paymentPlan.findMany.mockResolvedValueOnce([
       {
         id: "p1",
@@ -252,29 +297,38 @@ describe("ReportsService", () => {
           id: "c1",
           contractNo: "HT-001",
           name: "测试合同",
+          contractType: "SALES",
+        },
+      },
+      {
+        id: "p2",
+        period: 1,
+        planAmount: new Decimal(100),
+        planDate: new Date("2026-03-18T08:00:00.000Z"),
+        contract: {
+          id: "c2",
+          contractNo: "HT-002",
+          name: "采购合同",
+          contractType: "PURCHASE",
         },
       },
     ]);
 
     const result = await service.getContractDashboard();
 
-    expect(result.executingCount).toBe(3);
-    expect(result.monthlyNewCount).toBe(2);
-    expect(result.monthlyNewAmount).toBe(900);
-    expect(result.monthlyPaymentAmount).toBe(600);
+    expect(result.executingCount).toBe(2);
+    expect(result.monthlyNewCount).toBe(1);
+    expect(result.monthlyNewAmount).toBe(500);
+    expect(result.monthlyPaymentAmount).toBe(300);
     expect(result.upcomingPayments).toHaveLength(1);
     expect(result.upcomingPayments[0].daysUntilDue).toBe(1);
   });
 
   it("should fallback dashboard amounts to zero when aggregate sum is null", async () => {
-    prisma.contract.count.mockResolvedValueOnce(0);
-    prisma.contract.aggregate.mockResolvedValueOnce({
-      _sum: { amountWithTax: null },
-      _count: 0,
-    });
-    prisma.paymentRecord.aggregate.mockResolvedValueOnce({
-      _sum: { amount: null },
-    });
+    prisma.contract.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prisma.paymentRecord.findMany.mockResolvedValueOnce([]);
     prisma.paymentPlan.findMany.mockResolvedValueOnce([]);
 
     const result = await service.getContractDashboard();
@@ -291,6 +345,7 @@ describe("ReportsService", () => {
           name: "客户A",
           contracts: [
             {
+              contractType: "SALES",
               amountWithTax: new Decimal(1000),
               paymentRecords: [{ amount: new Decimal(200) }],
               paymentPlans: [
@@ -321,6 +376,7 @@ describe("ReportsService", () => {
           name: "客户C",
           contracts: [
             {
+              contractType: "SALES",
               amountWithTax: new Decimal(800),
               paymentRecords: [{ amount: new Decimal(200) }],
               paymentPlans: [
@@ -351,6 +407,7 @@ describe("ReportsService", () => {
           name: "客户B",
           contracts: [
             {
+              contractType: "SALES",
               amountWithTax: new Decimal(500),
               paymentRecords: [{ amount: new Decimal(500) }],
               paymentPlans: [],

@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 系统设置页面
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 import {
   Table,
   Button,
@@ -17,18 +17,19 @@ import {
   Select,
   Popconfirm,
   Tabs,
-} from 'antd';
+} from "antd";
+import type { TableColumnsType } from "antd";
 import {
   PlusOutlined,
   EditOutlined,
   StopOutlined,
   CheckOutlined,
   DeleteOutlined,
-} from '@ant-design/icons';
-import { api } from '@/lib/api';
-import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
-import { getErrorMessage } from '@/lib/error';
-import { useAuthStore } from '@/stores/auth';
+} from "@ant-design/icons";
+import { api } from "@/lib/api";
+import { ROLE_LABELS, ROLE_COLORS } from "@/lib/constants";
+import { getErrorMessage } from "@/lib/error";
+import { useAuthStore } from "@/stores/auth";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -44,6 +45,11 @@ interface User {
   createdAt: string;
 }
 
+interface UserListResponse {
+  items: User[];
+  total: number;
+}
+
 export default function SettingsPage() {
   const currentUser = useAuthStore((state) => state.user);
   const [loading, setLoading] = useState(false);
@@ -51,11 +57,13 @@ export default function SettingsPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
+  const [statusFilter, setStatusFilter] = useState<
+    "active" | "inactive" | "all"
+  >("active");
 
   // 弹窗状态
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalTitle, setModalTitle] = useState('新增用户');
+  const [modalTitle, setModalTitle] = useState("新增用户");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
@@ -65,12 +73,14 @@ export default function SettingsPage() {
     setLoading(true);
     try {
       const isActive =
-        statusFilter === 'all' ? undefined : statusFilter === 'active';
-      const res = await api.get<any>('/users', { params: { page, pageSize, isActive } });
+        statusFilter === "all" ? undefined : statusFilter === "active";
+      const res = await api.get<UserListResponse>("/users", {
+        params: { page, pageSize, isActive },
+      });
       setUsers(res.items);
       setTotal(res.total);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '加载失败'));
+      message.error(getErrorMessage(error, "加载失败"));
     } finally {
       setLoading(false);
     }
@@ -82,7 +92,7 @@ export default function SettingsPage() {
 
   // 打开新增弹窗
   const handleAdd = () => {
-    setModalTitle('新增用户');
+    setModalTitle("新增用户");
     setEditingId(null);
     form.resetFields();
     setModalVisible(true);
@@ -90,7 +100,7 @@ export default function SettingsPage() {
 
   // 打开编辑弹窗
   const handleEdit = (record: User) => {
-    setModalTitle('编辑用户');
+    setModalTitle("编辑用户");
     setEditingId(record.id);
     form.setFieldsValue({
       ...record,
@@ -111,16 +121,16 @@ export default function SettingsPage() {
           delete values.password;
         }
         await api.patch(`/users/${editingId}`, values);
-        message.success('更新成功');
+        message.success("更新成功");
       } else {
-        await api.post('/users', values);
-        message.success('创建成功');
+        await api.post("/users", values);
+        message.success("创建成功");
       }
 
       setModalVisible(false);
       fetchUsers();
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '提交失败'));
+      message.error(getErrorMessage(error, "提交失败"));
     } finally {
       setSubmitting(false);
     }
@@ -130,74 +140,74 @@ export default function SettingsPage() {
   const handleToggleActive = async (id: string, isActive: boolean) => {
     try {
       await api.patch(`/users/${id}`, { isActive: !isActive });
-      message.success(isActive ? '已禁用' : '已启用');
+      message.success(isActive ? "已禁用" : "已启用");
       fetchUsers();
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '操作失败'));
+      message.error(getErrorMessage(error, "操作失败"));
     }
   };
 
   const handleDeleteUser = async (id: string) => {
     try {
       await api.delete(`/users/${id}`);
-      message.success('删除成功');
+      message.success("删除成功");
       await fetchUsers();
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '删除失败'));
+      message.error(getErrorMessage(error, "删除失败"));
     }
   };
 
   // 表格列定义
-  const columns = [
+  const columns: TableColumnsType<User> = [
     {
-      title: '邮箱',
-      dataIndex: 'email',
-      key: 'email',
+      title: "邮箱",
+      dataIndex: "email",
+      key: "email",
       width: 200,
     },
     {
-      title: '姓名',
-      dataIndex: 'name',
-      key: 'name',
+      title: "姓名",
+      dataIndex: "name",
+      key: "name",
       width: 100,
     },
     {
-      title: '手机号',
-      dataIndex: 'phone',
-      key: 'phone',
+      title: "手机号",
+      dataIndex: "phone",
+      key: "phone",
       width: 130,
-      render: (v: string) => v || '-',
+      render: (v: string) => v || "-",
     },
     {
-      title: '角色',
-      dataIndex: 'role',
-      key: 'role',
+      title: "角色",
+      dataIndex: "role",
+      key: "role",
       width: 100,
       render: (role: string) => (
         <Tag color={ROLE_COLORS[role]}>{ROLE_LABELS[role]}</Tag>
       ),
     },
     {
-      title: '部门',
-      dataIndex: 'department',
-      key: 'department',
+      title: "部门",
+      dataIndex: "department",
+      key: "department",
       width: 100,
-      render: (v: string) => v || '-',
+      render: (v: string) => v || "-",
     },
     {
-      title: '状态',
-      dataIndex: 'isActive',
-      key: 'isActive',
+      title: "状态",
+      dataIndex: "isActive",
+      key: "isActive",
       width: 80,
       render: (v: boolean) => (
-        <Tag color={v ? 'green' : 'red'}>{v ? '正常' : '禁用'}</Tag>
+        <Tag color={v ? "green" : "red"}>{v ? "正常" : "禁用"}</Tag>
       ),
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 220,
-      render: (_: any, record: User) => (
+      render: (_: unknown, record: User) => (
         <Space size="small">
           <Button
             type="link"
@@ -208,7 +218,7 @@ export default function SettingsPage() {
             编辑
           </Button>
           <Popconfirm
-            title={`确定${record.isActive ? '禁用' : '启用'}该用户吗？`}
+            title={`确定${record.isActive ? "禁用" : "启用"}该用户吗？`}
             onConfirm={() => handleToggleActive(record.id, record.isActive)}
           >
             <Button
@@ -217,7 +227,7 @@ export default function SettingsPage() {
               danger={record.isActive}
               icon={record.isActive ? <StopOutlined /> : <CheckOutlined />}
             >
-              {record.isActive ? '禁用' : '启用'}
+              {record.isActive ? "禁用" : "启用"}
             </Button>
           </Popconfirm>
           <Popconfirm
@@ -245,8 +255,8 @@ export default function SettingsPage() {
 
   const tabItems = [
     {
-      key: 'users',
-      label: '用户管理',
+      key: "users",
+      label: "用户管理",
       children: (
         <div>
           <div className="flex justify-between mb-4">
@@ -292,8 +302,8 @@ export default function SettingsPage() {
       ),
     },
     {
-      key: 'system',
-      label: '系统信息',
+      key: "system",
+      label: "系统信息",
       children: (
         <Card>
           <div className="space-y-4">
@@ -335,8 +345,8 @@ export default function SettingsPage() {
             name="email"
             label="邮箱"
             rules={[
-              { required: true, message: '请输入邮箱' },
-              { type: 'email', message: '请输入有效的邮箱地址' },
+              { required: true, message: "请输入邮箱" },
+              { type: "email", message: "请输入有效的邮箱地址" },
             ]}
           >
             <Input placeholder="请输入邮箱" disabled={!!editingId} />
@@ -349,20 +359,20 @@ export default function SettingsPage() {
               editingId
                 ? []
                 : [
-                    { required: true, message: '请输入密码' },
-                    { min: 6, message: '密码长度不能少于6位' },
+                    { required: true, message: "请输入密码" },
+                    { min: 6, message: "密码长度不能少于6位" },
                   ]
             }
           >
             <Input.Password
-              placeholder={editingId ? '不修改请留空' : '请输入密码'}
+              placeholder={editingId ? "不修改请留空" : "请输入密码"}
             />
           </Form.Item>
 
           <Form.Item
             name="name"
             label="姓名"
-            rules={[{ required: true, message: '请输入姓名' }]}
+            rules={[{ required: true, message: "请输入姓名" }]}
           >
             <Input placeholder="请输入姓名" />
           </Form.Item>
@@ -374,7 +384,7 @@ export default function SettingsPage() {
           <Form.Item
             name="role"
             label="角色"
-            rules={[{ required: true, message: '请选择角色' }]}
+            rules={[{ required: true, message: "请选择角色" }]}
           >
             <Select placeholder="请选择角色">
               <Option value="EMPLOYEE">员工</Option>

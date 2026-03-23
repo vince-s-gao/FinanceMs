@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 新增合同页面
 
-import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   Form,
@@ -19,11 +19,17 @@ import {
   Divider,
   Row,
   Col,
-} from 'antd';
-import { ArrowLeftOutlined, SaveOutlined, InboxOutlined } from '@ant-design/icons';
-import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
-import { api } from '@/lib/api';
-import apiClient from '@/lib/api';
+} from "antd";
+import {
+  ArrowLeftOutlined,
+  SaveOutlined,
+  InboxOutlined,
+} from "@ant-design/icons";
+import type { UploadFile, UploadProps } from "antd/es/upload/interface";
+import { api } from "@/lib/api";
+import apiClient from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
+import { formatThousandSeparated, parseThousandSeparated } from "@/lib/number";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -50,28 +56,33 @@ export default function ContractNewPage() {
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [contractTypes, setContractTypes] = useState<DictionaryItem[]>([]);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [uploadedFile, setUploadedFile] = useState<{ url: string; filename: string } | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{
+    url: string;
+    filename: string;
+  } | null>(null);
 
   // 加载客户选项
   const fetchCustomers = useCallback(async () => {
     try {
-      const res = await api.get<CustomerOption[]>('/customers/options');
+      const res = await api.get<CustomerOption[]>("/customers/options");
       setCustomers(res);
     } catch (error) {
-      console.error('加载客户列表失败', error);
+      console.error("加载客户列表失败", error);
     }
   }, []);
 
   const fetchContractTypes = useCallback(async () => {
     try {
-      const res = await api.get<DictionaryItem[]>('/dictionaries/by-type/CONTRACT_TYPE');
+      const res = await api.get<DictionaryItem[]>(
+        "/dictionaries/by-type/CONTRACT_TYPE",
+      );
       setContractTypes(res);
     } catch {
       setContractTypes([
-        { id: '1', code: 'SALES', name: '销售合同' },
-        { id: '2', code: 'PURCHASE', name: '采购合同' },
-        { id: '3', code: 'SERVICE', name: '服务合同' },
-        { id: '4', code: 'OTHER', name: '其他' },
+        { id: "1", code: "SALES", name: "销售合同" },
+        { id: "2", code: "PURCHASE", name: "采购合同" },
+        { id: "3", code: "SERVICE", name: "服务合同" },
+        { id: "4", code: "OTHER", name: "其他" },
       ]);
     }
   }, []);
@@ -83,23 +94,29 @@ export default function ContractNewPage() {
     form.setFieldsValue({
       productTaxRate: 13,
       serviceTaxRate: 6,
-      signingEntity: 'InfFinanceMs',
+      signingEntity: "InfFinanceMs",
     });
   }, [fetchContractTypes, fetchCustomers, form]);
 
   // 计算金额
   const calculateAmounts = () => {
-    const productAmount = form.getFieldValue('productAmount') || 0;
-    const productTaxRate = form.getFieldValue('productTaxRate') || 0;
-    const serviceAmount = form.getFieldValue('serviceAmount') || 0;
-    const serviceTaxRate = form.getFieldValue('serviceTaxRate') || 0;
+    const productAmount = form.getFieldValue("productAmount") || 0;
+    const productTaxRate = form.getFieldValue("productTaxRate") || 0;
+    const serviceAmount = form.getFieldValue("serviceAmount") || 0;
+    const serviceTaxRate = form.getFieldValue("serviceTaxRate") || 0;
 
     // 计算含税总金额
     const amountWithTax = productAmount + serviceAmount;
 
     // 计算不含税金额
-    const productWithoutTax = productTaxRate > 0 ? productAmount / (1 + productTaxRate / 100) : productAmount;
-    const serviceWithoutTax = serviceTaxRate > 0 ? serviceAmount / (1 + serviceTaxRate / 100) : serviceAmount;
+    const productWithoutTax =
+      productTaxRate > 0
+        ? productAmount / (1 + productTaxRate / 100)
+        : productAmount;
+    const serviceWithoutTax =
+      serviceTaxRate > 0
+        ? serviceAmount / (1 + serviceTaxRate / 100)
+        : serviceAmount;
     const amountWithoutTax = productWithoutTax + serviceWithoutTax;
 
     form.setFieldsValue({
@@ -110,21 +127,25 @@ export default function ContractNewPage() {
 
   // 文件上传配置
   const uploadProps: UploadProps = {
-    name: 'file',
+    name: "file",
     multiple: false,
     maxCount: 1,
     fileList,
-    accept: '.pdf,.jpg,.jpeg,.png,.doc,.docx',
+    accept: ".pdf,.jpg,.jpeg,.png,.doc,.docx",
     customRequest: async ({ file, onSuccess, onError }) => {
       try {
         const formData = new FormData();
-        formData.append('file', file as File);
+        formData.append("file", file as File);
 
-        const response = await apiClient.post('/upload?category=contracts', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
+        const response = await apiClient.post(
+          "/upload?category=contracts",
+          formData,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
           },
-        });
+        );
 
         setUploadedFile({
           url: response.data.url,
@@ -132,10 +153,10 @@ export default function ContractNewPage() {
         });
 
         onSuccess?.(response.data);
-        message.success('文件上传成功');
-      } catch (error: any) {
-        onError?.(error);
-        message.error(error.message || '文件上传失败');
+        message.success("文件上传成功");
+      } catch (error: unknown) {
+        onError?.(error as Error);
+        message.error(getErrorMessage(error, "文件上传失败"));
       }
     },
     onChange(info) {
@@ -153,7 +174,7 @@ export default function ContractNewPage() {
 
       // 验证附件
       if (!uploadedFile) {
-        message.error('请上传双章版合同扫描件');
+        message.error("请上传双章版合同扫描件");
         return;
       }
 
@@ -162,18 +183,18 @@ export default function ContractNewPage() {
       // 格式化日期和数据
       const data = {
         ...values,
-        signDate: values.signDate?.format('YYYY-MM-DD'),
-        startDate: values.startDate?.format('YYYY-MM-DD'),
-        endDate: values.endDate?.format('YYYY-MM-DD'),
+        signDate: values.signDate?.format("YYYY-MM-DD"),
+        startDate: values.startDate?.format("YYYY-MM-DD"),
+        endDate: values.endDate?.format("YYYY-MM-DD"),
         attachmentUrl: uploadedFile.url,
         attachmentName: uploadedFile.filename,
       };
 
-      const res = await api.post<{ id: string }>('/contracts', data);
-      message.success('创建成功');
+      const res = await api.post<{ id: string }>("/contracts", data);
+      message.success("创建成功");
       router.push(`/contracts/${res.id}`);
-    } catch (error: any) {
-      message.error(error.message || '创建失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "创建失败"));
     } finally {
       setSubmitting(false);
     }
@@ -186,7 +207,7 @@ export default function ContractNewPage() {
         <Space>
           <Button
             icon={<ArrowLeftOutlined />}
-            onClick={() => router.push('/contracts')}
+            onClick={() => router.push("/contracts")}
           >
             返回
           </Button>
@@ -195,9 +216,7 @@ export default function ContractNewPage() {
           </Title>
         </Space>
         <Space>
-          <Button onClick={() => router.push('/contracts')}>
-            取消
-          </Button>
+          <Button onClick={() => router.push("/contracts")}>取消</Button>
           <Button
             type="primary"
             icon={<SaveOutlined />}
@@ -211,17 +230,13 @@ export default function ContractNewPage() {
 
       {/* 表单 */}
       <Card title="基本信息" className="mb-4">
-        <Form
-          form={form}
-          layout="vertical"
-          style={{ maxWidth: 900 }}
-        >
+        <Form form={form} layout="vertical" style={{ maxWidth: 900 }}>
           <Row gutter={24}>
             <Col span={12}>
               <Form.Item
                 name="contractNo"
                 label="合同编号"
-                rules={[{ required: true, message: '请输入合同编号' }]}
+                rules={[{ required: true, message: "请输入合同编号" }]}
               >
                 <Input placeholder="请输入合同编号（可自定义）" />
               </Form.Item>
@@ -230,7 +245,7 @@ export default function ContractNewPage() {
               <Form.Item
                 name="name"
                 label="合同名称"
-                rules={[{ required: true, message: '请输入合同名称' }]}
+                rules={[{ required: true, message: "请输入合同名称" }]}
               >
                 <Input placeholder="请输入合同名称" />
               </Form.Item>
@@ -242,9 +257,13 @@ export default function ContractNewPage() {
               <Form.Item
                 name="customerId"
                 label="对方签约主体"
-                rules={[{ required: true, message: '请选择对方签约主体' }]}
+                rules={[{ required: true, message: "请选择对方签约主体" }]}
               >
-                <Select placeholder="请选择对方签约主体" showSearch optionFilterProp="children">
+                <Select
+                  placeholder="请选择对方签约主体"
+                  showSearch
+                  optionFilterProp="children"
+                >
                   {customers.map((c) => (
                     <Option key={c.id} value={c.id}>
                       {c.name} ({c.code})
@@ -260,7 +279,7 @@ export default function ContractNewPage() {
               <Form.Item
                 name="contractType"
                 label="合同类型"
-                rules={[{ required: true, message: '请选择合同类型' }]}
+                rules={[{ required: true, message: "请选择合同类型" }]}
               >
                 <Select placeholder="请选择合同类型">
                   {contractTypes.map((type) => (
@@ -275,7 +294,7 @@ export default function ContractNewPage() {
               <Form.Item
                 name="signingEntity"
                 label="公司签约主体"
-                rules={[{ required: true, message: '请输入公司签约主体' }]}
+                rules={[{ required: true, message: "请输入公司签约主体" }]}
               >
                 <Input placeholder="请输入公司签约主体" />
               </Form.Item>
@@ -287,9 +306,9 @@ export default function ContractNewPage() {
               <Form.Item
                 name="signDate"
                 label="签订日期"
-                rules={[{ required: true, message: '请选择签订日期' }]}
+                rules={[{ required: true, message: "请选择签订日期" }]}
               >
-                <DatePicker style={{ width: '100%' }} />
+                <DatePicker style={{ width: "100%" }} />
               </Form.Item>
             </Col>
           </Row>
@@ -297,12 +316,12 @@ export default function ContractNewPage() {
           <Row gutter={24}>
             <Col span={12}>
               <Form.Item name="startDate" label="开始日期">
-                <DatePicker style={{ width: '100%' }} />
+                <DatePicker style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="endDate" label="结束日期">
-                <DatePicker style={{ width: '100%' }} />
+                <DatePicker style={{ width: "100%" }} />
               </Form.Item>
             </Col>
           </Row>
@@ -315,21 +334,21 @@ export default function ContractNewPage() {
           <Row gutter={24}>
             <Col span={12}>
               <Form.Item name="productAmount" label="产品含税金额">
-                <InputNumber
-                  style={{ width: '100%' }}
+                <InputNumber<number>
+                  style={{ width: "100%" }}
                   min={0}
                   precision={2}
                   placeholder="请输入产品含税金额"
                   onChange={calculateAmounts}
-                  formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                  parser={(value) => value!.replace(/,/g, '') as any}
+                  formatter={formatThousandSeparated}
+                  parser={parseThousandSeparated}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="productTaxRate" label="产品税率 (%)">
                 <InputNumber
-                  style={{ width: '100%' }}
+                  style={{ width: "100%" }}
                   min={0}
                   max={100}
                   precision={2}
@@ -344,21 +363,21 @@ export default function ContractNewPage() {
           <Row gutter={24}>
             <Col span={12}>
               <Form.Item name="serviceAmount" label="服务含税金额">
-                <InputNumber
-                  style={{ width: '100%' }}
+                <InputNumber<number>
+                  style={{ width: "100%" }}
                   min={0}
                   precision={2}
                   placeholder="请输入服务含税金额"
                   onChange={calculateAmounts}
-                  formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                  parser={(value) => value!.replace(/,/g, '') as any}
+                  formatter={formatThousandSeparated}
+                  parser={parseThousandSeparated}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="serviceTaxRate" label="服务税率 (%)">
                 <InputNumber
-                  style={{ width: '100%' }}
+                  style={{ width: "100%" }}
                   min={0}
                   max={100}
                   precision={2}
@@ -375,27 +394,27 @@ export default function ContractNewPage() {
               <Form.Item
                 name="amountWithTax"
                 label="含税总金额"
-                rules={[{ required: true, message: '请填写金额信息' }]}
+                rules={[{ required: true, message: "请填写金额信息" }]}
               >
-                <InputNumber
-                  style={{ width: '100%' }}
+                <InputNumber<number>
+                  style={{ width: "100%" }}
                   min={0}
                   precision={2}
                   disabled
-                  formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                  parser={(value) => value!.replace(/,/g, '') as any}
+                  formatter={formatThousandSeparated}
+                  parser={parseThousandSeparated}
                 />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="amountWithoutTax" label="不含税总金额">
-                <InputNumber
-                  style={{ width: '100%' }}
+                <InputNumber<number>
+                  style={{ width: "100%" }}
                   min={0}
                   precision={2}
                   disabled
-                  formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                  parser={(value) => value!.replace(/,/g, '') as any}
+                  formatter={formatThousandSeparated}
+                  parser={parseThousandSeparated}
                 />
               </Form.Item>
             </Col>

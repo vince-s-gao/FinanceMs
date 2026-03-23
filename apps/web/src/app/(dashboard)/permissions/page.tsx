@@ -18,6 +18,7 @@ import {
   Modal,
   Spin,
 } from "antd";
+import type { TableColumnsType } from "antd";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -28,19 +29,40 @@ import {
 } from "@ant-design/icons";
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/constants";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
 
 const { Title, Text, Paragraph } = Typography;
 
 // 角色列表
 const ROLES = ["EMPLOYEE", "SALES", "FINANCE", "MANAGER", "ADMIN"];
 
+type RolePermissions = { menus: string[]; functions: string[] };
+type RolePermissionsMatrix = Record<string, RolePermissions>;
+
+interface MenuPermission {
+  key: string;
+  name: string;
+  description: string;
+}
+
+interface FunctionPermission {
+  key: string;
+  name: string;
+  module: string;
+}
+
 // 菜单权限配置
-const MENU_PERMISSIONS = [
+const MENU_PERMISSIONS: MenuPermission[] = [
   { key: "/dashboard", name: "工作台", description: "首页数据概览" },
   { key: "/customers", name: "客户管理", description: "客户信息维护" },
   { key: "/suppliers", name: "供应商管理", description: "供应商主数据维护" },
   { key: "/contracts", name: "合同管理", description: "合同全生命周期管理" },
   { key: "/payments", name: "回款管理", description: "回款计划与记录" },
+  {
+    key: "/payment-requests",
+    name: "付款申请",
+    description: "付款申请与审批流转",
+  },
   {
     key: "/invoices",
     name: "发票管理",
@@ -50,6 +72,7 @@ const MENU_PERMISSIONS = [
   { key: "/costs", name: "费用管理", description: "费用录入与统计" },
   { key: "/budgets", name: "预算管理", description: "部门预算管理" },
   { key: "/reports", name: "报表看板", description: "数据统计与分析" },
+  { key: "/projects", name: "项目管理", description: "项目主数据管理" },
   { key: "/departments", name: "员工管理", description: "员工与组织架构管理" },
   { key: "/settings", name: "系统设置", description: "用户与系统配置" },
   {
@@ -62,27 +85,71 @@ const MENU_PERMISSIONS = [
 ];
 
 // 功能权限配置
-const FUNCTION_PERMISSIONS = [
+const FUNCTION_PERMISSIONS: FunctionPermission[] = [
+  { key: "expense.view", name: "查看报销", module: "报销管理" },
   { key: "expense.create", name: "创建报销", module: "报销管理" },
+  { key: "expense.edit", name: "编辑报销", module: "报销管理" },
+  { key: "expense.submit", name: "提交报销", module: "报销管理" },
+  { key: "expense.delete", name: "删除报销", module: "报销管理" },
   { key: "expense.approve", name: "审批报销", module: "报销管理" },
   { key: "expense.pay", name: "报销打款", module: "报销管理" },
+  { key: "contract.view", name: "查看合同", module: "合同管理" },
+  { key: "contract.export", name: "导出合同", module: "合同管理" },
   { key: "contract.create", name: "创建合同", module: "合同管理" },
   { key: "contract.edit", name: "编辑合同", module: "合同管理" },
   { key: "contract.delete", name: "删除合同", module: "合同管理" },
+  { key: "customer.view", name: "查看客户", module: "客户管理" },
+  { key: "customer.export", name: "导出客户", module: "客户管理" },
   { key: "customer.create", name: "创建客户", module: "客户管理" },
   { key: "customer.edit", name: "编辑客户", module: "客户管理" },
   { key: "customer.delete", name: "删除客户", module: "客户管理" },
   { key: "customer.approve", name: "审批客户", module: "客户管理" },
+  { key: "supplier.view", name: "查看供应商", module: "供应商管理" },
+  { key: "supplier.export", name: "导出供应商", module: "供应商管理" },
   { key: "supplier.create", name: "创建供应商", module: "供应商管理" },
   { key: "supplier.edit", name: "编辑供应商", module: "供应商管理" },
   { key: "supplier.delete", name: "删除供应商", module: "供应商管理" },
+  { key: "invoice.view", name: "查看发票", module: "发票管理" },
+  { key: "cost.view", name: "查看费用", module: "费用管理" },
+  { key: "cost.create", name: "创建费用", module: "费用管理" },
+  { key: "cost.edit", name: "编辑费用", module: "费用管理" },
+  { key: "cost.delete", name: "删除费用", module: "费用管理" },
   { key: "invoice.create", name: "开具发票", module: "发票管理" },
   { key: "invoice.void", name: "作废发票", module: "发票管理" },
+  { key: "invoice.delete", name: "删除发票", module: "发票管理" },
+  { key: "budget.view", name: "查看预算", module: "预算管理" },
   { key: "budget.create", name: "创建预算", module: "预算管理" },
   { key: "budget.edit", name: "编辑预算", module: "预算管理" },
+  { key: "budget.freeze", name: "冻结/解冻预算", module: "预算管理" },
+  { key: "budget.close", name: "关闭预算", module: "预算管理" },
+  { key: "budget.delete", name: "删除预算", module: "预算管理" },
+  { key: "payment.view", name: "查看回款看板", module: "回款管理" },
+  { key: "payment.plan.create", name: "创建回款计划", module: "回款管理" },
+  { key: "payment.plan.delete", name: "删除回款计划", module: "回款管理" },
+  { key: "payment.record.create", name: "创建回款记录", module: "回款管理" },
+  { key: "payment.record.delete", name: "删除回款记录", module: "回款管理" },
+  { key: "payment-request.view", name: "查看付款申请", module: "付款申请" },
+  { key: "payment-request.create", name: "创建付款申请", module: "付款申请" },
+  { key: "payment-request.edit", name: "编辑付款申请", module: "付款申请" },
+  { key: "payment-request.submit", name: "提交付款申请", module: "付款申请" },
+  { key: "payment-request.approve", name: "审批付款申请", module: "付款申请" },
+  { key: "payment-request.confirm", name: "确认付款", module: "付款申请" },
+  { key: "payment-request.cancel", name: "取消付款申请", module: "付款申请" },
+  { key: "payment-request.delete", name: "删除付款申请", module: "付款申请" },
+  { key: "bank-account.view", name: "查看收款账户", module: "付款申请" },
+  { key: "bank-account.create", name: "创建收款账户", module: "付款申请" },
+  { key: "bank-account.edit", name: "编辑收款账户", module: "付款申请" },
+  { key: "bank-account.delete", name: "删除收款账户", module: "付款申请" },
+  { key: "project.view", name: "查看项目", module: "项目管理" },
+  { key: "project.create", name: "创建项目", module: "项目管理" },
+  { key: "project.edit", name: "编辑项目", module: "项目管理" },
+  { key: "project.delete", name: "删除项目", module: "项目管理" },
+  { key: "report.view", name: "查看报表", module: "报表看板" },
+  { key: "report.export", name: "导出报表", module: "报表看板" },
   { key: "user.create", name: "创建用户", module: "系统设置" },
   { key: "user.edit", name: "编辑用户", module: "系统设置" },
-  { key: "department.manage", name: "管理部门", module: "部门管理" },
+  { key: "user.delete", name: "删除用户", module: "系统设置" },
+  { key: "department.manage", name: "管理员工组织", module: "员工管理" },
   { key: "dictionary.read", name: "查看字典项", module: "数据字典" },
   { key: "dictionary.create", name: "新增字典项", module: "数据字典" },
   { key: "dictionary.edit", name: "编辑字典项", module: "数据字典" },
@@ -96,16 +163,33 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
 > = {
   EMPLOYEE: {
     menus: ["/dashboard", "/expenses"],
-    functions: ["expense.create"],
+    functions: [
+      "expense.view",
+      "expense.create",
+      "expense.edit",
+      "expense.submit",
+      "expense.delete",
+    ],
   },
   SALES: {
-    menus: ["/dashboard", "/customers", "/contracts", "/payments", "/expenses"],
+    menus: [
+      "/dashboard",
+      "/customers",
+      "/contracts",
+      "/payments",
+      "/expenses",
+      "/projects",
+    ],
     functions: [
       "expense.create",
+      "customer.view",
       "customer.create",
       "customer.edit",
+      "contract.view",
       "contract.create",
       "contract.edit",
+      "payment.view",
+      "project.view",
     ],
   },
   FINANCE: {
@@ -115,23 +199,64 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
       "/suppliers",
       "/contracts",
       "/payments",
+      "/payment-requests",
       "/invoices",
       "/expenses",
       "/costs",
       "/budgets",
       "/reports",
+      "/projects",
     ],
     functions: [
+      "customer.view",
+      "customer.export",
+      "supplier.view",
+      "supplier.export",
+      "invoice.view",
+      "expense.view",
       "expense.create",
+      "expense.edit",
+      "expense.submit",
+      "expense.delete",
       "expense.approve",
       "expense.pay",
+      "contract.view",
+      "contract.export",
       "invoice.create",
       "invoice.void",
+      "budget.view",
       "budget.create",
       "budget.edit",
+      "budget.freeze",
+      "budget.close",
       "supplier.create",
       "supplier.edit",
       "supplier.delete",
+      "cost.view",
+      "cost.create",
+      "cost.edit",
+      "cost.delete",
+      "payment.view",
+      "payment-request.view",
+      "payment.plan.create",
+      "payment.plan.delete",
+      "payment.record.create",
+      "payment.record.delete",
+      "payment-request.create",
+      "payment-request.edit",
+      "payment-request.submit",
+      "payment-request.confirm",
+      "payment-request.cancel",
+      "payment-request.delete",
+      "bank-account.view",
+      "bank-account.create",
+      "bank-account.edit",
+      "project.view",
+      "project.create",
+      "project.edit",
+      "project.delete",
+      "report.view",
+      "report.export",
     ],
   },
   MANAGER: {
@@ -141,22 +266,47 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
       "/suppliers",
       "/contracts",
       "/payments",
+      "/payment-requests",
       "/invoices",
       "/expenses",
       "/costs",
       "/budgets",
       "/reports",
+      "/projects",
     ],
     functions: [
-      "expense.create",
+      "expense.view",
       "expense.approve",
+      "contract.view",
+      "contract.export",
+      "budget.view",
+      "customer.view",
+      "customer.export",
       "customer.create",
       "customer.edit",
       "customer.approve",
       "contract.create",
       "contract.edit",
+      "supplier.view",
+      "supplier.export",
       "supplier.create",
       "supplier.edit",
+      "invoice.view",
+      "cost.view",
+      "payment.view",
+      "payment-request.view",
+      "payment-request.create",
+      "payment-request.edit",
+      "payment-request.submit",
+      "payment-request.approve",
+      "payment-request.cancel",
+      "bank-account.view",
+      "project.view",
+      "project.create",
+      "project.edit",
+      "project.delete",
+      "report.view",
+      "report.export",
     ],
   },
   ADMIN: {
@@ -168,9 +318,9 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
 export default function PermissionsPage() {
   const [activeTab, setActiveTab] = useState("menu");
   const [loading, setLoading] = useState(false);
-  const [rolePermissions, setRolePermissions] = useState<
-    Record<string, { menus: string[]; functions: string[] }>
-  >({});
+  const [rolePermissions, setRolePermissions] = useState<RolePermissionsMatrix>(
+    {},
+  );
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingRole, setEditingRole] = useState<string | null>(null);
   const [editingMenus, setEditingMenus] = useState<string[]>([]);
@@ -181,10 +331,7 @@ export default function PermissionsPage() {
   const fetchPermissions = useCallback(async () => {
     setLoading(true);
     try {
-      const res =
-        await api.get<Record<string, { menus: string[]; functions: string[] }>>(
-          "/permissions/roles",
-        );
+      const res = await api.get<RolePermissionsMatrix>("/permissions/roles");
       setRolePermissions(res);
     } catch (error) {
       // 使用默认配置
@@ -226,8 +373,8 @@ export default function PermissionsPage() {
       message.success("保存成功");
       setEditModalVisible(false);
       fetchPermissions();
-    } catch (error: any) {
-      message.error(error.message || "保存失败");
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "保存失败"));
     } finally {
       setSaving(false);
     }
@@ -239,20 +386,20 @@ export default function PermissionsPage() {
       await api.post(`/permissions/roles/${role}/reset`);
       message.success("已重置为默认权限");
       fetchPermissions();
-    } catch (error: any) {
-      message.error(error.message || "重置失败");
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "重置失败"));
     }
   };
 
   // 菜单权限表格列
-  const menuColumns = [
+  const menuColumns: TableColumnsType<MenuPermission> = [
     {
       title: "菜单",
       dataIndex: "name",
       key: "name",
       width: 150,
       fixed: "left" as const,
-      render: (name: string, record: any) => (
+      render: (name: string, record: MenuPermission) => (
         <div>
           <div className="font-medium">{name}</div>
           <div className="text-xs text-gray-400">{record.description}</div>
@@ -278,7 +425,7 @@ export default function PermissionsPage() {
       key: role,
       width: 120,
       align: "center" as const,
-      render: (_: any, record: any) => {
+      render: (_: unknown, record: MenuPermission) => {
         const matrix = getCurrentMatrix();
         const hasPermission = matrix[role]?.menus?.includes(record.key);
         return hasPermission ? (
@@ -291,7 +438,7 @@ export default function PermissionsPage() {
   ];
 
   // 功能权限表格列
-  const functionColumns = [
+  const functionColumns: TableColumnsType<FunctionPermission> = [
     {
       title: "功能",
       dataIndex: "name",
@@ -312,7 +459,7 @@ export default function PermissionsPage() {
       key: role,
       width: 100,
       align: "center" as const,
-      render: (_: any, record: any) => {
+      render: (_: unknown, record: FunctionPermission) => {
         const matrix = getCurrentMatrix();
         const hasPermission = matrix[role]?.functions?.includes(record.key);
         return hasPermission ? (

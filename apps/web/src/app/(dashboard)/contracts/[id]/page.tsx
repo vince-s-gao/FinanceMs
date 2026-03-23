@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 合同详情页面
 
-import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import {
   Card,
   Descriptions,
@@ -16,15 +16,16 @@ import {
   message,
   Progress,
   Divider,
-} from 'antd';
+} from "antd";
 import {
   ArrowLeftOutlined,
   EditOutlined,
   DownloadOutlined,
   PaperClipOutlined,
   EyeOutlined,
-} from '@ant-design/icons';
-import { api } from '@/lib/api';
+} from "@ant-design/icons";
+import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
 import {
   CONTRACT_STATUS_LABELS,
   CONTRACT_STATUS_COLORS,
@@ -33,7 +34,7 @@ import {
   INVOICE_TYPE_LABELS,
   formatAmount,
   formatDate,
-} from '@/lib/constants';
+} from "@/lib/constants";
 
 const { Title, Text } = Typography;
 
@@ -111,7 +112,9 @@ export default function ContractDetailPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [contract, setContract] = useState<Contract | null>(null);
-  const [contractTypeMap, setContractTypeMap] = useState<Record<string, string>>({});
+  const [contractTypeMap, setContractTypeMap] = useState<
+    Record<string, string>
+  >({});
 
   const contractId = params.id as string;
 
@@ -120,14 +123,16 @@ export default function ContractDetailPage() {
     if (configured) {
       try {
         const parsed = new URL(configured);
-        const basePath = parsed.pathname.replace(/\/$/, '');
-        const apiPath = basePath.endsWith('/api') ? basePath : `${basePath}/api`;
+        const basePath = parsed.pathname.replace(/\/$/, "");
+        const apiPath = basePath.endsWith("/api")
+          ? basePath
+          : `${basePath}/api`;
         return `${parsed.protocol}//${parsed.host}${apiPath}/contracts/${id}/attachment/download`;
       } catch {
         // ignore invalid configured url
       }
     }
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       return `${window.location.protocol}//${window.location.hostname}:3001/api/contracts/${id}/attachment/download`;
     }
     return `http://127.0.0.1:3001/api/contracts/${id}/attachment/download`;
@@ -138,23 +143,25 @@ export default function ContractDetailPage() {
     if (configured) {
       try {
         const parsed = new URL(configured);
-        const basePath = parsed.pathname.replace(/\/$/, '');
-        const apiPath = basePath.endsWith('/api') ? basePath : `${basePath}/api`;
+        const basePath = parsed.pathname.replace(/\/$/, "");
+        const apiPath = basePath.endsWith("/api")
+          ? basePath
+          : `${basePath}/api`;
         return `${parsed.protocol}//${parsed.host}${apiPath}/contracts/${id}/attachment/preview`;
       } catch {
         // ignore invalid configured url
       }
     }
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       return `${window.location.protocol}//${window.location.hostname}:3001/api/contracts/${id}/attachment/preview`;
     }
     return `http://127.0.0.1:3001/api/contracts/${id}/attachment/preview`;
   };
 
   const resolveInvoiceAttachmentUrl = (url?: string | null) => {
-    if (!url) return '';
+    if (!url) return "";
     if (/^https?:\/\//i.test(url)) return url;
-    const normalizedPath = url.startsWith('/') ? url : `/${url}`;
+    const normalizedPath = url.startsWith("/") ? url : `/${url}`;
 
     const configured = process.env.NEXT_PUBLIC_API_URL;
     if (configured) {
@@ -166,7 +173,7 @@ export default function ContractDetailPage() {
       }
     }
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       return `${window.location.protocol}//${window.location.hostname}:3001${normalizedPath}`;
     }
     return `http://127.0.0.1:3001${normalizedPath}`;
@@ -177,14 +184,16 @@ export default function ContractDetailPage() {
     if (configured) {
       try {
         const parsed = new URL(configured);
-        const basePath = parsed.pathname.replace(/\/$/, '');
-        const apiPath = basePath.endsWith('/api') ? basePath : `${basePath}/api`;
+        const basePath = parsed.pathname.replace(/\/$/, "");
+        const apiPath = basePath.endsWith("/api")
+          ? basePath
+          : `${basePath}/api`;
         return `${parsed.protocol}//${parsed.host}${apiPath}/invoices/${id}/attachment/download`;
       } catch {
         // ignore invalid configured url
       }
     }
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       return `${window.location.protocol}//${window.location.hostname}:3001/api/invoices/${id}/attachment/download`;
     }
     return `http://127.0.0.1:3001/api/invoices/${id}/attachment/download`;
@@ -193,39 +202,39 @@ export default function ContractDetailPage() {
   const resolveContractFlow = (contractTypeCode?: string | null) => {
     const displayType = contractTypeCode
       ? contractTypeMap[contractTypeCode] || contractTypeCode
-      : '';
+      : "";
     const normalized = String(displayType).toLowerCase();
-    const isPurchase =
-      /采购|purchase|procurement|buy|应付|付款/.test(normalized);
-    const isSales =
-      /销售|sale|sales|应收|回款/.test(normalized);
+    const isPurchase = /采购|purchase|procurement|buy|应付|付款/.test(
+      normalized,
+    );
+    const isSales = /销售|sale|sales|应收|回款/.test(normalized);
     if (isPurchase && !isSales) {
       return {
-        overviewTitle: '付款概览',
-        progressLabel: '付款进度',
-        doneLabel: '已付款',
-        balanceLabel: '应付余额',
-        planTitle: '付款计划',
-        recordTitle: '付款记录',
-        planStatusPending: '待付款',
-        planStatusPartial: '部分付款',
-        amountColumn: '付款金额',
-        dateColumn: '付款日期',
-        methodColumn: '付款方式',
+        overviewTitle: "付款概览",
+        progressLabel: "付款进度",
+        doneLabel: "已付款",
+        balanceLabel: "应付余额",
+        planTitle: "付款计划",
+        recordTitle: "付款记录",
+        planStatusPending: "待付款",
+        planStatusPartial: "部分付款",
+        amountColumn: "付款金额",
+        dateColumn: "付款日期",
+        methodColumn: "付款方式",
       };
     }
     return {
-      overviewTitle: '回款概览',
-      progressLabel: '回款进度',
-      doneLabel: '已回款',
-      balanceLabel: '应收余额',
-      planTitle: '回款计划',
-      recordTitle: '回款记录',
-      planStatusPending: '待回款',
-      planStatusPartial: '部分回款',
-      amountColumn: '回款金额',
-      dateColumn: '回款日期',
-      methodColumn: '回款方式',
+      overviewTitle: "回款概览",
+      progressLabel: "回款进度",
+      doneLabel: "已回款",
+      balanceLabel: "应收余额",
+      planTitle: "回款计划",
+      recordTitle: "回款记录",
+      planStatusPending: "待回款",
+      planStatusPartial: "部分回款",
+      amountColumn: "回款金额",
+      dateColumn: "回款日期",
+      methodColumn: "回款方式",
     };
   };
 
@@ -233,14 +242,14 @@ export default function ContractDetailPage() {
     if (!contractTypeCode) return false;
     const displayType = contractTypeMap[contractTypeCode] || contractTypeCode;
     const normalized = String(displayType).toLowerCase().trim();
-    const compact = normalized.replace(/\s+/g, '');
-    const noPaymentTypes = new Set(['nda', 'other', 'ts', 'fa', '其他']);
-    return noPaymentTypes.has(compact) || compact.includes('保密');
+    const compact = normalized.replace(/\s+/g, "");
+    const noPaymentTypes = new Set(["nda", "other", "ts", "fa", "其他"]);
+    return noPaymentTypes.has(compact) || compact.includes("保密");
   };
 
   const isPdfAttachment = (name?: string | null, url?: string | null) => {
-    const source = `${name || ''} ${url || ''}`.toLowerCase();
-    return source.includes('.pdf');
+    const source = `${name || ""} ${url || ""}`.toLowerCase();
+    return source.includes(".pdf");
   };
 
   // 加载合同详情
@@ -249,8 +258,8 @@ export default function ContractDetailPage() {
     try {
       const res = await api.get<Contract>(`/contracts/${contractId}`);
       setContract(res);
-    } catch (error: any) {
-      message.error(error.message || '加载失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "加载失败"));
     } finally {
       setLoading(false);
     }
@@ -258,7 +267,9 @@ export default function ContractDetailPage() {
 
   const fetchContractTypes = useCallback(async () => {
     try {
-      const types = await api.get<DictionaryItem[]>('/dictionaries/by-type/CONTRACT_TYPE');
+      const types = await api.get<DictionaryItem[]>(
+        "/dictionaries/by-type/CONTRACT_TYPE",
+      );
       const map = types.reduce<Record<string, string>>((acc, item) => {
         acc[item.code] = item.name;
         return acc;
@@ -266,10 +277,10 @@ export default function ContractDetailPage() {
       setContractTypeMap(map);
     } catch {
       setContractTypeMap({
-        SALES: '销售合同',
-        PURCHASE: '采购合同',
-        SERVICE: '服务合同',
-        OTHER: '其他',
+        SALES: "销售合同",
+        PURCHASE: "采购合同",
+        SERVICE: "服务合同",
+        OTHER: "其他",
       });
     }
   }, []);
@@ -284,7 +295,7 @@ export default function ContractDetailPage() {
   // 计算回款进度
   const toNumber = (value: number | string | null | undefined) => {
     if (value === null || value === undefined) return 0;
-    const n = typeof value === 'string' ? Number(value) : value;
+    const n = typeof value === "string" ? Number(value) : value;
     return Number.isFinite(n) ? n : 0;
   };
 
@@ -292,7 +303,10 @@ export default function ContractDetailPage() {
     if (!contract) return 0;
     const fromSummary = toNumber(contract.summary?.totalPaid);
     if (fromSummary > 0) return fromSummary;
-    return (contract.paymentRecords || []).reduce((sum, item) => sum + toNumber(item.amount), 0);
+    return (contract.paymentRecords || []).reduce(
+      (sum, item) => sum + toNumber(item.amount),
+      0,
+    );
   };
 
   const getReceivable = () => {
@@ -307,7 +321,7 @@ export default function ContractDetailPage() {
     const fromSummary = toNumber(contract.summary?.totalInvoiced);
     if (contract.summary?.totalInvoiced !== undefined) return fromSummary;
     return (contract.invoices || [])
-      .filter((item) => item.status === 'ISSUED')
+      .filter((item) => item.status === "ISSUED")
       .reduce((sum, item) => sum + toNumber(item.amount), 0);
   };
 
@@ -331,44 +345,47 @@ export default function ContractDetailPage() {
     const totalAmount = toNumber(contract.amountWithTax);
     const invoiced = getTotalInvoiced();
     if (totalAmount <= 0) return 0;
-    return Math.max(0, Math.min(100, Math.round((invoiced / totalAmount) * 100)));
+    return Math.max(
+      0,
+      Math.min(100, Math.round((invoiced / totalAmount) * 100)),
+    );
   };
 
   // 回款计划表格列
   const planColumns = [
     {
-      title: '期数',
-      dataIndex: 'period',
-      key: 'period',
+      title: "期数",
+      dataIndex: "period",
+      key: "period",
       width: 80,
       render: (v: number) => `第${v}期`,
     },
     {
-      title: '计划金额',
-      dataIndex: 'planAmount',
-      key: 'planAmount',
+      title: "计划金额",
+      dataIndex: "planAmount",
+      key: "planAmount",
       width: 150,
       render: (v: number) => `¥${formatAmount(v)}`,
     },
     {
-      title: '计划日期',
-      dataIndex: 'planDate',
-      key: 'planDate',
+      title: "计划日期",
+      dataIndex: "planDate",
+      key: "planDate",
       width: 120,
       render: (v: string) => formatDate(v),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
       width: 100,
       render: (status: string) => {
         const statusMap: Record<string, { label: string; color: string }> = {
-          PENDING: { label: '待回款', color: 'default' },
-          PARTIAL: { label: '部分回款', color: 'processing' },
-          COMPLETED: { label: '已完成', color: 'success' },
+          PENDING: { label: "待回款", color: "default" },
+          PARTIAL: { label: "部分回款", color: "processing" },
+          COMPLETED: { label: "已完成", color: "success" },
         };
-        const info = statusMap[status] || { label: status, color: 'default' };
+        const info = statusMap[status] || { label: status, color: "default" };
         return <Tag color={info.color}>{info.label}</Tag>;
       },
     },
@@ -377,39 +394,39 @@ export default function ContractDetailPage() {
   // 回款记录表格列
   const recordColumns = [
     {
-      title: '回款金额',
-      dataIndex: 'amount',
-      key: 'amount',
+      title: "回款金额",
+      dataIndex: "amount",
+      key: "amount",
       width: 150,
       render: (v: number) => <Text strong>¥{formatAmount(v)}</Text>,
     },
     {
-      title: '回款日期',
-      dataIndex: 'paymentDate',
-      key: 'paymentDate',
+      title: "回款日期",
+      dataIndex: "paymentDate",
+      key: "paymentDate",
       width: 120,
       render: (v: string) => formatDate(v),
     },
     {
-      title: '回款方式',
-      dataIndex: 'paymentMethod',
-      key: 'paymentMethod',
+      title: "回款方式",
+      dataIndex: "paymentMethod",
+      key: "paymentMethod",
       width: 100,
       render: (v: string) => {
         const methodMap: Record<string, string> = {
-          TRANSFER: '转账',
-          CASH: '现金',
-          CHECK: '支票',
+          TRANSFER: "转账",
+          CASH: "现金",
+          CHECK: "支票",
         };
-        return methodMap[v] || v || '-';
+        return methodMap[v] || v || "-";
       },
     },
     {
-      title: '备注',
-      dataIndex: 'remark',
-      key: 'remark',
+      title: "备注",
+      dataIndex: "remark",
+      key: "remark",
       ellipsis: true,
-      render: (v: string) => v || '-',
+      render: (v: string) => v || "-",
     },
   ];
 
@@ -426,7 +443,7 @@ export default function ContractDetailPage() {
       <div className="text-center py-20">
         <Text type="secondary">合同不存在或已被删除</Text>
         <div className="mt-4">
-          <Button onClick={() => router.push('/contracts')}>返回列表</Button>
+          <Button onClick={() => router.push("/contracts")}>返回列表</Button>
         </div>
       </div>
     );
@@ -443,54 +460,55 @@ export default function ContractDetailPage() {
 
   const invoiceColumns = [
     {
-      title: '发票号码',
-      dataIndex: 'invoiceNo',
-      key: 'invoiceNo',
+      title: "发票号码",
+      dataIndex: "invoiceNo",
+      key: "invoiceNo",
       width: 180,
       ellipsis: true,
     },
     {
-      title: '发票类型',
-      dataIndex: 'invoiceType',
-      key: 'invoiceType',
+      title: "发票类型",
+      dataIndex: "invoiceType",
+      key: "invoiceType",
       width: 150,
-      render: (v: string) => INVOICE_TYPE_LABELS[v] || v || '-',
+      render: (v: string) => INVOICE_TYPE_LABELS[v] || v || "-",
     },
     {
-      title: '金额',
-      dataIndex: 'amount',
-      key: 'amount',
+      title: "金额",
+      dataIndex: "amount",
+      key: "amount",
       width: 140,
       render: (v: number) => <Text strong>¥{formatAmount(v)}</Text>,
     },
     {
-      title: '税额',
-      dataIndex: 'taxAmount',
-      key: 'taxAmount',
+      title: "税额",
+      dataIndex: "taxAmount",
+      key: "taxAmount",
       width: 140,
-      render: (v?: number | null) => (v === null || v === undefined ? '-' : `¥${formatAmount(v)}`),
+      render: (v?: number | null) =>
+        v === null || v === undefined ? "-" : `¥${formatAmount(v)}`,
     },
     {
-      title: '开票日期',
-      dataIndex: 'invoiceDate',
-      key: 'invoiceDate',
+      title: "开票日期",
+      dataIndex: "invoiceDate",
+      key: "invoiceDate",
       width: 130,
       render: (v: string) => formatDate(v),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
       width: 110,
       render: (v: string) => (
-        <Tag color={INVOICE_STATUS_COLORS[v] || 'default'}>
-          {INVOICE_STATUS_LABELS[v] || v || '-'}
+        <Tag color={INVOICE_STATUS_COLORS[v] || "default"}>
+          {INVOICE_STATUS_LABELS[v] || v || "-"}
         </Tag>
       ),
     },
     {
-      title: '操作',
-      key: 'actions',
+      title: "操作",
+      key: "actions",
       width: 170,
       render: (_: unknown, record: InvoiceRecord) =>
         record.attachmentUrl ? (
@@ -517,7 +535,7 @@ export default function ContractDetailPage() {
             </Button>
           </Space>
         ) : (
-          '-'
+          "-"
         ),
     },
   ];
@@ -529,7 +547,7 @@ export default function ContractDetailPage() {
         <Space>
           <Button
             icon={<ArrowLeftOutlined />}
-            onClick={() => router.push('/contracts')}
+            onClick={() => router.push("/contracts")}
           >
             返回
           </Button>
@@ -556,16 +574,20 @@ export default function ContractDetailPage() {
             {contract.name}
           </Descriptions.Item>
           <Descriptions.Item label="对方签约主体">
-            {contract.customer?.name || '-'}
+            {contract.customer?.name || "-"}
           </Descriptions.Item>
           <Descriptions.Item label="签约年份">
-            {contract.signDate ? new Date(contract.signDate).getFullYear() : '-'}
+            {contract.signDate
+              ? new Date(contract.signDate).getFullYear()
+              : "-"}
           </Descriptions.Item>
           <Descriptions.Item label="公司签约主体">
-            {contract.signingEntity || '-'}
+            {contract.signingEntity || "-"}
           </Descriptions.Item>
           <Descriptions.Item label="合同类型">
-            {contract.contractType ? contractTypeMap[contract.contractType] || contract.contractType : '-'}
+            {contract.contractType
+              ? contractTypeMap[contract.contractType] || contract.contractType
+              : "-"}
           </Descriptions.Item>
           <Descriptions.Item label="合同状态">
             <Tag color={CONTRACT_STATUS_COLORS[contract.status]}>
@@ -578,27 +600,32 @@ export default function ContractDetailPage() {
           <Descriptions.Item label="合同期限">
             {contract.startDate && contract.endDate
               ? `${formatDate(contract.startDate)} ~ ${formatDate(contract.endDate)}`
-              : '-'}
+              : "-"}
           </Descriptions.Item>
           <Descriptions.Item label="含税金额">
-            <Text strong type="success">¥{formatAmount(contract.amountWithTax)}</Text>
+            <Text strong type="success">
+              ¥{formatAmount(contract.amountWithTax)}
+            </Text>
           </Descriptions.Item>
           <Descriptions.Item label="不含税金额">
             ¥{formatAmount(contract.amountWithoutTax)}
           </Descriptions.Item>
           <Descriptions.Item label="税率">
-            {contract.taxRate ? `${contract.taxRate}%` : '-'}
+            {contract.taxRate ? `${contract.taxRate}%` : "-"}
           </Descriptions.Item>
           <Descriptions.Item label="备注" span={3}>
-            {contract.remark || '-'}
+            {contract.remark || "-"}
           </Descriptions.Item>
           <Descriptions.Item label="合同附件" span={3}>
             {contract.attachmentUrl ? (
               <Space wrap>
                 <Tag icon={<PaperClipOutlined />} color="blue">
-                  {contract.attachmentName || '合同附件'}
+                  {contract.attachmentName || "合同附件"}
                 </Tag>
-                {isPdfAttachment(contract.attachmentName, contract.attachmentUrl) && (
+                {isPdfAttachment(
+                  contract.attachmentName,
+                  contract.attachmentUrl,
+                ) && (
                   <Button
                     type="link"
                     icon={<EyeOutlined />}
@@ -620,7 +647,7 @@ export default function ContractDetailPage() {
                 </Button>
               </Space>
             ) : (
-              '-'
+              "-"
             )}
           </Descriptions.Item>
         </Descriptions>
@@ -637,24 +664,24 @@ export default function ContractDetailPage() {
                 </div>
                 <Progress
                   percent={progress}
-                  status={progress >= 100 ? 'success' : 'active'}
+                  status={progress >= 100 ? "success" : "active"}
                   strokeWidth={12}
                 />
               </div>
               <Divider type="vertical" style={{ height: 60 }} />
               <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">
+                <div className="text-2xl font-bold text-green-600">
                   ¥{formatAmount(totalPaid)}
+                </div>
+                <Text type="secondary">{flowLabels.doneLabel}</Text>
               </div>
-              <Text type="secondary">{flowLabels.doneLabel}</Text>
-            </div>
               <Divider type="vertical" style={{ height: 60 }} />
               <div className="text-center">
-              <div className="text-2xl font-bold text-orange-500">
+                <div className="text-2xl font-bold text-orange-500">
                   ¥{formatAmount(receivable)}
+                </div>
+                <Text type="secondary">{flowLabels.balanceLabel}</Text>
               </div>
-              <Text type="secondary">{flowLabels.balanceLabel}</Text>
-            </div>
             </div>
           </Card>
 
@@ -662,16 +689,28 @@ export default function ContractDetailPage() {
           <Card title={flowLabels.planTitle} className="mb-4">
             <Table
               columns={planColumns.map((item) =>
-                item.key === 'status'
+                item.key === "status"
                   ? {
                       ...item,
                       render: (status: string) => {
-                        const statusMap: Record<string, { label: string; color: string }> = {
-                          PENDING: { label: flowLabels.planStatusPending, color: 'default' },
-                          PARTIAL: { label: flowLabels.planStatusPartial, color: 'processing' },
-                          COMPLETED: { label: '已完成', color: 'success' },
+                        const statusMap: Record<
+                          string,
+                          { label: string; color: string }
+                        > = {
+                          PENDING: {
+                            label: flowLabels.planStatusPending,
+                            color: "default",
+                          },
+                          PARTIAL: {
+                            label: flowLabels.planStatusPartial,
+                            color: "processing",
+                          },
+                          COMPLETED: { label: "已完成", color: "success" },
                         };
-                        const info = statusMap[status] || { label: status, color: 'default' };
+                        const info = statusMap[status] || {
+                          label: status,
+                          color: "default",
+                        };
                         return <Tag color={info.color}>{info.label}</Tag>;
                       },
                     }
@@ -689,9 +728,12 @@ export default function ContractDetailPage() {
           <Card title={flowLabels.recordTitle}>
             <Table
               columns={recordColumns.map((item) => {
-                if (item.key === 'amount') return { ...item, title: flowLabels.amountColumn };
-                if (item.key === 'paymentDate') return { ...item, title: flowLabels.dateColumn };
-                if (item.key === 'paymentMethod') return { ...item, title: flowLabels.methodColumn };
+                if (item.key === "amount")
+                  return { ...item, title: flowLabels.amountColumn };
+                if (item.key === "paymentDate")
+                  return { ...item, title: flowLabels.dateColumn };
+                if (item.key === "paymentMethod")
+                  return { ...item, title: flowLabels.methodColumn };
                 return item;
               })}
               dataSource={contract.paymentRecords || []}
@@ -712,7 +754,7 @@ export default function ContractDetailPage() {
             </div>
             <Progress
               percent={invoiceProgress}
-              status={invoiceProgress >= 100 ? 'success' : 'active'}
+              status={invoiceProgress >= 100 ? "success" : "active"}
               strokeWidth={10}
             />
           </div>
@@ -738,7 +780,7 @@ export default function ContractDetailPage() {
           rowKey="id"
           pagination={false}
           size="small"
-          locale={{ emptyText: '暂无开票记录' }}
+          locale={{ emptyText: "暂无开票记录" }}
           scroll={{ x: 1140 }}
         />
       </Card>

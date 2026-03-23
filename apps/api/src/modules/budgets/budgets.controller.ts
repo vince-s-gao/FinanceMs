@@ -17,7 +17,7 @@ import { CreateBudgetDto } from "./dto/create-budget.dto";
 import { UpdateBudgetDto } from "./dto/update-budget.dto";
 import { QueryBudgetDto } from "./dto/query-budget.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles } from "../../common/decorators";
+import { Functions, Roles } from "../../common/decorators";
 
 // 角色常量
 const Role = {
@@ -36,6 +36,7 @@ export class BudgetsController {
 
   @Get()
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("budget.view")
   @ApiOperation({ summary: "获取预算列表" })
   async findAll(@Query() query: QueryBudgetDto) {
     return this.budgetsService.findAll(query);
@@ -43,6 +44,7 @@ export class BudgetsController {
 
   @Get("departments")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("budget.view")
   @ApiOperation({ summary: "获取部门列表" })
   async getDepartments() {
     return this.budgetsService.getDepartments();
@@ -50,6 +52,7 @@ export class BudgetsController {
 
   @Get("summary/:year/:department")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("budget.view")
   @ApiOperation({ summary: "获取部门预算汇总" })
   async getDepartmentSummary(
     @Param("year") year: string,
@@ -60,6 +63,7 @@ export class BudgetsController {
 
   @Get(":id")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("budget.view")
   @ApiOperation({ summary: "获取预算详情" })
   async findOne(@Param("id") id: string) {
     return this.budgetsService.findOne(id);
@@ -67,6 +71,7 @@ export class BudgetsController {
 
   @Post()
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("budget.create")
   @ApiOperation({ summary: "创建预算" })
   async create(@Body() createBudgetDto: CreateBudgetDto) {
     return this.budgetsService.create(createBudgetDto);
@@ -74,6 +79,7 @@ export class BudgetsController {
 
   @Patch(":id")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("budget.edit")
   @ApiOperation({ summary: "更新预算" })
   async update(
     @Param("id") id: string,
@@ -84,6 +90,7 @@ export class BudgetsController {
 
   @Patch(":id/freeze")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("budget.freeze")
   @ApiOperation({ summary: "冻结/解冻预算" })
   async toggleFreeze(@Param("id") id: string) {
     return this.budgetsService.toggleFreeze(id);
@@ -91,6 +98,7 @@ export class BudgetsController {
 
   @Patch(":id/close")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("budget.close")
   @ApiOperation({ summary: "关闭预算" })
   async close(@Param("id") id: string) {
     return this.budgetsService.close(id);
@@ -98,6 +106,7 @@ export class BudgetsController {
 
   @Delete(":id")
   @Roles(Role.ADMIN)
+  @Functions("budget.delete")
   @ApiOperation({ summary: "删除预算" })
   async remove(@Param("id") id: string) {
     return this.budgetsService.remove(id);

@@ -6,13 +6,23 @@ import {
   ConflictException,
 } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
+import { Role } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
+import { normalizePagination } from "../../common/utils/query.utils";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
+
+  private toRole(value?: string): Role | undefined {
+    if (!value) return undefined;
+    return (Object.values(Role) as string[]).includes(value)
+      ? (value as Role)
+      : undefined;
+  }
 
   /**
    * 根据邮箱查找用户
@@ -42,17 +52,22 @@ export class UsersService {
     isActive?: boolean;
   }) {
     const { page = 1, pageSize = 20, role, isActive } = params;
-    const skip = (page - 1) * pageSize;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
 
-    const where: any = {};
-    if (role) where.role = role;
+    const where: Prisma.UserWhereInput = {};
+    const normalizedRole = this.toRole(role);
+    if (normalizedRole) where.role = normalizedRole;
     if (isActive !== undefined) where.isActive = isActive;
 
     const [items, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
@@ -74,9 +89,9 @@ export class UsersService {
     return {
       items,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 

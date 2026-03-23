@@ -105,7 +105,7 @@ const ALL_MENU_ITEMS = [
 
 // 角色权限配置
 const ROLE_MENU_CONFIG: Record<string, string[]> = {
-  EMPLOYEE: ["/dashboard", "/expenses"],
+  EMPLOYEE: ["/dashboard", "/expenses", "/profile"],
   SALES: [
     "/dashboard",
     "/customers",
@@ -113,6 +113,7 @@ const ROLE_MENU_CONFIG: Record<string, string[]> = {
     "/payments",
     "/expenses",
     "/projects",
+    "/profile",
   ],
   FINANCE: [
     "/dashboard",
@@ -127,6 +128,7 @@ const ROLE_MENU_CONFIG: Record<string, string[]> = {
     "/budgets",
     "/reports",
     "/projects",
+    "/profile",
   ],
   MANAGER: [
     "/dashboard",
@@ -141,6 +143,7 @@ const ROLE_MENU_CONFIG: Record<string, string[]> = {
     "/budgets",
     "/reports",
     "/projects",
+    "/profile",
   ],
   ADMIN: [
     "/dashboard",
@@ -160,6 +163,7 @@ const ROLE_MENU_CONFIG: Record<string, string[]> = {
     "/settings",
     "/settings/dictionaries",
     "/audit-logs",
+    "/profile",
   ],
 };
 
@@ -175,13 +179,20 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationLoading, setNotificationLoading] = useState(false);
+  const [menuPermissions, setMenuPermissions] = useState<string[] | undefined>(
+    undefined,
+  );
   const prefetchedRoutesRef = useRef<Set<string>>(new Set());
   const userId = user?.id;
-
-  const allowedPaths = useMemo(
+  const roleFallbackPaths = useMemo(
     () =>
       ROLE_MENU_CONFIG[user?.role || "EMPLOYEE"] || ROLE_MENU_CONFIG.EMPLOYEE,
     [user?.role],
+  );
+
+  const allowedPaths = useMemo(
+    () => (menuPermissions !== undefined ? menuPermissions : roleFallbackPaths),
+    [menuPermissions, roleFallbackPaths],
   );
 
   const hasMenuAccess = useCallback(
@@ -216,9 +227,52 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !userId) return;
+    let mounted = true;
+
+    const loadMenuPermissions = async () => {
+      try {
+        const res = await api.get<{ menus?: string[] }>("/permissions/me");
+        if (!mounted) return;
+        setMenuPermissions(Array.isArray(res.menus) ? res.menus : []);
+      } catch {
+        if (!mounted) return;
+        setMenuPermissions(undefined);
+      }
+    };
+
+    loadMenuPermissions();
+    return () => {
+      mounted = false;
+    };
+  }, [isHydrated, isAuthenticated, userId, user?.role]);
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !user) return;
+    if (pathname === "/profile") return;
+    if (!hasMenuAccess(pathname)) {
+      const fallbackPath = allowedPaths[0] || "/dashboard";
+      if (pathname !== fallbackPath) {
+        router.replace(fallbackPath);
+      }
+    }
+  }, [
+    allowedPaths,
+    hasMenuAccess,
+    isAuthenticated,
+    isHydrated,
+    pathname,
+    router,
+    user,
+  ]);
+
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !userId) return;
+    let isActive = true;
 
     const loadNotifications = async () => {
-      setNotificationLoading(true);
+      if (isActive) {
+        setNotificationLoading(true);
+      }
       try {
         const [countRes, listRes] = await Promise.all([
           api.get<{ unreadCount: number }>("/notifications/unread-count"),
@@ -226,19 +280,25 @@ export default function MainLayout({ children }: MainLayoutProps) {
             params: { page: 1, pageSize: 8 },
           }),
         ]);
+        if (!isActive) return;
         setUnreadCount(countRes.unreadCount || 0);
         setNotifications(listRes.items || []);
       } catch {
         // keep silent to avoid layout-level toast noise
       } finally {
-        setNotificationLoading(false);
+        if (isActive) {
+          setNotificationLoading(false);
+        }
       }
     };
 
     loadNotifications();
     const timer = setInterval(loadNotifications, 30000);
-    return () => clearInterval(timer);
-  }, [isHydrated, isAuthenticated, userId, pathname]);
+    return () => {
+      isActive = false;
+      clearInterval(timer);
+    };
+  }, [isHydrated, isAuthenticated, userId]);
 
   // 预取当前角色可访问页面，减少侧边栏切换时的等待时间
   useEffect(() => {
@@ -297,6 +357,16 @@ export default function MainLayout({ children }: MainLayoutProps) {
     }
   };
 
+  const handleUserMenuClick = async ({ key }: { key: string }) => {
+    if (key === "profile") {
+      router.push("/profile");
+      return;
+    }
+    if (key === "logout") {
+      await handleLogout();
+    }
+  };
+
   // 用户下拉菜单
   const userMenuItems = [
     {
@@ -311,7 +381,6 @@ export default function MainLayout({ children }: MainLayoutProps) {
       key: "logout",
       icon: <LogoutOutlined />,
       label: "退出登录",
-      onClick: handleLogout,
     },
   ];
 
@@ -463,7 +532,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
               </Badge>
             </Popover>
 
-            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <Dropdown
+              menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
+              placement="bottomRight"
+            >
               <Space className="cursor-pointer hover:bg-gray-50 px-3 py-1 rounded-lg transition-colors">
                 <Avatar
                   size="small"

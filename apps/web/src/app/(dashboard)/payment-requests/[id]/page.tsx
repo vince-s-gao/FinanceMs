@@ -1,9 +1,10 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 付款申请详情页面
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
 import {
   Button,
   Card,
@@ -16,7 +17,7 @@ import {
   Typography,
   List,
   Divider,
-} from 'antd';
+} from "antd";
 import {
   ArrowLeftOutlined,
   EditOutlined,
@@ -25,29 +26,29 @@ import {
   CloseOutlined,
   FileTextOutlined,
   DownloadOutlined,
-} from '@ant-design/icons';
-import dayjs from 'dayjs';
+} from "@ant-design/icons";
+import dayjs from "dayjs";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 // 状态映射
 const statusMap: Record<string, { label: string; color: string }> = {
-  DRAFT: { label: '草稿', color: 'default' },
-  PENDING: { label: '待审批', color: 'processing' },
-  APPROVED: { label: '已通过', color: 'success' },
-  REJECTED: { label: '已拒绝', color: 'error' },
-  PAID: { label: '已付款', color: 'cyan' },
-  CANCELLED: { label: '已取消', color: 'default' },
+  DRAFT: { label: "草稿", color: "default" },
+  PENDING: { label: "待审批", color: "processing" },
+  APPROVED: { label: "已通过", color: "success" },
+  REJECTED: { label: "已拒绝", color: "error" },
+  PAID: { label: "已付款", color: "cyan" },
+  CANCELLED: { label: "已取消", color: "default" },
 };
 
 // 付款方式映射
 const paymentMethodMap: Record<string, string> = {
-  TRANSFER: '银行转账',
-  CASH: '现金',
-  CHECK: '支票',
-  DRAFT: '汇票',
-  OTHER: '其他',
+  TRANSFER: "银行转账",
+  CASH: "现金",
+  CHECK: "支票",
+  DRAFT: "汇票",
+  OTHER: "其他",
 };
 
 interface PaymentRequest {
@@ -63,17 +64,22 @@ interface PaymentRequest {
   // 收款方信息已整合到 bankAccount 中
   attachments?: { name: string; url: string; size?: number }[];
   remark?: string;
-  contract?: { id: string; contractNo: string; name: string; contractType?: string };
+  contract?: {
+    id: string;
+    contractNo: string;
+    name: string;
+    contractType?: string;
+  };
   project?: { id: string; code: string; name: string };
   applicant: { id: string; name: string; email: string; phone?: string };
   // bankAccount 包含收款方完整信息
   bankAccount: {
     id: string;
-    accountType?: string;   // 账户类型：PERSONAL/CORPORATE
-    accountName: string;    // 户名
-    accountNo: string;      // 账号
-    bankName: string;       // 银行名称
-    bankBranch?: string;    // 支行名称
+    accountType?: string; // 账户类型：PERSONAL/CORPORATE
+    accountName: string; // 户名
+    accountNo: string; // 账号
+    bankName: string; // 银行名称
+    bankBranch?: string; // 支行名称
   };
   approver?: { id: string; name: string; email: string };
   submitDate?: string;
@@ -89,18 +95,22 @@ export default function PaymentRequestDetailPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<PaymentRequest | null>(null);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
-  const [approveAction, setApproveAction] = useState<'APPROVED' | 'REJECTED'>('APPROVED');
-  const [approvalRemark, setApprovalRemark] = useState('');
+  const [approveAction, setApproveAction] = useState<"APPROVED" | "REJECTED">(
+    "APPROVED",
+  );
+  const [approvalRemark, setApprovalRemark] = useState("");
 
   // 加载数据
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await api.get<PaymentRequest>(`/payment-requests/${requestId}`);
+      const result = await api.get<PaymentRequest>(
+        `/payment-requests/${requestId}`,
+      );
       setData(result);
-    } catch (error: any) {
-      message.error(error.message || '加载数据失败');
-      router.push('/payment-requests');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "加载数据失败"));
+      router.push("/payment-requests");
     } finally {
       setLoading(false);
     }
@@ -114,10 +124,10 @@ export default function PaymentRequestDetailPage() {
   const handleSubmit = async () => {
     try {
       await api.post(`/payment-requests/${requestId}/submit`);
-      message.success('提交成功');
+      message.success("提交成功");
       loadData();
-    } catch (error: any) {
-      message.error(error.message || '提交失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "提交失败"));
     }
   };
 
@@ -128,27 +138,27 @@ export default function PaymentRequestDetailPage() {
         status: approveAction,
         approvalRemark,
       });
-      message.success(approveAction === 'APPROVED' ? '审批通过' : '已拒绝');
+      message.success(approveAction === "APPROVED" ? "审批通过" : "已拒绝");
       setApproveModalOpen(false);
-      setApprovalRemark('');
+      setApprovalRemark("");
       loadData();
-    } catch (error: any) {
-      message.error(error.message || '审批失败');
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "审批失败"));
     }
   };
 
   // 确认付款
   const handleConfirmPayment = async () => {
     Modal.confirm({
-      title: '确认付款',
-      content: '确定要确认该付款申请已完成付款吗？',
+      title: "确认付款",
+      content: "确定要确认该付款申请已完成付款吗？",
       onOk: async () => {
         try {
           await api.post(`/payment-requests/${requestId}/confirm-payment`);
-          message.success('已确认付款');
+          message.success("已确认付款");
           loadData();
-        } catch (error: any) {
-          message.error(error.message || '操作失败');
+        } catch (error: unknown) {
+          message.error(getErrorMessage(error, "操作失败"));
         }
       },
     });
@@ -157,22 +167,24 @@ export default function PaymentRequestDetailPage() {
   // 取消申请
   const handleCancel = async () => {
     Modal.confirm({
-      title: '取消申请',
-      content: '确定要取消该付款申请吗？',
+      title: "取消申请",
+      content: "确定要取消该付款申请吗？",
       onOk: async () => {
         try {
           await api.post(`/payment-requests/${requestId}/cancel`);
-          message.success('已取消');
+          message.success("已取消");
           loadData();
-        } catch (error: any) {
-          message.error(error.message || '取消失败');
+        } catch (error: unknown) {
+          message.error(getErrorMessage(error, "取消失败"));
         }
       },
     });
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64">加载中...</div>;
+    return (
+      <div className="flex items-center justify-center h-64">加载中...</div>
+    );
   }
 
   if (!data) {
@@ -191,7 +203,9 @@ export default function PaymentRequestDetailPage() {
           />
           <div>
             <Space>
-              <Title level={4} style={{ margin: 0 }}>{data.requestNo}</Title>
+              <Title level={4} style={{ margin: 0 }}>
+                {data.requestNo}
+              </Title>
               <Tag color={statusMap[data.status]?.color}>
                 {statusMap[data.status]?.label}
               </Tag>
@@ -202,7 +216,7 @@ export default function PaymentRequestDetailPage() {
           </div>
         </div>
         <Space>
-          {data.status === 'DRAFT' && (
+          {data.status === "DRAFT" && (
             <>
               <Button
                 icon={<EditOutlined />}
@@ -210,18 +224,22 @@ export default function PaymentRequestDetailPage() {
               >
                 编辑
               </Button>
-              <Button type="primary" icon={<SendOutlined />} onClick={handleSubmit}>
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                onClick={handleSubmit}
+              >
                 提交
               </Button>
             </>
           )}
-          {data.status === 'PENDING' && (
+          {data.status === "PENDING" && (
             <>
               <Button
                 danger
                 icon={<CloseOutlined />}
                 onClick={() => {
-                  setApproveAction('REJECTED');
+                  setApproveAction("REJECTED");
                   setApproveModalOpen(true);
                 }}
               >
@@ -231,7 +249,7 @@ export default function PaymentRequestDetailPage() {
                 type="primary"
                 icon={<CheckOutlined />}
                 onClick={() => {
-                  setApproveAction('APPROVED');
+                  setApproveAction("APPROVED");
                   setApproveModalOpen(true);
                 }}
               >
@@ -240,8 +258,12 @@ export default function PaymentRequestDetailPage() {
               <Button onClick={handleCancel}>取消申请</Button>
             </>
           )}
-          {data.status === 'APPROVED' && (
-            <Button type="primary" icon={<CheckOutlined />} onClick={handleConfirmPayment}>
+          {data.status === "APPROVED" && (
+            <Button
+              type="primary"
+              icon={<CheckOutlined />}
+              onClick={handleConfirmPayment}
+            >
               确认付款
             </Button>
           )}
@@ -258,11 +280,11 @@ export default function PaymentRequestDetailPage() {
                 <Text type="secondary">{data.contract.name}</Text>
               </div>
             ) : (
-              '-'
+              "-"
             )}
           </Descriptions.Item>
           <Descriptions.Item label="关联项目" span={3}>
-            {data.project ? `${data.project.code} - ${data.project.name}` : '-'}
+            {data.project ? `${data.project.code} - ${data.project.name}` : "-"}
           </Descriptions.Item>
           <Descriptions.Item label="付款事由">{data.reason}</Descriptions.Item>
           <Descriptions.Item label="付款金额">
@@ -274,22 +296,27 @@ export default function PaymentRequestDetailPage() {
             {paymentMethodMap[data.paymentMethod]}
           </Descriptions.Item>
           <Descriptions.Item label="付款日期">
-            {dayjs(data.paymentDate).format('YYYY-MM-DD')}
+            {dayjs(data.paymentDate).format("YYYY-MM-DD")}
           </Descriptions.Item>
           <Descriptions.Item label="收款方账户" span={2}>
             {/* 收款方信息已整合到银行账户中 */}
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-medium">{data.bankAccount.accountName}</span>
+                <span className="font-medium">
+                  {data.bankAccount.accountName}
+                </span>
                 {data.bankAccount.accountType && (
                   <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded">
-                    {data.bankAccount.accountType === 'PERSONAL' ? '个人' : '对公'}
+                    {data.bankAccount.accountType === "PERSONAL"
+                      ? "个人"
+                      : "对公"}
                   </span>
                 )}
               </div>
               <div className="text-gray-500">
                 {data.bankAccount.bankName}
-                {data.bankAccount.bankBranch && ` · ${data.bankAccount.bankBranch}`}
+                {data.bankAccount.bankBranch &&
+                  ` · ${data.bankAccount.bankBranch}`}
               </div>
               <div className="text-gray-400">{data.bankAccount.accountNo}</div>
             </div>
@@ -348,9 +375,12 @@ export default function PaymentRequestDetailPage() {
       {data.approver && (
         <Card title="审批信息">
           <Descriptions column={3}>
-            <Descriptions.Item label="审批人">{data.approver.name}</Descriptions.Item>
+            <Descriptions.Item label="审批人">
+              {data.approver.name}
+            </Descriptions.Item>
             <Descriptions.Item label="审批时间">
-              {data.approvedAt && dayjs(data.approvedAt).format('YYYY-MM-DD HH:mm')}
+              {data.approvedAt &&
+                dayjs(data.approvedAt).format("YYYY-MM-DD HH:mm")}
             </Descriptions.Item>
             <Descriptions.Item label="审批结果">
               <Tag color={statusMap[data.status]?.color}>
@@ -368,17 +398,17 @@ export default function PaymentRequestDetailPage() {
 
       {/* 审批对话框 */}
       <Modal
-        title={approveAction === 'APPROVED' ? '审批通过' : '拒绝申请'}
+        title={approveAction === "APPROVED" ? "审批通过" : "拒绝申请"}
         open={approveModalOpen}
         onOk={handleApprove}
         onCancel={() => {
           setApproveModalOpen(false);
-          setApprovalRemark('');
+          setApprovalRemark("");
         }}
         okText="确认"
         cancelText="取消"
         okButtonProps={{
-          danger: approveAction === 'REJECTED',
+          danger: approveAction === "REJECTED",
         }}
       >
         <div className="py-4">

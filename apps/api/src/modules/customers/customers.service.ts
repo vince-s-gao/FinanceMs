@@ -12,12 +12,16 @@ import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { QueryCustomerDto } from "./dto/query-customer.dto";
 import { ApproveCustomerDto } from "./dto/approve-customer.dto";
 import { ApprovalStatus, Prisma } from "@prisma/client";
-import { resolveSortField } from "../../common/utils/query.utils";
+import {
+  normalizePagination,
+  resolveSortField,
+} from "../../common/utils/query.utils";
 import {
   createWithGeneratedCode,
   generatePrefixedCode,
 } from "../../common/utils/code-generator.utils";
 import { isUniqueConflict as isPrismaUniqueConflict } from "../../common/utils/prisma.utils";
+import { resolveErrorMessage } from "../../common/utils/error.utils";
 import {
   normalizeText,
   parseTabularBuffer,
@@ -59,9 +63,15 @@ const CUSTOMER_APPROVAL_STATUS_LABELS: Record<string, string> = {
   APPROVED: "已通过",
   REJECTED: "已拒绝",
 };
+const CUSTOMER_TYPE_LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class CustomersService {
+  private customerTypeLookupCache: {
+    expiresAt: number;
+    lookup: Map<string, string>;
+  } | null = null;
+
   constructor(private prisma: PrismaService) {}
 
   private toLookupKey(value: string): string {
@@ -92,6 +102,14 @@ export class CustomersService {
   }
 
   private async getCustomerTypeLookup(): Promise<Map<string, string>> {
+    const now = Date.now();
+    if (
+      this.customerTypeLookupCache &&
+      this.customerTypeLookupCache.expiresAt > now
+    ) {
+      return new Map(this.customerTypeLookupCache.lookup);
+    }
+
     const map = new Map<string, string>();
     const dictItems = await this.prisma.dictionary.findMany({
       where: { type: "CUSTOMER_TYPE", isEnabled: true },
@@ -110,6 +128,11 @@ export class CustomersService {
     map.set(this.toLookupKey("enterprise"), "ENTERPRISE");
     map.set(this.toLookupKey("个人"), "INDIVIDUAL");
     map.set(this.toLookupKey("individual"), "INDIVIDUAL");
+
+    this.customerTypeLookupCache = {
+      expiresAt: now + CUSTOMER_TYPE_LOOKUP_CACHE_TTL_MS,
+      lookup: new Map(map),
+    };
 
     return map;
   }
@@ -152,7 +175,11 @@ export class CustomersService {
       sortBy = "createdAt",
       sortOrder = "desc",
     } = query;
-    const skip = (page - 1) * pageSize;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
     const safeSortBy = resolveSortField(
       sortBy,
       ALLOWED_CUSTOMER_SORT_FIELDS,
@@ -165,7 +192,7 @@ export class CustomersService {
       this.prisma.customer.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: { [safeSortBy]: sortOrder },
         include: {
           _count: {
@@ -183,9 +210,9 @@ export class CustomersService {
     return {
       items,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 
@@ -374,14 +401,18 @@ export class CustomersService {
       sortBy = "createdAt",
       sortOrder = "desc",
     } = query;
-    const skip = (page - 1) * pageSize;
+    const {
+      page: safePage,
+      pageSize: safePageSize,
+      skip,
+    } = normalizePagination({ page, pageSize });
     const safeSortBy = resolveSortField(
       sortBy,
       ALLOWED_CUSTOMER_SORT_FIELDS,
       "createdAt",
     );
 
-    const where: any = {
+    const where: Prisma.CustomerWhereInput = {
       isDeleted: false,
       approvalStatus: ApprovalStatus.PENDING, // 只查询待审批的客户
     };
@@ -404,7 +435,7 @@ export class CustomersService {
       this.prisma.customer.findMany({
         where,
         skip,
-        take: pageSize,
+        take: safePageSize,
         orderBy: { [safeSortBy]: sortOrder },
         include: {
           submitter: {
@@ -421,9 +452,9 @@ export class CustomersService {
     return {
       items,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil(total / safePageSize),
     };
   }
 
@@ -668,9 +699,8 @@ export class CustomersService {
             new ConflictException("客户编号生成失败，请重试"),
         });
         success += 1;
-      } catch (error: any) {
-        const message =
-          error?.response?.message || error?.message || "导入失败";
+      } catch (error: unknown) {
+        const message = resolveErrorMessage(error, "导入失败");
         errors.push({ row: rowNo, message: String(message) });
       }
     }

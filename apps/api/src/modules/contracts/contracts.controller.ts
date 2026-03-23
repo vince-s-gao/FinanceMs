@@ -30,17 +30,19 @@ import { UpdateContractDto } from "./dto/update-contract.dto";
 import { QueryContractDto } from "./dto/query-contract.dto";
 import { ChangeStatusDto } from "./dto/change-status.dto";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { CurrentUser, Roles } from "../../common/decorators";
+import { CurrentUser, Functions, Roles } from "../../common/decorators";
 import { Response } from "express";
 import { FileInterceptor, FilesInterceptor } from "@nestjs/platform-express";
 import {
   buildMultiFileInterceptorOptions,
   buildSingleFileInterceptorOptions,
 } from "../../common/utils/upload.utils";
+import type { AuthenticatedUser } from "../../common/types/auth-user.type";
 
 // 角色常量
 const Role = {
   EMPLOYEE: "EMPLOYEE",
+  SALES: "SALES",
   FINANCE: "FINANCE",
   MANAGER: "MANAGER",
   ADMIN: "ADMIN",
@@ -63,7 +65,9 @@ const CONTRACT_ATTACHMENT_EXTENSIONS = [
 export class ContractsController {
   constructor(private readonly contractsService: ContractsService) {}
 
-  private getScopedOperatorId(currentUser: any): string | undefined {
+  private getScopedOperatorId(
+    currentUser?: AuthenticatedUser,
+  ): string | undefined {
     if (!currentUser) return undefined;
     return currentUser.role === Role.ADMIN ? undefined : currentUser.id;
   }
@@ -117,7 +121,8 @@ export class ContractsController {
   }
 
   @Get()
-  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.SALES, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("contract.view")
   @ApiOperation({ summary: "获取合同列表" })
   async findAll(@Query() query: QueryContractDto) {
     return this.contractsService.findAll(query);
@@ -125,6 +130,7 @@ export class ContractsController {
 
   @Get("export/csv")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("contract.export")
   @ApiOperation({ summary: "导出合同列表（CSV）" })
   async exportCsv(@Query() query: QueryContractDto, @Res() res: Response) {
     const csv = await this.contractsService.exportCsv(query);
@@ -133,6 +139,7 @@ export class ContractsController {
 
   @Get("export/excel")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("contract.export")
   @ApiOperation({ summary: "导出合同列表（Excel）" })
   async exportExcel(@Query() query: QueryContractDto, @Res() res: Response) {
     const buffer = await this.contractsService.exportExcel(query);
@@ -140,7 +147,8 @@ export class ContractsController {
   }
 
   @Post()
-  @Roles(Role.FINANCE, Role.ADMIN)
+  @Roles(Role.SALES, Role.FINANCE, Role.ADMIN)
+  @Functions("contract.create")
   @ApiOperation({ summary: "创建合同" })
   async create(@Body() createContractDto: CreateContractDto) {
     return this.contractsService.create(createContractDto);
@@ -148,6 +156,7 @@ export class ContractsController {
 
   @Post("import/csv")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("contract.create")
   @UseInterceptors(
     FileInterceptor(
       "file",
@@ -173,7 +182,7 @@ export class ContractsController {
   async importCsv(
     @UploadedFile() file?: Express.Multer.File,
     @ReqBody("allowPartial") allowPartialRaw?: string,
-    @CurrentUser() currentUser?: any,
+    @CurrentUser() currentUser?: AuthenticatedUser,
   ) {
     if (!file) {
       throw new BadRequestException("请上传导入文件");
@@ -237,7 +246,7 @@ export class ContractsController {
   @ApiOperation({ summary: "获取合同导入历史（最近记录）" })
   async getImportHistory(
     @Query("limit") limitRaw?: string,
-    @CurrentUser() currentUser?: any,
+    @CurrentUser() currentUser?: AuthenticatedUser,
   ) {
     const parsedLimit = Number(limitRaw || 10);
     const limit = Number.isNaN(parsedLimit) ? 10 : parsedLimit;
@@ -253,7 +262,7 @@ export class ContractsController {
   async downloadImportErrorsCsv(
     @Param("id") id: string,
     @Res() res: Response,
-    @CurrentUser() currentUser?: any,
+    @CurrentUser() currentUser?: AuthenticatedUser,
   ) {
     const payload = await this.contractsService.exportImportErrorCsv(
       id,
@@ -268,7 +277,7 @@ export class ContractsController {
   async downloadImportErrorsExcel(
     @Param("id") id: string,
     @Res() res: Response,
-    @CurrentUser() currentUser?: any,
+    @CurrentUser() currentUser?: AuthenticatedUser,
   ) {
     const payload = await this.contractsService.exportImportErrorExcel(
       id,
@@ -280,7 +289,7 @@ export class ContractsController {
   @Delete("import/history")
   @Roles(Role.FINANCE, Role.ADMIN)
   @ApiOperation({ summary: "清空合同导入历史" })
-  async clearImportHistory(@CurrentUser() currentUser?: any) {
+  async clearImportHistory(@CurrentUser() currentUser?: AuthenticatedUser) {
     return this.contractsService.clearImportHistory(
       this.getScopedOperatorId(currentUser),
     );
@@ -288,6 +297,7 @@ export class ContractsController {
 
   @Post("attachments/batch")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("contract.edit")
   @UseInterceptors(
     FilesInterceptor(
       "files",
@@ -330,7 +340,8 @@ export class ContractsController {
   }
 
   @Get(":id/attachment/download")
-  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.SALES, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("contract.view")
   @ApiOperation({ summary: "下载合同附件" })
   async downloadAttachment(@Param("id") id: string, @Res() res: Response) {
     const payload =
@@ -346,7 +357,8 @@ export class ContractsController {
   }
 
   @Get(":id/attachment/preview")
-  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.SALES, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("contract.view")
   @ApiOperation({ summary: "在线预览合同附件（仅 PDF）" })
   async previewAttachment(@Param("id") id: string, @Res() res: Response) {
     const payload = await this.contractsService.getAttachmentPreviewPayload(id);
@@ -361,19 +373,21 @@ export class ContractsController {
   }
 
   @Get(":id")
-  @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.SALES, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("contract.view")
   @ApiOperation({ summary: "获取合同详情" })
   async findOne(@Param("id") id: string) {
     return this.contractsService.findOne(id);
   }
 
   @Patch(":id")
-  @Roles(Role.FINANCE, Role.ADMIN)
+  @Roles(Role.SALES, Role.FINANCE, Role.ADMIN)
+  @Functions("contract.edit")
   @ApiOperation({ summary: "更新合同" })
   async update(
     @Param("id") id: string,
     @Body() updateContractDto: UpdateContractDto,
-    @CurrentUser() currentUser?: any,
+    @CurrentUser() currentUser?: AuthenticatedUser,
   ) {
     return this.contractsService.update(id, updateContractDto, {
       allowNonDraft: currentUser?.role === Role.ADMIN,
@@ -381,7 +395,8 @@ export class ContractsController {
   }
 
   @Patch(":id/status")
-  @Roles(Role.FINANCE, Role.ADMIN)
+  @Roles(Role.SALES, Role.FINANCE, Role.ADMIN)
+  @Functions("contract.edit")
   @ApiOperation({ summary: "变更合同状态" })
   async changeStatus(
     @Param("id") id: string,
@@ -392,8 +407,12 @@ export class ContractsController {
 
   @Delete(":id")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("contract.delete")
   @ApiOperation({ summary: "删除合同" })
-  async remove(@Param("id") id: string, @CurrentUser() currentUser?: any) {
+  async remove(
+    @Param("id") id: string,
+    @CurrentUser() currentUser?: AuthenticatedUser,
+  ) {
     return this.contractsService.remove(id, {
       allowNonDraft: currentUser?.role === Role.ADMIN,
     });
