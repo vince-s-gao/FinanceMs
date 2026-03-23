@@ -110,7 +110,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     // 生产环境下隐藏详细错误信息
     const isProduction = process.env.NODE_ENV === "production";
-    if (isProduction && status === HttpStatus.INTERNAL_SERVER_ERROR) {
+    const isServerError = status >= HttpStatus.INTERNAL_SERVER_ERROR;
+    if (isProduction && isServerError) {
       message = "服务器内部错误，请稍后重试";
       details = undefined;
     }
@@ -120,7 +121,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       : this.sanitizeText(String(message));
     const sanitizedDetails = this.sanitizeValue(details);
     const sanitizedStack =
-      exception instanceof Error && exception.stack
+      !isProduction && exception instanceof Error && exception.stack
         ? this.sanitizeText(exception.stack)
         : undefined;
 
@@ -131,11 +132,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
     );
 
     // 返回统一的错误响应
-    const errorResponse = {
+    const errorResponse: Record<string, unknown> = {
       code,
       message: sanitizedMessage,
-      details: sanitizedDetails,
     };
+    if (sanitizedDetails !== undefined) {
+      errorResponse.details = sanitizedDetails;
+    }
 
     response.status(status).json({
       statusCode: status,
