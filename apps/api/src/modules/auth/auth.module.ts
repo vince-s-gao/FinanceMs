@@ -12,8 +12,15 @@ import { UsersModule } from "../users/users.module";
 import { PrismaModule } from "../../prisma/prisma.module";
 import { AuditModule } from "../audit/audit.module";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { randomBytes } from "crypto";
 
-const DEV_FALLBACK_JWT_SECRET = "development-only-jwt-secret-change-me";
+let devFallbackJwtSecret: string | null = null;
+
+function getDevFallbackJwtSecret(): string {
+  if (devFallbackJwtSecret) return devFallbackJwtSecret;
+  devFallbackJwtSecret = randomBytes(48).toString("base64url");
+  return devFallbackJwtSecret;
+}
 
 @Module({
   imports: [
@@ -28,21 +35,24 @@ const DEV_FALLBACK_JWT_SECRET = "development-only-jwt-secret-change-me";
         const env = configService.get<string>("NODE_ENV", "development");
         const isProduction = env === "production";
         const jwtSecret = configService.get<string>("JWT_SECRET");
-        const resolvedSecret = jwtSecret || DEV_FALLBACK_JWT_SECRET;
+        const usingFallbackSecret = !jwtSecret;
+        const resolvedSecret = jwtSecret || getDevFallbackJwtSecret();
 
         const isWeakSecret =
           resolvedSecret.length < 32 ||
-          resolvedSecret === DEV_FALLBACK_JWT_SECRET ||
           resolvedSecret.includes("default-secret-key") ||
           resolvedSecret.includes("change-this");
 
-        if (isWeakSecret && isProduction) {
+        if ((isWeakSecret || usingFallbackSecret) && isProduction) {
           throw new Error("JWT_SECRET 配置无效或过弱，生产环境禁止启动");
         }
 
-        if (isWeakSecret && !isProduction) {
-          // 开发环境允许弱密钥，仅用于本地调试
-          console.warn("⚠️ 当前使用开发环境 JWT 密钥，请勿用于生产环境");
+        if (usingFallbackSecret && !isProduction) {
+          console.warn(
+            "⚠️ 未配置 JWT_SECRET，已启用进程随机密钥（重启后会失效），请尽快配置固定强密钥",
+          );
+        } else if (isWeakSecret && !isProduction) {
+          console.warn("⚠️ 当前 JWT_SECRET 强度较弱，请勿用于生产环境");
         }
 
         return {
