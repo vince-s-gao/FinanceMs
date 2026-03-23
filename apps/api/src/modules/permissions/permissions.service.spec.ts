@@ -262,9 +262,9 @@ describe("PermissionsService", () => {
   it("should initialize defaults and backfill missing permissions", async () => {
     prisma.rolePermission.findMany.mockImplementation(
       async ({ where }: any) => {
-        if (where.role === "EMPLOYEE") return [];
-        if (where.role === "SALES")
-          return [{ permType: "menu", permKey: "/dashboard" }];
+        if (where.role?.in?.includes("SALES")) {
+          return [{ role: "SALES", permType: "menu", permKey: "/dashboard" }];
+        }
         return [];
       },
     );

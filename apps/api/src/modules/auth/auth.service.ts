@@ -135,6 +135,14 @@ export class AuthService {
     return Math.min(Math.max(raw, 5), 180);
   }
 
+  private getMaxActiveSessions(): number {
+    const raw = Number(
+      this.configService.get<string>("AUTH_MAX_ACTIVE_SESSIONS", "5"),
+    );
+    if (Number.isNaN(raw)) return 5;
+    return Math.min(Math.max(raw, 1), 20);
+  }
+
   private toLoginMetadata(metadata?: LoginMetadata): Required<LoginMetadata> {
     return {
       ipAddress: metadata?.ipAddress?.slice(0, 80) || "unknown",
@@ -154,6 +162,44 @@ export class AuthService {
     const issued = this.issueTokens(user, sessionId);
     const refreshTtlSeconds = this.getRefreshExpiresInSeconds();
     const meta = this.toLoginMetadata(metadata);
+    const now = new Date();
+    const maxActiveSessions = this.getMaxActiveSessions();
+
+    // 清理当前用户已失效会话，避免会话表无限增长
+    await this.prisma.userSession.deleteMany({
+      where: {
+        userId: user.id,
+        OR: [{ expiresAt: { lte: now } }, { revokedAt: { not: null } }],
+      },
+    });
+
+    // 限制并发活跃会话数量：超出后自动吊销最旧会话
+    const activeSessions = await this.prisma.userSession.findMany({
+      where: {
+        userId: user.id,
+        revokedAt: null,
+        expiresAt: { gt: now },
+      },
+      orderBy: { lastActivityAt: "desc" },
+      select: { id: true },
+    });
+    const overflowSessionIds = activeSessions
+      .slice(Math.max(maxActiveSessions - 1, 0))
+      .map((item) => item.id);
+    if (overflowSessionIds.length > 0) {
+      await this.prisma.userSession.updateMany({
+        where: {
+          userId: user.id,
+          revokedAt: null,
+          id: {
+            in: overflowSessionIds,
+          },
+        },
+        data: {
+          revokedAt: now,
+        },
+      });
+    }
 
     await this.prisma.userSession.create({
       data: {
@@ -162,8 +208,8 @@ export class AuthService {
         refreshTokenHash: this.hashToken(issued.refreshToken),
         ipAddress: meta.ipAddress,
         userAgent: meta.userAgent,
-        expiresAt: new Date(Date.now() + refreshTtlSeconds * 1000),
-        lastActivityAt: new Date(),
+        expiresAt: new Date(now.getTime() + refreshTtlSeconds * 1000),
+        lastActivityAt: now,
       },
     });
 

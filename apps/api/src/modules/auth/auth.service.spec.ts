@@ -30,6 +30,7 @@ describe("AuthService", () => {
         if (key === "JWT_EXPIRES_IN") return "2h";
         if (key === "AUTH_MAX_LOGIN_ATTEMPTS") return "5";
         if (key === "AUTH_LOCK_MINUTES") return "30";
+        if (key === "AUTH_MAX_ACTIVE_SESSIONS") return "5";
         return fallback;
       }),
     };
@@ -39,6 +40,7 @@ describe("AuthService", () => {
       },
       userSession: {
         create: jest.fn().mockResolvedValue({}),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         findFirst: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -180,6 +182,48 @@ describe("AuthService", () => {
       avatar: "avatar.png",
       feishuUserId: undefined,
     });
+  });
+
+  it("should revoke overflow active sessions before creating new session", async () => {
+    configService.get = jest.fn((key: string, fallback?: string) => {
+      if (key === "JWT_REFRESH_EXPIRES_IN") return "30d";
+      if (key === "JWT_EXPIRES_IN") return "2h";
+      if (key === "AUTH_MAX_LOGIN_ATTEMPTS") return "5";
+      if (key === "AUTH_LOCK_MINUTES") return "30";
+      if (key === "AUTH_MAX_ACTIVE_SESSIONS") return "2";
+      return fallback;
+    });
+
+    usersService.findByEmail.mockResolvedValueOnce({
+      id: "u1",
+      email: "a@example.com",
+      name: "User A",
+      role: "ADMIN",
+      isActive: true,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      password: "hashed",
+    });
+    (bcrypt.compare as jest.Mock).mockResolvedValueOnce(true);
+    prisma.userSession.findMany.mockResolvedValueOnce([
+      { id: "session-newest" },
+      { id: "session-oldest" },
+    ]);
+
+    await service.login({
+      email: "a@example.com",
+      password: "Password@123",
+    });
+
+    expect(prisma.userSession.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: "u1",
+          id: { in: ["session-oldest"] },
+        }),
+      }),
+    );
+    expect(prisma.userSession.create).toHaveBeenCalled();
   });
 
   it("should reject validateToken when user does not exist", async () => {

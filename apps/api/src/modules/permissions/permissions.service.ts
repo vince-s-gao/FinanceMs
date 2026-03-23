@@ -701,14 +701,15 @@ export class PermissionsService {
    */
   async getAllRolePermissions() {
     const roles = ["EMPLOYEE", "SALES", "FINANCE", "MANAGER", "ADMIN"];
-    const result: Record<string, { menus: string[]; functions: string[] }> = {};
-
-    for (const role of roles) {
-      const perms = await this.getRolePermissions(role);
-      result[role] = { menus: perms.menus, functions: perms.functions };
-    }
-
-    return result;
+    const results = await Promise.all(
+      roles.map((role) => this.getRolePermissions(role)),
+    );
+    return results.reduce<
+      Record<string, { menus: string[]; functions: string[] }>
+    >((acc, item) => {
+      acc[item.role] = { menus: item.menus, functions: item.functions };
+      return acc;
+    }, {});
   }
 
   /**
@@ -837,24 +838,42 @@ export class PermissionsService {
    */
   async initializeDefaultPermissions() {
     const roles = ["EMPLOYEE", "SALES", "FINANCE", "MANAGER", "ADMIN"];
+    const normalizedRoles = roles.map((role) => this.requireValidRole(role));
+    const existingRows = await this.prisma.rolePermission.findMany({
+      where: { role: { in: normalizedRoles } },
+      select: { role: true, permType: true, permKey: true },
+    });
+    const existingMap = new Map<
+      Role,
+      { menus: Set<string>; functions: Set<string> }
+    >();
+
+    for (const role of normalizedRoles) {
+      existingMap.set(role, { menus: new Set(), functions: new Set() });
+    }
+    for (const item of existingRows) {
+      const target = existingMap.get(item.role);
+      if (!target) continue;
+      if (item.permType === "menu") {
+        target.menus.add(item.permKey);
+      } else if (item.permType === "function") {
+        target.functions.add(item.permKey);
+      }
+    }
+
+    const recordsToCreate: Array<{
+      role: Role;
+      permType: string;
+      permKey: string;
+      isEnabled: boolean;
+    }> = [];
 
     for (const role of roles) {
       const normalizedRole = this.requireValidRole(role);
-      const existing = await this.prisma.rolePermission.findMany({
-        where: { role: normalizedRole },
-        select: { permType: true, permKey: true },
-      });
-      const existingMenus = new Set(
-        existing
-          .filter((item) => item.permType === "menu")
-          .map((item) => item.permKey),
-      );
-      const existingFunctions = new Set(
-        existing
-          .filter((item) => item.permType === "function")
-          .map((item) => item.permKey),
-      );
-
+      const existing = existingMap.get(normalizedRole) || {
+        menus: new Set<string>(),
+        functions: new Set<string>(),
+      };
       const menus = this.normalizeMenuKeys(
         DEFAULT_MENU_PERMISSIONS[role as keyof typeof DEFAULT_MENU_PERMISSIONS],
       );
@@ -863,9 +882,9 @@ export class PermissionsService {
           role as keyof typeof DEFAULT_FUNCTION_PERMISSIONS
         ];
 
-      const recordsToCreate = [
+      recordsToCreate.push(
         ...menus
-          .filter((key) => !existingMenus.has(key))
+          .filter((key) => !existing.menus.has(key))
           .map((key) => ({
             role: normalizedRole,
             permType: "menu",
@@ -873,21 +892,21 @@ export class PermissionsService {
             isEnabled: true,
           })),
         ...functions
-          .filter((key) => !existingFunctions.has(key))
+          .filter((key) => !existing.functions.has(key))
           .map((key) => ({
             role: normalizedRole,
             permType: "function",
             permKey: key,
             isEnabled: true,
           })),
-      ];
+      );
+    }
 
-      if (recordsToCreate.length > 0) {
-        await this.prisma.rolePermission.createMany({
-          data: recordsToCreate,
-          skipDuplicates: true,
-        });
-      }
+    if (recordsToCreate.length > 0) {
+      await this.prisma.rolePermission.createMany({
+        data: recordsToCreate,
+        skipDuplicates: true,
+      });
     }
 
     return { message: "初始化完成" };
