@@ -11,6 +11,7 @@ import { ERROR_CODE } from "@inffinancems/shared";
 import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { AuditService } from "../audit/audit.service";
+import { assertPasswordPolicy } from "../../common/utils/password-policy.utils";
 
 const ACCESS_TOKEN_TYPE = "access";
 const REFRESH_TOKEN_TYPE = "refresh";
@@ -430,24 +431,14 @@ export class AuthService {
    * 验证密码复杂度
    */
   private validatePasswordComplexity(password: string): void {
-    if (password.length < 8) {
-      this.unauthorized(
-        ERROR_CODE.AUTH_INVALID_CREDENTIALS,
-        "密码长度至少为 8 位",
-      );
-    }
-
-    const hasUpperCase = /[A-Z]/.test(password);
-    const hasLowerCase = /[a-z]/.test(password);
-    const hasNumber = /[0-9]/.test(password);
-    const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
-
-    if (!hasUpperCase || !hasLowerCase || !hasNumber || !hasSpecialChar) {
-      this.unauthorized(
-        ERROR_CODE.AUTH_INVALID_CREDENTIALS,
-        "密码必须包含大小写字母、数字和特殊字符",
-      );
-    }
+    assertPasswordPolicy(
+      password,
+      (message) =>
+        new UnauthorizedException({
+          code: ERROR_CODE.AUTH_INVALID_CREDENTIALS,
+          message,
+        }),
+    );
   }
 
   /**

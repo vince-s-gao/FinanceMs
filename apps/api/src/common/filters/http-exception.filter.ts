@@ -9,6 +9,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { Request, Response } from "express";
+import { sanitizeRequestUrl } from "../utils/request-sanitizer.utils";
 
 interface HttpExceptionResponsePayload {
   message?: string | string[];
@@ -68,6 +69,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+    const safeRequestPath = sanitizeRequestUrl(request.url);
 
     let status =
       exception instanceof HttpException
@@ -124,7 +126,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     // 记录错误日志
     this.logger.error(
-      `${request.method} ${request.url} - Status: ${status} - Message: ${Array.isArray(sanitizedMessage) ? sanitizedMessage.join("; ") : sanitizedMessage}`,
+      `${request.method} ${safeRequestPath} - Status: ${status} - Message: ${Array.isArray(sanitizedMessage) ? sanitizedMessage.join("; ") : sanitizedMessage}`,
       sanitizedStack,
     );
 
@@ -139,7 +141,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode: status,
       error,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: safeRequestPath,
       ...errorResponse,
     });
   }

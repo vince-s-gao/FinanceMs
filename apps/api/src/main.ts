@@ -12,6 +12,7 @@ import { AuditService } from "./modules/audit/audit.service";
 import { AuditLogInterceptor } from "./common/interceptors/audit-log.interceptor";
 import { TrimStringsPipe } from "./common/pipes/trim-strings.pipe";
 import { NextFunction, Request, Response } from "express";
+import { sanitizeRequestUrl } from "./common/utils/request-sanitizer.utils";
 
 function parseDurationToSeconds(value: string | undefined): number | null {
   if (!value) return null;
@@ -101,8 +102,9 @@ async function bootstrap() {
   app.use((req: Request, res: Response, next: NextFunction) => {
     const startedAt = Date.now();
     res.on("finish", () => {
+      const safeUrl = sanitizeRequestUrl(req.originalUrl || req.url);
       logger.log(
-        `[HTTP] ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - startedAt}ms - ${req.ip || "-"}`,
+        `[HTTP] ${req.method} ${safeUrl} ${res.statusCode} ${Date.now() - startedAt}ms - ${req.ip || "-"}`,
       );
     });
     next();

@@ -4,12 +4,14 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
 import { Role } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { normalizePagination } from "../../common/utils/query.utils";
+import { assertPasswordPolicy } from "../../common/utils/password-policy.utils";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 
@@ -105,6 +107,11 @@ export class UsersService {
       throw new ConflictException("该邮箱已被注册");
     }
 
+    assertPasswordPolicy(
+      createUserDto.password,
+      (message) => new BadRequestException(message),
+    );
+
     // 加密密码
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
@@ -142,6 +149,10 @@ export class UsersService {
 
     // 如果更新密码，需要加密
     if (updateUserDto.password) {
+      assertPasswordPolicy(
+        updateUserDto.password,
+        (message) => new BadRequestException(message),
+      );
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
     }
 

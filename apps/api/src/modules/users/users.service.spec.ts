@@ -1,5 +1,9 @@
 import * as bcrypt from "bcryptjs";
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from "@nestjs/common";
 import { UsersService } from "./users.service";
 
 jest.mock("bcryptjs", () => ({
@@ -88,14 +92,14 @@ describe("UsersService", () => {
 
     await service.create({
       email: "new@example.com",
-      password: "123456",
+      password: "NewUser@123",
       name: "New User",
       phone: "13800000000",
       role: "EMPLOYEE",
       departmentId: "",
     } as any);
 
-    expect(bcrypt.hash).toHaveBeenCalledWith("123456", 10);
+    expect(bcrypt.hash).toHaveBeenCalledWith("NewUser@123", 10);
     expect(prisma.user.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -120,12 +124,12 @@ describe("UsersService", () => {
     (bcrypt.hash as jest.Mock).mockResolvedValueOnce("hashed-update");
 
     await service.update("u1", {
-      password: "new-password",
+      password: "Update@123",
       departmentId: "",
       name: "Updated",
     } as any);
 
-    expect(bcrypt.hash).toHaveBeenCalledWith("new-password", 10);
+    expect(bcrypt.hash).toHaveBeenCalledWith("Update@123", 10);
     expect(prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "u1" },
@@ -196,6 +200,21 @@ describe("UsersService", () => {
     prisma.user.findUnique.mockResolvedValueOnce(null);
 
     await expect(service.remove("missing")).rejects.toThrow(NotFoundException);
+  });
+
+  it("should reject weak password on create", async () => {
+    prisma.user.findUnique.mockResolvedValueOnce(null);
+
+    await expect(
+      service.create({
+        email: "weak@example.com",
+        password: "12345678",
+        name: "Weak Password",
+        role: "EMPLOYEE",
+      } as any),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(bcrypt.hash).not.toHaveBeenCalled();
   });
 
   it("should return active user options in getOptions", async () => {
