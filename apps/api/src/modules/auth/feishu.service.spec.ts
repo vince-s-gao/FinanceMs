@@ -192,6 +192,46 @@ describe("FeishuService", () => {
     ).rejects.toThrow(UnauthorizedException);
   });
 
+  it("should mask token fields in Feishu error log payload", async () => {
+    jest
+      .spyOn(service as any, "getAppAccessToken")
+      .mockResolvedValueOnce("app-token-1");
+    jest.spyOn(globalThis, "fetch" as any).mockResolvedValueOnce({
+      json: async () => ({
+        code: 1001,
+        msg: "invalid code",
+        data: {
+          access_token: "user-token-123",
+          refresh_token: "refresh-token-123",
+          nested: {
+            app_access_token: "app-token-123",
+          },
+        },
+      }),
+    } as any);
+    const loggerErrorSpy = jest.spyOn(
+      (
+        service as unknown as {
+          logger: { error: (...args: unknown[]) => void };
+        }
+      ).logger,
+      "error",
+    );
+
+    await expect(
+      (service as any).getUserAccessToken("bad-code"),
+    ).rejects.toThrow(UnauthorizedException);
+
+    expect(loggerErrorSpy).toHaveBeenCalled();
+    const payload = loggerErrorSpy.mock.calls[0][1] as Record<string, unknown>;
+    const data = payload.data as Record<string, unknown>;
+    expect(data.access_token).toBe("***");
+    expect(data.refresh_token).toBe("***");
+    expect((data.nested as Record<string, unknown>).app_access_token).toBe(
+      "***",
+    );
+  });
+
   it("should throw when user access token response misses data", async () => {
     jest
       .spyOn(service as any, "getAppAccessToken")

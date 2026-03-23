@@ -84,6 +84,37 @@ export class FeishuService {
     );
   }
 
+  private sanitizeFeishuLogValue(value: unknown): unknown {
+    if (value === null || value === undefined) return value;
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeFeishuLogValue(item));
+    }
+    if (typeof value !== "object") return value;
+
+    const sensitiveKeys = [
+      "access_token",
+      "refresh_token",
+      "app_access_token",
+      "authorization",
+      "token",
+      "secret",
+    ];
+    const source = value as Record<string, unknown>;
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(source)) {
+      const normalizedKey = key.toLowerCase();
+      if (
+        sensitiveKeys.some((sensitive) => normalizedKey.includes(sensitive))
+      ) {
+        sanitized[key] = "***";
+        continue;
+      }
+      sanitized[key] = this.sanitizeFeishuLogValue(item);
+    }
+    return sanitized;
+  }
+
   /**
    * 获取飞书授权登录URL
    */
@@ -158,7 +189,10 @@ export class FeishuService {
     const data = await response.json();
 
     if (data.code !== 0) {
-      this.logger.error("获取飞书 app_access_token 失败", data);
+      this.logger.error(
+        "获取飞书 app_access_token 失败",
+        this.sanitizeFeishuLogValue(data),
+      );
       throw new UnauthorizedException("飞书认证失败");
     }
 
@@ -190,7 +224,10 @@ export class FeishuService {
     const data: FeishuTokenResponse = await response.json();
 
     if (data.code !== 0 || !data.data) {
-      this.logger.error("获取飞书用户令牌失败", data);
+      this.logger.error(
+        "获取飞书用户令牌失败",
+        this.sanitizeFeishuLogValue(data),
+      );
       throw new UnauthorizedException("飞书授权失败");
     }
 
@@ -243,7 +280,10 @@ export class FeishuService {
 
     const user = this.extractFeishuUser(data.data);
     if (data.code !== 0 || !user) {
-      this.logger.error("获取飞书用户信息失败", data);
+      this.logger.error(
+        "获取飞书用户信息失败",
+        this.sanitizeFeishuLogValue(data),
+      );
       throw new UnauthorizedException("获取用户信息失败");
     }
 
