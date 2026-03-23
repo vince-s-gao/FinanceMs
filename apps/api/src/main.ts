@@ -85,7 +85,12 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true, // 自动剥离非白名单属性
       forbidNonWhitelisted: true, // 非白名单属性抛出错误
+      forbidUnknownValues: true, // 拒绝未知对象（提升输入校验强度）
       transform: true, // 自动类型转换
+      validationError: {
+        target: false,
+        value: false,
+      },
       transformOptions: {
         enableImplicitConversion: true,
       },
