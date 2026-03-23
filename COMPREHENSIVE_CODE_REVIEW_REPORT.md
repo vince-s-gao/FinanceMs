@@ -82,58 +82,7 @@ useEffect(() => {
 }, []);
 ```
 
-#### 2. 移除硬编码的默认密码
-
-**位置**: `packages/database/prisma/seed.ts`
-**问题**: 种子数据中硬编码了默认密码
-**影响**: 生产环境安全风险
-**修复**:
-
-```typescript
-const adminPassword = await bcrypt.hash(
-  process.env.ADMIN_INITIAL_PASSWORD || generateRandomPassword(),
-  10,
-);
-```
-
-#### 3. 配置 HTTPS 强制
-
-**位置**: `apps/api/src/main.ts`
-**问题**: 未强制使用 HTTPS
-**影响**: 敏感数据可能被窃取
-**修复**:
-
-```typescript
-if (process.env.NODE_ENV === "production") {
-  app.use((req, res, next) => {
-    if (!req.secure) {
-      return res.redirect(301, `https://${req.headers.host}${req.url}`);
-    }
-    next();
-  });
-}
-```
-
-#### 4. 添加请求速率限制
-
-**位置**: `apps/api/src/main.ts`
-**问题**: API 端点未实现速率限制
-**影响**: 容易遭受 DDoS 攻击
-**修复**:
-
-```typescript
-import rateLimit from "express-rate-limit";
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: "请求过于频繁，请稍后再试",
-});
-
-app.use(limiter);
-```
-
-#### 5. 解决 N+1 查询问题
+#### 2. 解决 N+1 查询问题
 
 **位置**: `apps/api/src/modules/contracts/contracts.service.ts`
 **问题**: 在循环中执行数据库查询
@@ -223,34 +172,7 @@ export class ContractsService {
 }
 ```
 
-#### 11. 启用安全头配置
-
-**位置**: `apps/api/src/main.ts`
-**问题**: 缺少 CSP、HSTS 等安全头
-**影响**: 可能受到 XSS、点击劫持等攻击
-**修复**:
-
-```typescript
-import helmet from "helmet";
-
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
-      },
-    },
-    hsts: {
-      maxAge: 31536000,
-      includeSubDomains: true,
-    },
-  }),
-);
-```
-
-#### 12. 统一错误处理
+#### 11. 统一错误处理
 
 **位置**: 前端和后端
 **问题**: 错误处理方式不一致
