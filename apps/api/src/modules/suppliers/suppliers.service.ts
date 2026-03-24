@@ -59,6 +59,14 @@ const SUPPLIER_IMPORT_HEADER_ALIASES = {
 } as const;
 const SUPPLIER_TYPE_LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
 const CONTRACT_TYPE_HINT_CACHE_TTL_MS = 5 * 60 * 1000;
+const SUPPLIER_OPTIONS_CACHE_TTL_MS = 60 * 1000;
+
+type SupplierOption = {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+};
 
 @Injectable()
 export class SuppliersService {
@@ -69,6 +77,10 @@ export class SuppliersService {
   private contractTypeHintsCache: {
     expiresAt: number;
     hintsByCode: Map<string, string[]>;
+  } | null = null;
+  private supplierOptionsCache: {
+    expiresAt: number;
+    items: SupplierOption[];
   } | null = null;
 
   constructor(private prisma: PrismaService) {}
@@ -192,6 +204,26 @@ export class SuppliersService {
     return lookup.get(key);
   }
 
+  private getOptionsFromCache(): SupplierOption[] | null {
+    if (!this.supplierOptionsCache) return null;
+    if (this.supplierOptionsCache.expiresAt <= Date.now()) {
+      this.supplierOptionsCache = null;
+      return null;
+    }
+    return this.supplierOptionsCache.items;
+  }
+
+  private setOptionsCache(items: SupplierOption[]) {
+    this.supplierOptionsCache = {
+      expiresAt: Date.now() + SUPPLIER_OPTIONS_CACHE_TTL_MS,
+      items,
+    };
+  }
+
+  private invalidateOptionsCache() {
+    this.supplierOptionsCache = null;
+  }
+
   private async generateCode(): Promise<string> {
     return generatePrefixedCode({
       model: this.prisma.supplier,
@@ -312,7 +344,7 @@ export class SuppliersService {
       }
     }
 
-    return createWithGeneratedCode({
+    const created = await createWithGeneratedCode({
       generateCode: () => this.generateCode(),
       create: async (code: string) => {
         try {
@@ -332,6 +364,8 @@ export class SuppliersService {
       isCodeConflict: (error) => isUniqueConflict(error, "code"),
       exhaustedError: () => new ConflictException("供应商编号生成失败，请重试"),
     });
+    this.invalidateOptionsCache();
+    return created;
   }
 
   async update(id: string, updateSupplierDto: UpdateSupplierDto) {
@@ -353,22 +387,29 @@ export class SuppliersService {
       }
     }
 
-    return this.prisma.supplier.update({
+    const updated = await this.prisma.supplier.update({
       where: { id },
       data: updateSupplierDto,
     });
+    this.invalidateOptionsCache();
+    return updated;
   }
 
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma.supplier.update({
+    const removed = await this.prisma.supplier.update({
       where: { id },
       data: { isDeleted: true },
     });
+    this.invalidateOptionsCache();
+    return removed;
   }
 
   async getOptions() {
-    return this.prisma.supplier.findMany({
+    const cached = this.getOptionsFromCache();
+    if (cached) return cached;
+
+    const items = await this.prisma.supplier.findMany({
       where: { isDeleted: false },
       select: {
         id: true,
@@ -378,6 +419,8 @@ export class SuppliersService {
       },
       orderBy: { name: "asc" },
     });
+    this.setOptionsCache(items);
+    return items;
   }
 
   private async buildExportPayload(query: QuerySupplierDto) {
@@ -632,6 +675,10 @@ export class SuppliersService {
         const message = resolveErrorMessage(error, "导入失败");
         errors.push({ row: rowNo, message: String(message) });
       }
+    }
+
+    if (success > 0) {
+      this.invalidateOptionsCache();
     }
 
     return {

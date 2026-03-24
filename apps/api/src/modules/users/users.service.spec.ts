@@ -246,4 +246,22 @@ describe("UsersService", () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("u1");
   });
+
+  it("should reuse options cache in getOptions", async () => {
+    prisma.user.findMany.mockResolvedValueOnce([
+      {
+        id: "u1",
+        name: "Alice",
+        email: "alice@example.com",
+        role: "ADMIN",
+        department: { id: "d1", name: "研发部" },
+      },
+    ]);
+
+    const first = await service.getOptions();
+    const second = await service.getOptions();
+
+    expect(first).toEqual(second);
+    expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
+  });
 });

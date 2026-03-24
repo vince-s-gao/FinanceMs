@@ -160,6 +160,18 @@ describe("DepartmentsService", () => {
     });
   });
 
+  it("should reuse options cache in getOptions", async () => {
+    prisma.department.findMany.mockResolvedValueOnce([
+      { id: "d1", code: "DEPT0001", name: "研发部", parentId: null },
+    ]);
+
+    const first = await service.getOptions();
+    const second = await service.getOptions();
+
+    expect(first).toEqual(second);
+    expect(prisma.department.findMany).toHaveBeenCalledTimes(1);
+  });
+
   it("should throw when findOne does not exist", async () => {
     prisma.department.findUnique.mockResolvedValueOnce(null);
 

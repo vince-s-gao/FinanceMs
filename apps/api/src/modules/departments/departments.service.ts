@@ -31,8 +31,21 @@ type DepartmentTreeItem = Prisma.DepartmentGetPayload<{
   children: DepartmentTreeItem[];
 };
 
+type DepartmentOption = {
+  id: string;
+  code: string;
+  name: string;
+  parentId: string | null;
+};
+
 @Injectable()
 export class DepartmentsService {
+  private readonly optionsCacheTtlMs = 60 * 1000;
+  private optionsCache: {
+    expiresAt: number;
+    items: DepartmentOption[];
+  } | null = null;
+
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -50,6 +63,26 @@ export class DepartmentsService {
 
   private isDepartmentCodeConflict(error: unknown): boolean {
     return isPrismaUniqueConflict(error, "code");
+  }
+
+  private getOptionsFromCache(): DepartmentOption[] | null {
+    if (!this.optionsCache) return null;
+    if (this.optionsCache.expiresAt <= Date.now()) {
+      this.optionsCache = null;
+      return null;
+    }
+    return this.optionsCache.items;
+  }
+
+  private setOptionsCache(items: DepartmentOption[]) {
+    this.optionsCache = {
+      expiresAt: Date.now() + this.optionsCacheTtlMs,
+      items,
+    };
+  }
+
+  private invalidateOptionsCache() {
+    this.optionsCache = null;
   }
 
   /**
@@ -160,7 +193,10 @@ export class DepartmentsService {
    * 获取部门选项列表（下拉框用）
    */
   async getOptions() {
-    return this.prisma.department.findMany({
+    const cached = this.getOptionsFromCache();
+    if (cached) return cached;
+
+    const items = await this.prisma.department.findMany({
       where: { isActive: true },
       select: {
         id: true,
@@ -170,6 +206,8 @@ export class DepartmentsService {
       },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     });
+    this.setOptionsCache(items);
+    return items;
   }
 
   /**
@@ -222,7 +260,7 @@ export class DepartmentsService {
       }
     }
 
-    return createWithGeneratedCode({
+    const created = await createWithGeneratedCode({
       generateCode: () => this.generateCode(),
       create: (code: string) =>
         this.prisma.department.create({
@@ -238,6 +276,8 @@ export class DepartmentsService {
       isCodeConflict: (error) => this.isDepartmentCodeConflict(error),
       exhaustedError: () => new ConflictException("部门编号生成失败，请重试"),
     });
+    this.invalidateOptionsCache();
+    return created;
   }
 
   /**
@@ -276,10 +316,12 @@ export class DepartmentsService {
       }
     }
 
-    return this.prisma.department.update({
+    const updated = await this.prisma.department.update({
       where: { id },
       data: updateDepartmentDto,
     });
+    this.invalidateOptionsCache();
+    return updated;
   }
 
   /**
@@ -318,9 +360,11 @@ export class DepartmentsService {
       throw new BadRequestException("该部门下有子部门，不能删除");
     }
 
-    return this.prisma.department.delete({
+    const removed = await this.prisma.department.delete({
       where: { id },
     });
+    this.invalidateOptionsCache();
+    return removed;
   }
 
   /**
@@ -329,10 +373,12 @@ export class DepartmentsService {
   async toggleActive(id: string) {
     const department = await this.findOne(id);
 
-    return this.prisma.department.update({
+    const toggled = await this.prisma.department.update({
       where: { id },
       data: { isActive: !department.isActive },
     });
+    this.invalidateOptionsCache();
+    return toggled;
   }
 
   /**

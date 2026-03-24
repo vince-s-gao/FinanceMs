@@ -348,6 +348,18 @@ describe("CustomersService", () => {
     );
   });
 
+  it("should reuse options cache in getOptions", async () => {
+    prisma.customer.findMany.mockResolvedValueOnce([
+      { id: "c1", code: "CUS000001", name: "客户A", type: "ENTERPRISE" },
+    ]);
+
+    const first = await service.getOptions();
+    const second = await service.getOptions();
+
+    expect(first).toEqual(second);
+    expect(prisma.customer.findMany).toHaveBeenCalledTimes(1);
+  });
+
   it("should throw when approving non-existing customer", async () => {
     prisma.customer.findFirst.mockResolvedValueOnce(null);
 

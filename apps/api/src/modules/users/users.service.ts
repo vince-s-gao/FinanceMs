@@ -15,8 +15,25 @@ import { assertPasswordPolicy } from "../../common/utils/password-policy.utils";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 
+type UserOption = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  department: {
+    id: string;
+    name: string;
+  } | null;
+};
+
 @Injectable()
 export class UsersService {
+  private readonly optionsCacheTtlMs = 60 * 1000;
+  private optionsCache: {
+    expiresAt: number;
+    items: UserOption[];
+  } | null = null;
+
   constructor(private prisma: PrismaService) {}
 
   private toRole(value?: string): Role | undefined {
@@ -24,6 +41,26 @@ export class UsersService {
     return (Object.values(Role) as string[]).includes(value)
       ? (value as Role)
       : undefined;
+  }
+
+  private getOptionsFromCache(): UserOption[] | null {
+    if (!this.optionsCache) return null;
+    if (this.optionsCache.expiresAt <= Date.now()) {
+      this.optionsCache = null;
+      return null;
+    }
+    return this.optionsCache.items;
+  }
+
+  private setOptionsCache(items: UserOption[]) {
+    this.optionsCache = {
+      expiresAt: Date.now() + this.optionsCacheTtlMs,
+      items,
+    };
+  }
+
+  private invalidateOptionsCache() {
+    this.optionsCache = null;
   }
 
   /**
@@ -116,7 +153,7 @@ export class UsersService {
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
     const { departmentId, ...rest } = createUserDto;
-    return this.prisma.user.create({
+    const created = await this.prisma.user.create({
       data: {
         ...rest,
         password: hashedPassword,
@@ -136,6 +173,8 @@ export class UsersService {
         createdAt: true,
       },
     });
+    this.invalidateOptionsCache();
+    return created;
   }
 
   /**
@@ -157,7 +196,7 @@ export class UsersService {
     }
 
     const { departmentId, ...rest } = updateUserDto;
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id },
       data: {
         ...rest,
@@ -179,6 +218,8 @@ export class UsersService {
         updatedAt: true,
       },
     });
+    this.invalidateOptionsCache();
+    return updated;
   }
 
   /**
@@ -204,10 +245,12 @@ export class UsersService {
       }
     }
 
-    return this.prisma.user.update({
+    const removed = await this.prisma.user.update({
       where: { id },
       data: { isActive: false },
     });
+    this.invalidateOptionsCache();
+    return removed;
   }
 
   /**
@@ -215,6 +258,9 @@ export class UsersService {
    * 返回简化的用户信息，供部门管理等模块使用
    */
   async getOptions() {
+    const cached = this.getOptionsFromCache();
+    if (cached) return cached;
+
     const users = await this.prisma.user.findMany({
       where: { isActive: true },
       select: {
@@ -228,7 +274,7 @@ export class UsersService {
       },
       orderBy: { name: "asc" },
     });
-
+    this.setOptionsCache(users);
     return users;
   }
 }

@@ -64,12 +64,24 @@ const CUSTOMER_APPROVAL_STATUS_LABELS: Record<string, string> = {
   REJECTED: "已拒绝",
 };
 const CUSTOMER_TYPE_LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
+const CUSTOMER_OPTIONS_CACHE_TTL_MS = 60 * 1000;
+
+type CustomerOption = {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+};
 
 @Injectable()
 export class CustomersService {
   private customerTypeLookupCache: {
     expiresAt: number;
     lookup: Map<string, string>;
+  } | null = null;
+  private customerOptionsCache: {
+    expiresAt: number;
+    items: CustomerOption[];
   } | null = null;
 
   constructor(private prisma: PrismaService) {}
@@ -144,6 +156,26 @@ export class CustomersService {
     const key = this.toLookupKey(text);
     if (!key) return undefined;
     return lookup.get(key);
+  }
+
+  private getOptionsFromCache(): CustomerOption[] | null {
+    if (!this.customerOptionsCache) return null;
+    if (this.customerOptionsCache.expiresAt <= Date.now()) {
+      this.customerOptionsCache = null;
+      return null;
+    }
+    return this.customerOptionsCache.items;
+  }
+
+  private setOptionsCache(items: CustomerOption[]) {
+    this.customerOptionsCache = {
+      expiresAt: Date.now() + CUSTOMER_OPTIONS_CACHE_TTL_MS,
+      items,
+    };
+  }
+
+  private invalidateOptionsCache() {
+    this.customerOptionsCache = null;
   }
 
   /**
@@ -262,7 +294,7 @@ export class CustomersService {
       }
     }
 
-    return createWithGeneratedCode({
+    const created = await createWithGeneratedCode({
       generateCode: () => this.generateCode(),
       create: async (code: string) => {
         try {
@@ -285,6 +317,8 @@ export class CustomersService {
       isCodeConflict: (error) => this.isUniqueConflict(error, "code"),
       exhaustedError: () => new ConflictException("客户编号生成失败，请重试"),
     });
+    this.invalidateOptionsCache();
+    return created;
   }
 
   /**
@@ -310,10 +344,12 @@ export class CustomersService {
       }
     }
 
-    return this.prisma.customer.update({
+    const updated = await this.prisma.customer.update({
       where: { id },
       data: updateCustomerDto,
     });
+    this.invalidateOptionsCache();
+    return updated;
   }
 
   /**
@@ -331,10 +367,12 @@ export class CustomersService {
       throw new ConflictException("该客户存在关联合同，无法删除");
     }
 
-    return this.prisma.customer.update({
+    const removed = await this.prisma.customer.update({
       where: { id },
       data: { isDeleted: true },
     });
+    this.invalidateOptionsCache();
+    return removed;
   }
 
   /**
@@ -342,7 +380,10 @@ export class CustomersService {
    * 只返回已审批通过的客户
    */
   async getOptions() {
-    return this.prisma.customer.findMany({
+    const cached = this.getOptionsFromCache();
+    if (cached) return cached;
+
+    const items = await this.prisma.customer.findMany({
       where: {
         isDeleted: false,
         approvalStatus: ApprovalStatus.APPROVED, // 只返回已审批通过的客户
@@ -355,6 +396,8 @@ export class CustomersService {
       },
       orderBy: { name: "asc" },
     });
+    this.setOptionsCache(items);
+    return items;
   }
 
   /**
@@ -376,7 +419,7 @@ export class CustomersService {
 
     const { approved, remark } = approveDto;
 
-    return this.prisma.customer.update({
+    const approvalResult = await this.prisma.customer.update({
       where: { id },
       data: {
         approvalStatus: approved
@@ -387,6 +430,8 @@ export class CustomersService {
         approvalRemark: remark,
       },
     });
+    this.invalidateOptionsCache();
+    return approvalResult;
   }
 
   /**
@@ -703,6 +748,10 @@ export class CustomersService {
         const message = resolveErrorMessage(error, "导入失败");
         errors.push({ row: rowNo, message: String(message) });
       }
+    }
+
+    if (success > 0) {
+      this.invalidateOptionsCache();
     }
 
     return {
