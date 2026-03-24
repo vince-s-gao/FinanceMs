@@ -161,6 +161,48 @@ describe("PermissionsService", () => {
     );
   });
 
+  it("should backfill finance payment-request permissions when only menu exists", async () => {
+    prisma.rolePermission.findMany.mockResolvedValueOnce([
+      { permType: "menu", permKey: "/payment-requests", isEnabled: true },
+    ]);
+
+    const result = await service.getRolePermissions("FINANCE");
+    expect(result.functions).toEqual(
+      expect.arrayContaining([
+        "payment-request.view",
+        "payment-request.create",
+        "payment-request.edit",
+        "payment-request.submit",
+        "payment-request.confirm",
+        "payment-request.cancel",
+        "payment-request.delete",
+        "bank-account.view",
+        "bank-account.create",
+        "bank-account.edit",
+      ]),
+    );
+  });
+
+  it("should backfill manager payment-request permissions when only menu exists", async () => {
+    prisma.rolePermission.findMany.mockResolvedValueOnce([
+      { permType: "menu", permKey: "/payment-requests", isEnabled: true },
+    ]);
+
+    const result = await service.getRolePermissions("MANAGER");
+    expect(result.functions).toEqual(
+      expect.arrayContaining([
+        "payment-request.view",
+        "payment-request.create",
+        "payment-request.edit",
+        "payment-request.submit",
+        "payment-request.approve",
+        "payment-request.cancel",
+        "bank-account.view",
+      ]),
+    );
+    expect(result.functions).not.toContain("payment-request.confirm");
+  });
+
   it("should update role menu permissions and return latest role permissions", async () => {
     const rolePermissionsSpy = jest
       .spyOn(service, "getRolePermissions")

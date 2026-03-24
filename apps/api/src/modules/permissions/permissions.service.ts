@@ -630,6 +630,63 @@ export class PermissionsService {
     ) {
       functionSet.add("bank-account.edit");
     }
+    if (menus.includes("/payment-requests")) {
+      const hasPaymentWriteFunctions = Array.from(functionSet).some((key) =>
+        [
+          "payment-request.create",
+          "payment-request.edit",
+          "payment-request.submit",
+          "payment-request.approve",
+          "payment-request.confirm",
+          "payment-request.cancel",
+          "payment-request.delete",
+          "bank-account.create",
+          "bank-account.edit",
+          "bank-account.delete",
+        ].includes(key),
+      );
+      if (!hasPaymentWriteFunctions) {
+        if (normalizedRole === Role.FINANCE) {
+          [
+            "payment-request.view",
+            "payment-request.create",
+            "payment-request.edit",
+            "payment-request.submit",
+            "payment-request.confirm",
+            "payment-request.cancel",
+            "payment-request.delete",
+            "bank-account.view",
+            "bank-account.create",
+            "bank-account.edit",
+          ].forEach((key) => functionSet.add(key));
+        } else if (normalizedRole === Role.MANAGER) {
+          [
+            "payment-request.view",
+            "payment-request.create",
+            "payment-request.edit",
+            "payment-request.submit",
+            "payment-request.approve",
+            "payment-request.cancel",
+            "bank-account.view",
+          ].forEach((key) => functionSet.add(key));
+        } else if (normalizedRole === Role.ADMIN) {
+          [
+            "payment-request.view",
+            "payment-request.create",
+            "payment-request.edit",
+            "payment-request.submit",
+            "payment-request.approve",
+            "payment-request.confirm",
+            "payment-request.cancel",
+            "payment-request.delete",
+            "bank-account.view",
+            "bank-account.create",
+            "bank-account.edit",
+            "bank-account.delete",
+          ].forEach((key) => functionSet.add(key));
+        }
+      }
+    }
     if (
       normalizedRole === Role.FINANCE &&
       menus.includes("/costs") &&
