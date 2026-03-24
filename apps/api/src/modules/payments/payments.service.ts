@@ -57,7 +57,8 @@ export class PaymentsService {
 
     const detected = rows
       .filter((row) =>
-        isSalesContractType([row.code, row.name || "", row.value || ""]),
+        // 仅基于编码和值识别销售类型，避免名称异常导致误判
+        isSalesContractType([row.code, row.value || ""]),
       )
       .map((row) => normalizeText(row.code).toUpperCase())
       .filter(Boolean);

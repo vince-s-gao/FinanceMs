@@ -1,10 +1,34 @@
 import { normalizeText } from "../../common/utils/tabular.utils";
 
+const NON_SALES_TYPE_HINTS = [
+  "NDA",
+  "TS",
+  "FA",
+  "OTHER",
+  "采购",
+  "PURCHASE",
+  "付款",
+  "PAYMENT",
+  "应付",
+];
+
+const SALES_TYPE_HINTS = ["SALES", "SALE", "销售", "应收", "RECEIVABLE"];
+
 export function isSalesContractType(values: string[]): boolean {
-  return values.some((value) => {
-    const normalized = normalizeText(value).toUpperCase();
-    return normalized.includes("SALES") || value.includes("销售");
-  });
+  const normalizedValues = values
+    .map((value) => normalizeText(value).toUpperCase())
+    .filter(Boolean);
+
+  if (normalizedValues.length === 0) return false;
+
+  const matchesNonSales = normalizedValues.some((value) =>
+    NON_SALES_TYPE_HINTS.some((hint) => value.includes(hint)),
+  );
+  if (matchesNonSales) return false;
+
+  return normalizedValues.some((value) =>
+    SALES_TYPE_HINTS.some((hint) => value.includes(hint)),
+  );
 }
 
 export function toSuggestedContractTypeCode(

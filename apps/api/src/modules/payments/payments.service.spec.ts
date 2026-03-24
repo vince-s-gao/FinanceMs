@@ -135,6 +135,45 @@ describe("PaymentsService", () => {
     expect(result.summary.totalContractAmount.toNumber()).toBe(1000);
   });
 
+  it("should not treat NDA as sales when dictionary name contains sales keyword", async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: "NDA", name: "销售保密协议", value: "NDA" },
+      { code: "SALES", name: "销售合同", value: "销售" },
+    ]);
+    prisma.contract.findMany.mockResolvedValueOnce([
+      {
+        id: "nda-1",
+        contractType: "NDA",
+        contractNo: "HT-NDA-001",
+        name: "保密协议",
+        customer: { id: "u1", name: "客户A", code: "CUS000001" },
+        amountWithTax: new Decimal(5000),
+        paymentPlans: [],
+        paymentRecords: [],
+        signDate: new Date("2025-01-01T00:00:00.000Z"),
+        status: "EXECUTING",
+      },
+      {
+        id: "sales-1",
+        contractType: "SALES",
+        contractNo: "HT-SALES-001",
+        name: "销售合同",
+        customer: { id: "u2", name: "客户B", code: "CUS000002" },
+        amountWithTax: new Decimal(1200),
+        paymentPlans: [],
+        paymentRecords: [],
+        signDate: new Date("2025-01-02T00:00:00.000Z"),
+        status: "EXECUTING",
+      },
+    ]);
+
+    const result = await service.getStatistics();
+
+    expect(result.summary.contractCount).toBe(1);
+    expect(result.contracts).toHaveLength(1);
+    expect(result.contracts[0].id).toBe("sales-1");
+  });
+
   it("should compute paid and remaining amount in findPlansByContract", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
