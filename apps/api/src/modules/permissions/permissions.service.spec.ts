@@ -77,7 +77,9 @@ describe("PermissionsService", () => {
 
     const result = await service.getRolePermissions("ADMIN");
 
-    expect(result.menus).toEqual(["/dashboard"]);
+    expect(result.menus).toEqual(
+      expect.arrayContaining(["/dashboard", "/profile"]),
+    );
     expect(result.functions).toEqual(
       expect.arrayContaining([
         "expense.create",
@@ -225,6 +227,12 @@ describe("PermissionsService", () => {
           role: "SALES",
           permType: "menu",
           permKey: "/dashboard",
+          isEnabled: true,
+        },
+        {
+          role: "SALES",
+          permType: "menu",
+          permKey: "/profile",
           isEnabled: true,
         },
       ],

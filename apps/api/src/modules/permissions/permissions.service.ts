@@ -550,6 +550,10 @@ export class PermissionsService {
     return Array.from(new Set(mapped));
   }
 
+  private withSystemMenus(menuKeys: string[]): string[] {
+    return Array.from(new Set([...menuKeys, "/profile"]));
+  }
+
   private assertValidMenuKeys(menuKeys: string[]) {
     const invalidKeys = menuKeys.filter((key) => !ALL_MENU_KEYS.has(key));
     if (invalidKeys.length > 0) {
@@ -609,7 +613,9 @@ export class PermissionsService {
     if (dbPermissions.length === 0) {
       const fallback = {
         role,
-        menus: this.normalizeMenuKeys(DEFAULT_MENU_PERMISSIONS[role] || []),
+        menus: this.withSystemMenus(
+          this.normalizeMenuKeys(DEFAULT_MENU_PERMISSIONS[role] || []),
+        ),
         functions: DEFAULT_FUNCTION_PERMISSIONS[role] || [],
       };
       this.setCachedRolePermissions(fallback);
@@ -617,10 +623,12 @@ export class PermissionsService {
     }
 
     // 从数据库配置构建权限
-    const menus = this.normalizeMenuKeys(
-      dbPermissions
-        .filter((p) => p.permType === "menu" && p.isEnabled)
-        .map((p) => p.permKey),
+    const menus = this.withSystemMenus(
+      this.normalizeMenuKeys(
+        dbPermissions
+          .filter((p) => p.permType === "menu" && p.isEnabled)
+          .map((p) => p.permKey),
+      ),
     );
     const functions = dbPermissions
       .filter((p) => p.permType === "function" && p.isEnabled)
@@ -925,7 +933,9 @@ export class PermissionsService {
    */
   async updateRoleMenuPermissions(role: string, menuKeys: string[]) {
     const normalizedRole = this.requireValidRole(role);
-    const normalizedMenuKeys = this.normalizeMenuKeys(menuKeys || []);
+    const normalizedMenuKeys = this.withSystemMenus(
+      this.normalizeMenuKeys(menuKeys || []),
+    );
     this.assertValidMenuKeys(normalizedMenuKeys);
 
     // 删除该角色的所有菜单权限
@@ -987,7 +997,9 @@ export class PermissionsService {
     functions: string[],
   ) {
     const normalizedRole = this.requireValidRole(role);
-    const normalizedMenus = this.normalizeMenuKeys(menus || []);
+    const normalizedMenus = this.withSystemMenus(
+      this.normalizeMenuKeys(menus || []),
+    );
     const normalizedFunctions = Array.from(new Set(functions || []));
     this.assertValidMenuKeys(normalizedMenus);
     this.assertValidFunctionKeys(normalizedFunctions);
@@ -1040,7 +1052,9 @@ export class PermissionsService {
 
     return {
       role,
-      menus: this.normalizeMenuKeys(DEFAULT_MENU_PERMISSIONS[role] || []),
+      menus: this.withSystemMenus(
+        this.normalizeMenuKeys(DEFAULT_MENU_PERMISSIONS[role] || []),
+      ),
       functions: DEFAULT_FUNCTION_PERMISSIONS[role] || [],
     };
   }
@@ -1086,8 +1100,12 @@ export class PermissionsService {
         menus: new Set<string>(),
         functions: new Set<string>(),
       };
-      const menus = this.normalizeMenuKeys(
-        DEFAULT_MENU_PERMISSIONS[role as keyof typeof DEFAULT_MENU_PERMISSIONS],
+      const menus = this.withSystemMenus(
+        this.normalizeMenuKeys(
+          DEFAULT_MENU_PERMISSIONS[
+            role as keyof typeof DEFAULT_MENU_PERMISSIONS
+          ],
+        ),
       );
       const functions =
         DEFAULT_FUNCTION_PERMISSIONS[
