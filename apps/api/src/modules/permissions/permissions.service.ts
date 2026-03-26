@@ -6,7 +6,7 @@ import { Role } from "@prisma/client";
 
 // 默认菜单权限配置
 const DEFAULT_MENU_PERMISSIONS: Record<string, string[]> = {
-  EMPLOYEE: ["/dashboard", "/expenses"],
+  EMPLOYEE: ["/dashboard", "/expenses", "/profile"],
   SALES: [
     "/dashboard",
     "/customers",
@@ -14,6 +14,7 @@ const DEFAULT_MENU_PERMISSIONS: Record<string, string[]> = {
     "/payments",
     "/expenses",
     "/projects",
+    "/profile",
   ],
   FINANCE: [
     "/dashboard",
@@ -28,6 +29,7 @@ const DEFAULT_MENU_PERMISSIONS: Record<string, string[]> = {
     "/budgets",
     "/reports",
     "/projects",
+    "/profile",
   ],
   MANAGER: [
     "/dashboard",
@@ -42,6 +44,7 @@ const DEFAULT_MENU_PERMISSIONS: Record<string, string[]> = {
     "/budgets",
     "/reports",
     "/projects",
+    "/profile",
   ],
   ADMIN: [
     "/dashboard",
@@ -61,6 +64,7 @@ const DEFAULT_MENU_PERMISSIONS: Record<string, string[]> = {
     "/settings",
     "/settings/dictionaries",
     "/audit-logs",
+    "/profile",
   ],
 };
 
@@ -260,6 +264,7 @@ const ALL_MENUS = [
   { key: "/settings", name: "系统设置" },
   { key: "/settings/dictionaries", name: "数据字典" },
   { key: "/audit-logs", name: "日志管理" },
+  { key: "/profile", name: "个人信息" },
 ];
 const ALL_MENU_KEYS = new Set(ALL_MENUS.map((item) => item.key));
 

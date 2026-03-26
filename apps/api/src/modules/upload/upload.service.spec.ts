@@ -214,6 +214,12 @@ describe("UploadService", () => {
     sanitizeSpy.mockRestore();
   });
 
+  it("should reject deleteFile when path is outside allowed upload categories", async () => {
+    await expect(service.deleteFile("/uploads/other/file.pdf")).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
   it("should return normalized file path in getFilePath", () => {
     const fullPath = service.getFilePath("/uploads/contracts/a.pdf");
     expect(fullPath).toBe(path.join(uploadRoot, "contracts/a.pdf"));
@@ -229,6 +235,12 @@ describe("UploadService", () => {
     );
 
     sanitizeSpy.mockRestore();
+  });
+
+  it("should reject getFilePath when path is outside allowed upload categories", () => {
+    expect(() => service.getFilePath("/uploads/other/file.pdf")).toThrow(
+      BadRequestException,
+    );
   });
 
   it("should return false for unknown mime in private validators", () => {

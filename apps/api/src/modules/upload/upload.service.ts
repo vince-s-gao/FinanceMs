@@ -129,6 +129,16 @@ export class UploadService {
   }
 
   /**
+   * 校验相对路径是否落在允许的上传分类目录中
+   */
+  private assertAllowedUploadCategory(relativePath: string): void {
+    const firstSegment = (relativePath || "").split("/").filter(Boolean)[0];
+    if (!firstSegment || !ALLOWED_CATEGORIES.includes(firstSegment)) {
+      throw new BadRequestException("无效的文件路径");
+    }
+  }
+
+  /**
    * 保存上传的文件
    * @param file 上传的文件
    * @param category 文件分类（contracts/invoices/expenses）
@@ -216,6 +226,7 @@ export class UploadService {
 
     // 清理路径，防止路径遍历
     const relativePath = this.sanitizePath(fileUrl.replace(/^\/uploads\//, ""));
+    this.assertAllowedUploadCategory(relativePath);
     const fullPath = path.join(this.uploadDir, relativePath);
 
     // 验证最终路径在上传目录内
@@ -243,6 +254,7 @@ export class UploadService {
   getFilePath(fileUrl: string): string {
     // 清理路径，防止路径遍历
     const relativePath = this.sanitizePath(fileUrl.replace(/^\/uploads\//, ""));
+    this.assertAllowedUploadCategory(relativePath);
     const fullPath = path.join(this.uploadDir, relativePath);
 
     // 验证最终路径在上传目录内
