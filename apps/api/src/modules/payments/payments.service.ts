@@ -12,6 +12,10 @@ import { CreatePaymentRecordDto } from "./dto/create-payment-record.dto";
 import { Decimal } from "@prisma/client/runtime/library";
 import { isSalesContractType } from "../contracts/contracts.type.utils";
 import { normalizeText } from "../../common/utils/tabular.utils";
+import {
+  registerDictionaryLookup,
+  resolveDictionaryCodeByText,
+} from "../contracts/contracts.lookup.utils";
 
 // 合同状态常量
 const ContractStatus = {
@@ -33,6 +37,7 @@ const SALES_CONTRACT_TYPES_CACHE_TTL_MS = 5 * 60 * 1000;
 export class PaymentsService {
   private salesContractTypesCache: {
     codes: string[];
+    codeByLookup: Map<string, string>;
     expiresAt: number;
   } | null = null;
 
@@ -51,14 +56,16 @@ export class PaymentsService {
     }
 
     const rows = await this.prisma.dictionary.findMany({
-      where: { type: "CONTRACT_TYPE" },
+      where: { type: "CONTRACT_TYPE", isEnabled: true },
       select: { code: true, name: true, value: true },
     });
+    const codeByLookup = new Map<string, string>();
+    rows.forEach((row) => registerDictionaryLookup(codeByLookup, row));
 
     const detected = rows
       .filter((row) =>
         // 仅基于编码和值识别销售类型，避免名称异常导致误判
-        isSalesContractType([row.code, row.value || ""]),
+        isSalesContractType([row.code, row.name || "", row.value || ""]),
       )
       .map((row) => normalizeText(row.code).toUpperCase())
       .filter(Boolean);
@@ -68,6 +75,7 @@ export class PaymentsService {
 
     this.salesContractTypesCache = {
       codes: resolved,
+      codeByLookup,
       expiresAt: now + SALES_CONTRACT_TYPES_CACHE_TTL_MS,
     };
 
@@ -77,13 +85,12 @@ export class PaymentsService {
   private async isSalesContract(
     contractType?: string | null,
   ): Promise<boolean> {
-    const normalized = normalizeText(contractType || "").toUpperCase();
-    if (!normalized) return false;
-
     const salesCodes = await this.getSalesContractTypeCodes();
-    if (salesCodes.includes(normalized)) return true;
-
-    return isSalesContractType([contractType || ""]);
+    return this.resolveIsSalesContractType(
+      contractType,
+      new Set(salesCodes),
+      this.salesContractTypesCache?.codeByLookup || new Map(),
+    );
   }
 
   private async assertSalesContract(
@@ -136,30 +143,14 @@ export class PaymentsService {
     const salesContractTypeSet = new Set(
       salesContractTypeCodes.map((item) => normalizeText(item).toUpperCase()),
     );
+    const codeByLookup =
+      this.salesContractTypesCache?.codeByLookup || new Map();
 
-    // 仅读取销售合同，避免其他类型合同混入回款看板
+    // 读取执行中合同后再按销售类型进行严格过滤，避免“销售保密协议”等误判。
     const contracts = await this.prisma.contract.findMany({
       where: {
         isDeleted: false,
         status: ContractStatus.EXECUTING,
-        OR: [
-          {
-            contractType: {
-              in: salesContractTypeCodes,
-            },
-          },
-          {
-            contractType: {
-              contains: "销售",
-            },
-          },
-          {
-            contractType: {
-              contains: "SALE",
-              mode: "insensitive",
-            },
-          },
-        ],
       },
       include: {
         customer: {
@@ -178,6 +169,7 @@ export class PaymentsService {
       this.resolveIsSalesContractType(
         contract.contractType,
         salesContractTypeSet,
+        codeByLookup,
       ),
     );
 
@@ -255,11 +247,18 @@ export class PaymentsService {
   private resolveIsSalesContractType(
     contractType: string | null | undefined,
     salesCodes: Set<string>,
+    codeByLookup: Map<string, string>,
   ): boolean {
-    const normalized = normalizeText(contractType || "").toUpperCase();
-    if (!normalized) return false;
+    const raw = normalizeText(contractType || "");
+    if (!raw) return false;
+
+    const normalized = raw.toUpperCase();
     if (salesCodes.has(normalized)) return true;
-    return isSalesContractType([contractType || ""]);
+
+    const mappedCode = resolveDictionaryCodeByText(codeByLookup, raw);
+    if (!mappedCode) return false;
+
+    return salesCodes.has(normalizeText(mappedCode).toUpperCase());
   }
 
   /**
