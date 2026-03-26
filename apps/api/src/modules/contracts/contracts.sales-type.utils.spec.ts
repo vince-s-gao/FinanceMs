@@ -80,5 +80,16 @@ describe("contracts.sales-type.utils", () => {
       });
       expect(result).toBe(false);
     });
+
+    it("should keep NDA-like text as non-sales even when lookup points to SALES", () => {
+      const result = isSalesContractByContext({
+        contractType: "销售保密协议NDA",
+        context: {
+          codes: ["SALES"],
+          codeByLookup: new Map([["销售保密协议nda", "SALES"]]),
+        },
+      });
+      expect(result).toBe(false);
+    });
   });
 });

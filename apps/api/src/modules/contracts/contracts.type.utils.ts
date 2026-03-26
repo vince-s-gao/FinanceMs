@@ -14,6 +14,12 @@ const NON_SALES_TYPE_HINTS = [
 
 const SALES_TYPE_HINTS = ["SALES", "SALE", "销售", "应收", "RECEIVABLE"];
 
+export function isNonSalesContractType(value: string): boolean {
+  const normalized = normalizeText(value).toUpperCase();
+  if (!normalized) return false;
+  return NON_SALES_TYPE_HINTS.some((hint) => normalized.includes(hint));
+}
+
 export function isSalesContractType(values: string[]): boolean {
   const normalizedValues = values
     .map((value) => normalizeText(value).toUpperCase())
@@ -22,7 +28,7 @@ export function isSalesContractType(values: string[]): boolean {
   if (normalizedValues.length === 0) return false;
 
   const matchesNonSales = normalizedValues.some((value) =>
-    NON_SALES_TYPE_HINTS.some((hint) => value.includes(hint)),
+    isNonSalesContractType(value),
   );
   if (matchesNonSales) return false;
 

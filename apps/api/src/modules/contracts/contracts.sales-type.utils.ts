@@ -4,7 +4,10 @@ import {
   registerDictionaryLookup,
   resolveDictionaryCodeByText,
 } from "./contracts.lookup.utils";
-import { isSalesContractType } from "./contracts.type.utils";
+import {
+  isNonSalesContractType,
+  isSalesContractType,
+} from "./contracts.type.utils";
 
 export type SalesContractTypeContext = {
   codes: string[];
@@ -47,6 +50,7 @@ export function isSalesContractByContext(args: {
 }): boolean {
   const raw = normalizeText(args.contractType || "");
   if (!raw) return false;
+  if (isNonSalesContractType(raw)) return false;
 
   const normalized = raw.toUpperCase();
   if (args.context.codes.includes(normalized)) return true;
