@@ -30,6 +30,7 @@ import { api } from "@/lib/api";
 import { formatAmount, formatDate } from "@/lib/constants";
 import { getErrorMessage } from "@/lib/error";
 import { formatLocaleMoney } from "@/lib/number";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 
@@ -65,6 +66,9 @@ interface ContractPaymentInfo {
 
 export default function PaymentsPage() {
   const router = useRouter();
+  const { has, loaded } = useFunctionPermissions();
+  const canViewPayment = has("payment.view");
+  const canViewContract = has("contract.view");
   const [loading, setLoading] = useState(true);
   const [statistics, setStatistics] = useState<PaymentStatistics | null>(null);
 
@@ -82,8 +86,14 @@ export default function PaymentsPage() {
   };
 
   useEffect(() => {
+    if (!loaded) return;
+    if (!canViewPayment) {
+      message.error("暂无回款管理查看权限");
+      router.replace("/dashboard");
+      return;
+    }
     fetchStatistics();
-  }, []);
+  }, [canViewPayment, loaded, router]);
 
   // 表格列定义
   const columns: TableColumnsType<ContractPaymentInfo> = [
@@ -93,7 +103,13 @@ export default function PaymentsPage() {
       key: "contractNo",
       width: 140,
       render: (v: string, record: ContractPaymentInfo) => (
-        <a onClick={() => router.push(`/contracts/${record.id}`)}>{v}</a>
+        <a
+          onClick={() =>
+            canViewContract ? router.push(`/contracts/${record.id}`) : undefined
+          }
+        >
+          {v}
+        </a>
       ),
     },
     {
@@ -165,20 +181,23 @@ export default function PaymentsPage() {
       title: "操作",
       key: "action",
       width: 80,
-      render: (_: unknown, record: ContractPaymentInfo) => (
-        <Button
-          type="link"
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => router.push(`/contracts/${record.id}`)}
-        >
-          详情
-        </Button>
-      ),
+      render: (_: unknown, record: ContractPaymentInfo) =>
+        canViewContract ? (
+          <Button
+            type="link"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => router.push(`/contracts/${record.id}`)}
+          >
+            详情
+          </Button>
+        ) : (
+          "-"
+        ),
     },
   ];
 
-  if (loading) {
+  if (!loaded || loading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
         <Spin size="large" tip="加载中..." />
