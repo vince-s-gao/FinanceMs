@@ -31,6 +31,10 @@ import {
   decryptIfNeeded,
   encryptNullable,
 } from "../../common/utils/encryption.utils";
+import {
+  buildSensitiveFieldEqualsOr,
+  isSensitiveFieldChanged,
+} from "../../common/utils/sensitive-field.utils";
 
 const ALLOWED_SUPPLIER_SORT_FIELDS = [
   "code",
@@ -118,11 +122,10 @@ export class SuppliersService {
   }
 
   private async findSupplierByCreditCode(creditCode: string) {
-    const encrypted = this.toEncrypted(creditCode);
     return this.prisma.supplier.findFirst({
       where: {
         isDeleted: false,
-        OR: [{ creditCode: encrypted }, { creditCode }],
+        OR: buildSensitiveFieldEqualsOr("creditCode", creditCode),
       },
     });
   }
@@ -131,12 +134,11 @@ export class SuppliersService {
     creditCode: string,
     currentId: string,
   ) {
-    const encrypted = this.toEncrypted(creditCode);
     return this.prisma.supplier.findFirst({
       where: {
         isDeleted: false,
         NOT: { id: currentId },
-        OR: [{ creditCode: encrypted }, { creditCode }],
+        OR: buildSensitiveFieldEqualsOr("creditCode", creditCode),
       },
     });
   }
@@ -662,7 +664,7 @@ export class SuppliersService {
         if (existing) {
           if (
             creditCode &&
-            creditCode !== this.decodeSensitive(existing.creditCode)
+            isSensitiveFieldChanged(creditCode, existing.creditCode)
           ) {
             const duplicateCredit = await this.findDuplicateSupplierCreditCode(
               creditCode,

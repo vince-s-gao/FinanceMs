@@ -12,6 +12,7 @@ import {
   decryptIfNeeded,
   encryptNullable,
 } from "../../common/utils/encryption.utils";
+import { buildSensitiveFieldEqualsOr } from "../../common/utils/sensitive-field.utils";
 
 @Injectable()
 export class BankAccountsService {
@@ -32,20 +33,18 @@ export class BankAccountsService {
   }
 
   private async findByAccountNo(accountNo: string) {
-    const encrypted = this.toEncryptedAccountNo(accountNo);
     return this.prisma.bankAccount.findFirst({
       where: {
-        OR: [{ accountNo: encrypted }, { accountNo }],
+        OR: buildSensitiveFieldEqualsOr("accountNo", accountNo),
       },
     });
   }
 
   private async findDuplicateAccountNo(accountNo: string, currentId: string) {
-    const encrypted = this.toEncryptedAccountNo(accountNo);
     return this.prisma.bankAccount.findFirst({
       where: {
         id: { not: currentId },
-        OR: [{ accountNo: encrypted }, { accountNo }],
+        OR: buildSensitiveFieldEqualsOr("accountNo", accountNo),
       },
     });
   }
