@@ -32,7 +32,11 @@ function parseDurationToSeconds(value: string | undefined): number | null {
 function validateCriticalEnv(): void {
   const isProduction = process.env.NODE_ENV === "production";
   const requiredInAnyEnv = ["JWT_SECRET"];
-  const requiredInProduction = ["DATABASE_URL", "JWT_EXPIRES_IN"];
+  const requiredInProduction = [
+    "DATABASE_URL",
+    "JWT_EXPIRES_IN",
+    "ENCRYPTION_KEY",
+  ];
   const refreshExpires =
     process.env.JWT_REFRESH_EXPIRES_IN ||
     process.env.JWT_REFRESH_TOKEN_EXPIRES_IN;

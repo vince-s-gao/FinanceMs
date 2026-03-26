@@ -27,6 +27,10 @@ import {
   toCsv,
   toXlsxBuffer,
 } from "../../common/utils/tabular.utils";
+import {
+  decryptIfNeeded,
+  encryptNullable,
+} from "../../common/utils/encryption.utils";
 
 const ALLOWED_SUPPLIER_SORT_FIELDS = [
   "code",
@@ -92,6 +96,49 @@ export class SuppliersService {
   private toNullable(value: string): string | null {
     const normalized = normalizeText(value || "");
     return normalized || null;
+  }
+
+  private toEncrypted(value: string | null | undefined): string | null {
+    return encryptNullable(this.toNullable(value || ""));
+  }
+
+  private decodeSensitive(value: string | null | undefined): string | null {
+    return decryptIfNeeded(value);
+  }
+
+  private decodeSupplier<
+    T extends { creditCode?: string | null; bankAccountNo?: string | null },
+  >(item: T): T {
+    if (!item) return item;
+    return {
+      ...item,
+      creditCode: this.decodeSensitive(item.creditCode),
+      bankAccountNo: this.decodeSensitive(item.bankAccountNo),
+    };
+  }
+
+  private async findSupplierByCreditCode(creditCode: string) {
+    const encrypted = this.toEncrypted(creditCode);
+    return this.prisma.supplier.findFirst({
+      where: {
+        isDeleted: false,
+        OR: [{ creditCode: encrypted }, { creditCode }],
+      },
+    });
+  }
+
+  private async findDuplicateSupplierCreditCode(
+    creditCode: string,
+    currentId: string,
+  ) {
+    const encrypted = this.toEncrypted(creditCode);
+    return this.prisma.supplier.findFirst({
+      where: {
+        isDeleted: false,
+        NOT: { id: currentId },
+        OR: [{ creditCode: encrypted }, { creditCode }],
+      },
+    });
   }
 
   private isSalesContractType(
@@ -310,7 +357,7 @@ export class SuppliersService {
     const itemsWithContractCount = items.map((item) => {
       const key = this.toLookupKey(item.name || "");
       return {
-        ...item,
+        ...this.decodeSupplier(item),
         contractCount: contractCountBySupplier.get(key) || 0,
       };
     });
@@ -331,14 +378,18 @@ export class SuppliersService {
     if (!supplier) {
       throw new NotFoundException("供应商不存在");
     }
-    return supplier;
+    return this.decodeSupplier(supplier);
   }
 
   async create(createSupplierDto: CreateSupplierDto) {
-    if (createSupplierDto.creditCode) {
-      const existing = await this.prisma.supplier.findFirst({
-        where: { creditCode: createSupplierDto.creditCode, isDeleted: false },
-      });
+    const encryptedCreditCode = this.toEncrypted(createSupplierDto.creditCode);
+    const encryptedBankAccountNo = this.toEncrypted(
+      createSupplierDto.bankAccountNo,
+    );
+    if (encryptedCreditCode) {
+      const existing = await this.findSupplierByCreditCode(
+        createSupplierDto.creditCode!,
+      );
       if (existing) {
         throw new ConflictException("该统一社会信用代码已存在");
       }
@@ -351,6 +402,8 @@ export class SuppliersService {
           return await this.prisma.supplier.create({
             data: {
               ...createSupplierDto,
+              creditCode: encryptedCreditCode,
+              bankAccountNo: encryptedBankAccountNo,
               code,
             },
           });
@@ -365,34 +418,41 @@ export class SuppliersService {
       exhaustedError: () => new ConflictException("供应商编号生成失败，请重试"),
     });
     this.invalidateOptionsCache();
-    return created;
+    return this.decodeSupplier(created);
   }
 
   async update(id: string, updateSupplierDto: UpdateSupplierDto) {
     const supplier = await this.findOne(id);
 
-    if (
-      updateSupplierDto.creditCode &&
-      updateSupplierDto.creditCode !== supplier.creditCode
-    ) {
-      const existing = await this.prisma.supplier.findFirst({
-        where: {
-          creditCode: updateSupplierDto.creditCode,
-          isDeleted: false,
-          NOT: { id },
-        },
-      });
+    const incomingCreditCode = this.toNullable(
+      updateSupplierDto.creditCode || "",
+    );
+    if (incomingCreditCode && incomingCreditCode !== supplier.creditCode) {
+      const existing = await this.findDuplicateSupplierCreditCode(
+        incomingCreditCode,
+        id,
+      );
       if (existing) {
         throw new ConflictException("该统一社会信用代码已存在");
       }
     }
 
+    const updateData = {
+      ...updateSupplierDto,
+      ...(updateSupplierDto.creditCode !== undefined
+        ? { creditCode: this.toEncrypted(updateSupplierDto.creditCode) }
+        : {}),
+      ...(updateSupplierDto.bankAccountNo !== undefined
+        ? { bankAccountNo: this.toEncrypted(updateSupplierDto.bankAccountNo) }
+        : {}),
+    };
+
     const updated = await this.prisma.supplier.update({
       where: { id },
-      data: updateSupplierDto,
+      data: updateData,
     });
     this.invalidateOptionsCache();
-    return updated;
+    return this.decodeSupplier(updated);
   }
 
   async remove(id: string) {
@@ -402,7 +462,7 @@ export class SuppliersService {
       data: { isDeleted: true },
     });
     this.invalidateOptionsCache();
-    return removed;
+    return this.decodeSupplier(removed);
   }
 
   async getOptions() {
@@ -420,7 +480,7 @@ export class SuppliersService {
       orderBy: { name: "asc" },
     });
     this.setOptionsCache(items);
-    return items;
+    return items.map((item) => this.decodeSupplier(item));
   }
 
   private async buildExportPayload(query: QuerySupplierDto) {
@@ -451,14 +511,14 @@ export class SuppliersService {
       item.code,
       item.name,
       supplierTypeLookup.get(this.toLookupKey(item.type)) || item.type,
-      item.creditCode || "",
+      this.decodeSensitive(item.creditCode) || "",
       item.contactName || "",
       item.contactPhone || "",
       item.contactEmail || "",
       item.address || "",
       item.bankName || "",
       item.bankAccountName || "",
-      item.bankAccountNo || "",
+      this.decodeSensitive(item.bankAccountNo) || "",
       item.remark || "",
     ]);
 
@@ -564,6 +624,7 @@ export class SuppliersService {
       const typeRaw = getCell(row, typeIdx);
       const typeCode = this.resolveSupplierTypeCode(typeLookup, typeRaw);
       const creditCode = this.toNullable(getCell(row, creditCodeIdx));
+      const encryptedCreditCode = this.toEncrypted(creditCode);
       const contactName = this.toNullable(getCell(row, contactNameIdx));
       const contactPhone = this.toNullable(getCell(row, contactPhoneIdx));
       const contactEmail = this.toNullable(getCell(row, contactEmailIdx));
@@ -571,6 +632,7 @@ export class SuppliersService {
       const bankName = this.toNullable(getCell(row, bankNameIdx));
       const bankAccountName = this.toNullable(getCell(row, bankAccountNameIdx));
       const bankAccountNo = this.toNullable(getCell(row, bankAccountNoIdx));
+      const encryptedBankAccountNo = this.toEncrypted(bankAccountNo);
       const remark = this.toNullable(getCell(row, remarkIdx));
 
       if (!name) {
@@ -593,21 +655,19 @@ export class SuppliersService {
           : null;
         const existingByCredit =
           !existingByCode && creditCode
-            ? await this.prisma.supplier.findFirst({
-                where: { creditCode, isDeleted: false },
-              })
+            ? await this.findSupplierByCreditCode(creditCode)
             : null;
         const existing = existingByCode || existingByCredit;
 
         if (existing) {
-          if (creditCode && creditCode !== existing.creditCode) {
-            const duplicateCredit = await this.prisma.supplier.findFirst({
-              where: {
-                creditCode,
-                isDeleted: false,
-                NOT: { id: existing.id },
-              },
-            });
+          if (
+            creditCode &&
+            creditCode !== this.decodeSensitive(existing.creditCode)
+          ) {
+            const duplicateCredit = await this.findDuplicateSupplierCreditCode(
+              creditCode,
+              existing.id,
+            );
             if (duplicateCredit) {
               throw new ConflictException("统一社会信用代码已存在");
             }
@@ -617,14 +677,14 @@ export class SuppliersService {
             data: {
               name,
               type: typeCode,
-              creditCode,
+              creditCode: encryptedCreditCode,
               contactName,
               contactPhone,
               contactEmail,
               address,
               bankName,
               bankAccountName,
-              bankAccountNo,
+              bankAccountNo: encryptedBankAccountNo,
               remark,
             },
           });
@@ -635,14 +695,14 @@ export class SuppliersService {
         const createData = {
           name,
           type: typeCode,
-          creditCode,
+          creditCode: encryptedCreditCode,
           contactName,
           contactPhone,
           contactEmail,
           address,
           bankName,
           bankAccountName,
-          bankAccountNo,
+          bankAccountNo: encryptedBankAccountNo,
           remark,
         };
 

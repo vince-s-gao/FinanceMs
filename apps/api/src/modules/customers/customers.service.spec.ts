@@ -301,7 +301,10 @@ describe("CustomersService", () => {
 
     expect(prisma.customer.update).toHaveBeenCalledWith({
       where: { id: "c1" },
-      data: { name: "新名称", creditCode: "SAME-CODE" },
+      data: expect.objectContaining({
+        name: "新名称",
+        creditCode: expect.stringContaining("enc:v1:"),
+      }),
     });
   });
 

@@ -30,6 +30,7 @@ interface TokenUser {
   lockedUntil?: Date | null;
   lastLoginIp?: string | null;
   lastLoginUserAgent?: string | null;
+  lastLoginDeviceFingerprint?: string | null;
 }
 
 interface JwtPayload {
@@ -43,6 +44,7 @@ interface JwtPayload {
 export interface LoginMetadata {
   ipAddress?: string;
   userAgent?: string;
+  deviceFingerprint?: string;
 }
 
 interface TokenIssueResult {
@@ -147,6 +149,8 @@ export class AuthService {
     return {
       ipAddress: metadata?.ipAddress?.slice(0, 80) || "unknown",
       userAgent: metadata?.userAgent?.slice(0, 512) || "unknown",
+      deviceFingerprint:
+        metadata?.deviceFingerprint?.slice(0, 128) || "unknown",
     };
   }
 
@@ -208,6 +212,7 @@ export class AuthService {
         refreshTokenHash: this.hashToken(issued.refreshToken),
         ipAddress: meta.ipAddress,
         userAgent: meta.userAgent,
+        deviceFingerprint: meta.deviceFingerprint,
         expiresAt: new Date(now.getTime() + refreshTtlSeconds * 1000),
         lastActivityAt: now,
       },
@@ -232,6 +237,12 @@ export class AuthService {
 
     if (user.lastLoginUserAgent && user.lastLoginUserAgent !== meta.userAgent) {
       reasons.push("登录设备发生变化");
+    }
+    if (
+      user.lastLoginDeviceFingerprint &&
+      user.lastLoginDeviceFingerprint !== meta.deviceFingerprint
+    ) {
+      reasons.push("设备指纹发生变化");
     }
 
     if (reasons.length === 0) return;
@@ -260,6 +271,7 @@ export class AuthService {
         reason: reasons,
         ipAddress: meta.ipAddress,
         userAgent: meta.userAgent,
+        deviceFingerprint: meta.deviceFingerprint,
       },
       meta.ipAddress,
       meta.userAgent,
@@ -375,6 +387,7 @@ export class AuthService {
         lastLoginAt: new Date(),
         lastLoginIp: meta.ipAddress,
         lastLoginUserAgent: meta.userAgent,
+        lastLoginDeviceFingerprint: meta.deviceFingerprint,
       },
     });
 
@@ -460,6 +473,7 @@ export class AuthService {
         ),
         ipAddress: meta.ipAddress,
         userAgent: meta.userAgent,
+        deviceFingerprint: meta.deviceFingerprint,
       },
     });
 
@@ -605,6 +619,7 @@ export class AuthService {
         id: true,
         ipAddress: true,
         userAgent: true,
+        deviceFingerprint: true,
         createdAt: true,
         lastActivityAt: true,
         expiresAt: true,

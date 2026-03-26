@@ -32,6 +32,31 @@ import { Prisma } from "@prisma/client";
 // 回款计划状态常量（使用 Prisma 枚举）
 const PaymentPlanStatus = PrismaPaymentPlanStatus;
 const SALES_CONTRACT_TYPES_CACHE_TTL_MS = 5 * 60 * 1000;
+const PAYMENT_STATS_CACHE_TTL_MS = 30 * 1000;
+
+type PaymentStatistics = {
+  summary: {
+    totalContractAmount: Decimal;
+    totalPaidAmount: Decimal;
+    totalReceivable: Decimal;
+    overdueAmount: Decimal;
+    contractCount: number;
+    completionRate: number;
+  };
+  contracts: Array<{
+    id: string;
+    contractNo: string;
+    name: string;
+    customer: { id: string; name: string; code: string } | null;
+    amountWithTax: Decimal;
+    totalPaid: Decimal;
+    receivable: Decimal;
+    overdueAmount: Decimal;
+    progress: number;
+    signDate: Date;
+    status: string;
+  }>;
+};
 
 @Injectable()
 export class PaymentsService {
@@ -39,6 +64,10 @@ export class PaymentsService {
     codes: string[];
     codeByLookup: Map<string, string>;
     expiresAt: number;
+  } | null = null;
+  private statisticsCache: {
+    expiresAt: number;
+    data: PaymentStatistics;
   } | null = null;
 
   constructor(
@@ -138,7 +167,12 @@ export class PaymentsService {
   /**
    * 获取回款统计数据
    */
-  async getStatistics() {
+  async getStatistics(): Promise<PaymentStatistics> {
+    const now = Date.now();
+    if (this.statisticsCache && this.statisticsCache.expiresAt > now) {
+      return this.statisticsCache.data;
+    }
+
     const salesContractTypeCodes = await this.getSalesContractTypeCodes();
     const salesContractTypeSet = new Set(
       salesContractTypeCodes.map((item) => normalizeText(item).toUpperCase()),
@@ -227,7 +261,7 @@ export class PaymentsService {
       };
     });
 
-    return {
+    const result = {
       summary: {
         totalContractAmount,
         totalPaidAmount,
@@ -241,7 +275,13 @@ export class PaymentsService {
           : 0,
       },
       contracts: contractStats,
+    } as const;
+
+    this.statisticsCache = {
+      expiresAt: now + PAYMENT_STATS_CACHE_TTL_MS,
+      data: result,
     };
+    return result;
   }
 
   private resolveIsSalesContractType(

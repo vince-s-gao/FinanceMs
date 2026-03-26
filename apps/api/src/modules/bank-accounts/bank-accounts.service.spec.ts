@@ -25,7 +25,7 @@ describe("BankAccountsService", () => {
   });
 
   it("should throw when creating duplicated account number", async () => {
-    prisma.bankAccount.findUnique.mockResolvedValueOnce({ id: "a1" });
+    prisma.bankAccount.findFirst.mockResolvedValueOnce({ id: "a1" });
 
     await expect(
       service.create({
@@ -39,7 +39,7 @@ describe("BankAccountsService", () => {
   });
 
   it("should reset previous default account when creating new default account", async () => {
-    prisma.bankAccount.findUnique.mockResolvedValueOnce(null);
+    prisma.bankAccount.findFirst.mockResolvedValueOnce(null);
     prisma.bankAccount.create.mockResolvedValueOnce({ id: "a2" });
 
     await service.create({
@@ -59,7 +59,7 @@ describe("BankAccountsService", () => {
   });
 
   it("should apply default flags and optional defaults when creating non-default account", async () => {
-    prisma.bankAccount.findUnique.mockResolvedValueOnce(null);
+    prisma.bankAccount.findFirst.mockResolvedValueOnce(null);
     prisma.bankAccount.create.mockResolvedValueOnce({ id: "a3" });
 
     await service.create({

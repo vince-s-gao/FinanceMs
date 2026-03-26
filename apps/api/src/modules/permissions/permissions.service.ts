@@ -383,10 +383,106 @@ const ALL_FUNCTIONS = [
   { key: "dictionary.delete", name: "删除字典项", module: "数据字典" },
 ];
 const ALL_FUNCTION_KEYS = new Set(ALL_FUNCTIONS.map((item) => item.key));
+const MENU_BASE_FUNCTIONS: Record<string, string[]> = {
+  "/customers": ["customer.view"],
+  "/suppliers": ["supplier.view"],
+  "/contracts": ["contract.view"],
+  "/payments": ["payment.view"],
+  "/payment-requests": ["payment-request.view", "bank-account.view"],
+  "/invoices": ["invoice.view"],
+  "/expenses": ["expense.view"],
+  "/costs": ["cost.view"],
+  "/budgets": ["budget.view"],
+  "/reports": ["report.view"],
+  "/projects": ["project.view"],
+};
+const FUNCTION_INHERITANCE: Record<string, string[]> = {
+  "customer.create": ["customer.view"],
+  "customer.edit": ["customer.view"],
+  "customer.delete": ["customer.view"],
+  "customer.approve": ["customer.view"],
+  "customer.export": ["customer.view"],
+  "supplier.create": ["supplier.view"],
+  "supplier.edit": ["supplier.view"],
+  "supplier.delete": ["supplier.view"],
+  "supplier.export": ["supplier.view"],
+  "contract.create": ["contract.view"],
+  "contract.edit": ["contract.view"],
+  "contract.delete": ["contract.view"],
+  "contract.export": ["contract.view"],
+  "invoice.create": ["invoice.view"],
+  "invoice.void": ["invoice.view"],
+  "invoice.delete": ["invoice.view"],
+  "expense.create": ["expense.view"],
+  "expense.edit": ["expense.view"],
+  "expense.delete": ["expense.view"],
+  "expense.submit": ["expense.view"],
+  "expense.approve": ["expense.view"],
+  "expense.pay": ["expense.view"],
+  "cost.create": ["cost.view"],
+  "cost.edit": ["cost.view"],
+  "cost.delete": ["cost.view"],
+  "budget.create": ["budget.view"],
+  "budget.edit": ["budget.view"],
+  "budget.freeze": ["budget.view"],
+  "budget.close": ["budget.view"],
+  "budget.delete": ["budget.view"],
+  "project.create": ["project.view"],
+  "project.edit": ["project.view"],
+  "project.delete": ["project.view"],
+  "report.export": ["report.view"],
+  "payment.plan.create": ["payment.view"],
+  "payment.plan.delete": ["payment.view"],
+  "payment.record.create": ["payment.view"],
+  "payment.record.delete": ["payment.view"],
+  "payment-request.create": ["payment-request.view", "bank-account.view"],
+  "payment-request.edit": ["payment-request.view", "bank-account.view"],
+  "payment-request.submit": ["payment-request.view"],
+  "payment-request.approve": ["payment-request.view"],
+  "payment-request.confirm": ["payment-request.view", "bank-account.view"],
+  "payment-request.cancel": ["payment-request.view"],
+  "payment-request.delete": ["payment-request.view"],
+  "bank-account.create": ["bank-account.view"],
+  "bank-account.edit": ["bank-account.view"],
+  "bank-account.delete": ["bank-account.view"],
+  "user.create": ["department.manage"],
+  "user.edit": ["department.manage"],
+  "user.delete": ["department.manage"],
+  "dictionary.create": ["dictionary.read"],
+  "dictionary.edit": ["dictionary.read"],
+  "dictionary.delete": ["dictionary.read"],
+};
 
 @Injectable()
 export class PermissionsService {
   constructor(private prisma: PrismaService) {}
+
+  private applyPermissionInheritance(
+    menus: string[],
+    functionSet: Set<string>,
+  ): Set<string> {
+    menus.forEach((menuKey) => {
+      (MENU_BASE_FUNCTIONS[menuKey] || []).forEach((fnKey) =>
+        functionSet.add(fnKey),
+      );
+    });
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      Array.from(functionSet).forEach((key) => {
+        const dependencies = FUNCTION_INHERITANCE[key] || [];
+        dependencies.forEach((dependency) => {
+          if (!functionSet.has(dependency)) {
+            functionSet.add(dependency);
+            changed = true;
+          }
+        });
+      });
+    }
+
+    return functionSet;
+  }
 
   private toRole(role: string): Role | null {
     if (!role) return null;
@@ -750,7 +846,13 @@ export class PermissionsService {
       functionSet.add("project.delete");
     }
 
-    return { role, menus, functions: Array.from(functionSet) };
+    return {
+      role,
+      menus,
+      functions: Array.from(
+        this.applyPermissionInheritance(menus, functionSet),
+      ),
+    };
   }
 
   /**

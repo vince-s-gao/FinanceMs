@@ -19,6 +19,7 @@ import {
 const ContractStatus = PrismaContractStatus;
 const ExpenseStatus = PrismaExpenseStatus;
 const SALES_CONTRACT_TYPES_CACHE_TTL_MS = 5 * 60 * 1000;
+const REPORT_CACHE_TTL_MS = 30 * 1000;
 
 // 计算账龄
 function calculateAging(dueDate: Date | string): number {
@@ -47,8 +48,29 @@ export class ReportsService {
     codeByLookup: Map<string, string>;
     expiresAt: number;
   } | null = null;
+  private readonly reportCache = new Map<
+    string,
+    { expiresAt: number; data: unknown }
+  >();
 
   constructor(private prisma: PrismaService) {}
+
+  private async withReportCache<T>(
+    key: string,
+    loader: () => Promise<T>,
+  ): Promise<T> {
+    const now = Date.now();
+    const cached = this.reportCache.get(key);
+    if (cached && cached.expiresAt > now) {
+      return cached.data as T;
+    }
+    const data = await loader();
+    this.reportCache.set(key, {
+      expiresAt: now + REPORT_CACHE_TTL_MS,
+      data,
+    });
+    return data;
+  }
 
   private async getSalesContractTypeCodes(): Promise<string[]> {
     const now = Date.now();
@@ -115,143 +137,58 @@ export class ReportsService {
    * 应收账款总览
    */
   async getReceivablesOverview() {
-    const salesCodes = await this.getSalesContractTypeCodes();
-    // 获取所有执行中的合同
-    const contracts = await this.prisma.contract.findMany({
-      where: {
-        isDeleted: false,
-        status: { in: [ContractStatus.EXECUTING, ContractStatus.COMPLETED] },
-      },
-      include: {
-        paymentPlans: true,
-        paymentRecords: true,
-      },
-    });
-    const salesContracts: typeof contracts = [];
-    for (const contract of contracts) {
-      if (this.isSalesContractByCodes(contract.contractType, salesCodes)) {
-        salesContracts.push(contract);
-      }
-    }
-
-    let totalContractAmount = new Decimal(0);
-    let totalReceived = new Decimal(0);
-    const agingDistribution = {
-      normal: new Decimal(0),
-      days0to30: new Decimal(0),
-      days31to90: new Decimal(0),
-      daysOver90: new Decimal(0),
-    };
-
-    for (const contract of salesContracts) {
-      totalContractAmount = totalContractAmount.plus(contract.amountWithTax);
-
-      const contractReceived = contract.paymentRecords.reduce(
-        (sum, record) => sum.plus(record.amount),
-        new Decimal(0),
-      );
-      totalReceived = totalReceived.plus(contractReceived);
-
-      // 计算账龄
-      const receivable = new Decimal(contract.amountWithTax.toString()).minus(
-        contractReceived,
-      );
-      if (receivable.gt(0)) {
-        // 找到最早的逾期回款计划
-        const overduePlans = contract.paymentPlans
-          .filter(
-            (plan) =>
-              plan.status !== PaymentPlanStatus.COMPLETED &&
-              new Date(plan.planDate) < new Date(),
-          )
-          .sort(
-            (a, b) =>
-              new Date(a.planDate).getTime() - new Date(b.planDate).getTime(),
-          );
-
-        if (overduePlans.length > 0) {
-          const agingDays = calculateAging(overduePlans[0].planDate);
-          const bucket = getAgingBucket(agingDays);
-
-          switch (bucket) {
-            case "normal":
-              agingDistribution.normal =
-                agingDistribution.normal.plus(receivable);
-              break;
-            case "0-30":
-              agingDistribution.days0to30 =
-                agingDistribution.days0to30.plus(receivable);
-              break;
-            case "31-90":
-              agingDistribution.days31to90 =
-                agingDistribution.days31to90.plus(receivable);
-              break;
-            case "90+":
-              agingDistribution.daysOver90 =
-                agingDistribution.daysOver90.plus(receivable);
-              break;
-          }
-        } else {
-          agingDistribution.normal = agingDistribution.normal.plus(receivable);
-        }
-      }
-    }
-
-    return {
-      totalContractAmount: totalContractAmount.toNumber(),
-      totalReceived: totalReceived.toNumber(),
-      totalReceivable: totalContractAmount.minus(totalReceived).toNumber(),
-      agingDistribution: {
-        normal: agingDistribution.normal.toNumber(),
-        days0to30: agingDistribution.days0to30.toNumber(),
-        days31to90: agingDistribution.days31to90.toNumber(),
-        daysOver90: agingDistribution.daysOver90.toNumber(),
-      },
-    };
-  }
-
-  /**
-   * 客户维度报表
-   */
-  async getCustomerReport() {
-    const salesCodes = await this.getSalesContractTypeCodes();
-    const customers = await this.prisma.customer.findMany({
-      where: { isDeleted: false },
-      include: {
-        contracts: {
-          where: { isDeleted: false },
-          include: {
-            paymentPlans: true,
-            paymentRecords: true,
-          },
+    return this.withReportCache("receivables-overview", async () => {
+      const salesCodes = await this.getSalesContractTypeCodes();
+      const codeByLookup =
+        this.salesContractTypesCache?.codeByLookup || new Map();
+      // 获取所有执行中的合同
+      const contracts = await this.prisma.contract.findMany({
+        where: {
+          isDeleted: false,
+          status: { in: [ContractStatus.EXECUTING, ContractStatus.COMPLETED] },
         },
-      },
-    });
-
-    return customers.map((customer) => {
-      let totalAmount = new Decimal(0);
-      let receivedAmount = new Decimal(0);
-      let overdueOver90 = new Decimal(0);
-      let salesContractCount = 0;
-
-      for (const contract of customer.contracts) {
-        if (!this.isSalesContractByCodes(contract.contractType, salesCodes)) {
-          continue;
+        include: {
+          paymentPlans: true,
+          paymentRecords: true,
+        },
+      });
+      const salesContracts: typeof contracts = [];
+      for (const contract of contracts) {
+        if (
+          this.isSalesContractByCodes(
+            contract.contractType,
+            salesCodes,
+            codeByLookup,
+          )
+        ) {
+          salesContracts.push(contract);
         }
-        salesContractCount += 1;
-        totalAmount = totalAmount.plus(contract.amountWithTax);
+      }
+
+      let totalContractAmount = new Decimal(0);
+      let totalReceived = new Decimal(0);
+      const agingDistribution = {
+        normal: new Decimal(0),
+        days0to30: new Decimal(0),
+        days31to90: new Decimal(0),
+        daysOver90: new Decimal(0),
+      };
+
+      for (const contract of salesContracts) {
+        totalContractAmount = totalContractAmount.plus(contract.amountWithTax);
 
         const contractReceived = contract.paymentRecords.reduce(
           (sum, record) => sum.plus(record.amount),
           new Decimal(0),
         );
-        receivedAmount = receivedAmount.plus(contractReceived);
+        totalReceived = totalReceived.plus(contractReceived);
 
-        // 计算90天以上逾期
+        // 计算账龄
         const receivable = new Decimal(contract.amountWithTax.toString()).minus(
           contractReceived,
         );
         if (receivable.gt(0)) {
+          // 找到最早的逾期回款计划
           const overduePlans = contract.paymentPlans
             .filter(
               (plan) =>
@@ -265,22 +202,129 @@ export class ReportsService {
 
           if (overduePlans.length > 0) {
             const agingDays = calculateAging(overduePlans[0].planDate);
-            if (agingDays > 90) {
-              overdueOver90 = overdueOver90.plus(receivable);
+            const bucket = getAgingBucket(agingDays);
+
+            switch (bucket) {
+              case "normal":
+                agingDistribution.normal =
+                  agingDistribution.normal.plus(receivable);
+                break;
+              case "0-30":
+                agingDistribution.days0to30 =
+                  agingDistribution.days0to30.plus(receivable);
+                break;
+              case "31-90":
+                agingDistribution.days31to90 =
+                  agingDistribution.days31to90.plus(receivable);
+                break;
+              case "90+":
+                agingDistribution.daysOver90 =
+                  agingDistribution.daysOver90.plus(receivable);
+                break;
             }
+          } else {
+            agingDistribution.normal =
+              agingDistribution.normal.plus(receivable);
           }
         }
       }
 
       return {
-        customerId: customer.id,
-        customerName: customer.name,
-        contractCount: salesContractCount,
-        totalAmount: totalAmount.toNumber(),
-        receivedAmount: receivedAmount.toNumber(),
-        receivableAmount: totalAmount.minus(receivedAmount).toNumber(),
-        overdueOver90: overdueOver90.toNumber(),
+        totalContractAmount: totalContractAmount.toNumber(),
+        totalReceived: totalReceived.toNumber(),
+        totalReceivable: totalContractAmount.minus(totalReceived).toNumber(),
+        agingDistribution: {
+          normal: agingDistribution.normal.toNumber(),
+          days0to30: agingDistribution.days0to30.toNumber(),
+          days31to90: agingDistribution.days31to90.toNumber(),
+          daysOver90: agingDistribution.daysOver90.toNumber(),
+        },
       };
+    });
+  }
+
+  /**
+   * 客户维度报表
+   */
+  async getCustomerReport() {
+    return this.withReportCache("customer-report", async () => {
+      const salesCodes = await this.getSalesContractTypeCodes();
+      const codeByLookup =
+        this.salesContractTypesCache?.codeByLookup || new Map();
+      const customers = await this.prisma.customer.findMany({
+        where: { isDeleted: false },
+        include: {
+          contracts: {
+            where: { isDeleted: false },
+            include: {
+              paymentPlans: true,
+              paymentRecords: true,
+            },
+          },
+        },
+      });
+
+      return customers.map((customer) => {
+        let totalAmount = new Decimal(0);
+        let receivedAmount = new Decimal(0);
+        let overdueOver90 = new Decimal(0);
+        let salesContractCount = 0;
+
+        for (const contract of customer.contracts) {
+          if (
+            !this.isSalesContractByCodes(
+              contract.contractType,
+              salesCodes,
+              codeByLookup,
+            )
+          ) {
+            continue;
+          }
+          salesContractCount += 1;
+          totalAmount = totalAmount.plus(contract.amountWithTax);
+
+          const contractReceived = contract.paymentRecords.reduce(
+            (sum, record) => sum.plus(record.amount),
+            new Decimal(0),
+          );
+          receivedAmount = receivedAmount.plus(contractReceived);
+
+          // 计算90天以上逾期
+          const receivable = new Decimal(
+            contract.amountWithTax.toString(),
+          ).minus(contractReceived);
+          if (receivable.gt(0)) {
+            const overduePlans = contract.paymentPlans
+              .filter(
+                (plan) =>
+                  plan.status !== PaymentPlanStatus.COMPLETED &&
+                  new Date(plan.planDate) < new Date(),
+              )
+              .sort(
+                (a, b) =>
+                  new Date(a.planDate).getTime() -
+                  new Date(b.planDate).getTime(),
+              );
+
+            if (overduePlans.length > 0) {
+              const agingDays = calculateAging(overduePlans[0].planDate);
+              if (agingDays > 90) {
+                overdueOver90 = overdueOver90.plus(receivable);
+              }
+            }
+          }
+        }
+
+        return {
+          customerId: customer.id,
+          customerName: customer.name,
+          contractCount: salesContractCount,
+          totalAmount: totalAmount.toNumber(),
+          receivedAmount: receivedAmount.toNumber(),
+          receivableAmount: totalAmount.minus(receivedAmount).toNumber(),
+          overdueOver90: overdueOver90.toNumber(),
+        };
+      });
     });
   }
 
@@ -349,124 +393,148 @@ export class ReportsService {
    * 合同执行看板
    */
   async getContractDashboard() {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const salesCodes = await this.getSalesContractTypeCodes();
-    // 执行中合同数（仅销售）
-    const executingContracts = await this.prisma.contract.findMany({
-      where: {
-        status: ContractStatus.EXECUTING,
-        isDeleted: false,
-      },
-      select: { id: true, contractType: true },
-    });
-    const salesExecutingContracts: typeof executingContracts = [];
-    for (const contract of executingContracts) {
-      if (this.isSalesContractByCodes(contract.contractType, salesCodes)) {
-        salesExecutingContracts.push(contract);
-      }
-    }
-    const executingCount = salesExecutingContracts.length;
-
-    // 本月新签合同（仅销售）
-    const monthlyNewContracts = await this.prisma.contract.findMany({
-      where: {
-        signDate: {
-          gte: startOfMonth,
-          lte: endOfMonth,
-        },
-        isDeleted: false,
-      },
-      select: {
-        amountWithTax: true,
-        contractType: true,
-      },
-    });
-    const salesMonthlyNewContracts: typeof monthlyNewContracts = [];
-    for (const contract of monthlyNewContracts) {
-      if (this.isSalesContractByCodes(contract.contractType, salesCodes)) {
-        salesMonthlyNewContracts.push(contract);
-      }
-    }
-    const monthlyNewAmount = salesMonthlyNewContracts.reduce(
-      (sum, contract) => sum.plus(contract.amountWithTax),
-      new Decimal(0),
-    );
-    const monthlyNewCount = salesMonthlyNewContracts.length;
-
-    // 本月回款（仅销售）
-    const monthlyPaymentRecords = await this.prisma.paymentRecord.findMany({
-      where: {
-        paymentDate: {
-          gte: startOfMonth,
-          lte: endOfMonth,
-        },
-        contract: { isDeleted: false },
-      },
-      select: {
-        amount: true,
-        contract: {
-          select: { contractType: true },
-        },
-      },
-    });
-    const monthlyPaymentAmount = monthlyPaymentRecords.reduce(
-      (sum, record) =>
-        this.isSalesContractByCodes(record.contract?.contractType, salesCodes)
-          ? sum.plus(record.amount)
-          : sum,
-      new Decimal(0),
-    );
-
-    // 即将到期的回款计划（7天内）
-    const upcomingPayments = await this.prisma.paymentPlan.findMany({
-      where: {
-        status: { not: PaymentPlanStatus.COMPLETED },
-        planDate: {
-          gte: now,
-          lte: sevenDaysLater,
-        },
-        contract: {
+    return this.withReportCache("contract-dashboard", async () => {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const salesCodes = await this.getSalesContractTypeCodes();
+      const codeByLookup =
+        this.salesContractTypesCache?.codeByLookup || new Map();
+      // 执行中合同数（仅销售）
+      const executingContracts = await this.prisma.contract.findMany({
+        where: {
+          status: ContractStatus.EXECUTING,
           isDeleted: false,
         },
-      },
-      include: {
-        contract: {
-          select: {
-            id: true,
-            contractNo: true,
-            name: true,
-            contractType: true,
+        select: { id: true, contractType: true },
+      });
+      const salesExecutingContracts: typeof executingContracts = [];
+      for (const contract of executingContracts) {
+        if (
+          this.isSalesContractByCodes(
+            contract.contractType,
+            salesCodes,
+            codeByLookup,
+          )
+        ) {
+          salesExecutingContracts.push(contract);
+        }
+      }
+      const executingCount = salesExecutingContracts.length;
+
+      // 本月新签合同（仅销售）
+      const monthlyNewContracts = await this.prisma.contract.findMany({
+        where: {
+          signDate: {
+            gte: startOfMonth,
+            lte: endOfMonth,
+          },
+          isDeleted: false,
+        },
+        select: {
+          amountWithTax: true,
+          contractType: true,
+        },
+      });
+      const salesMonthlyNewContracts: typeof monthlyNewContracts = [];
+      for (const contract of monthlyNewContracts) {
+        if (
+          this.isSalesContractByCodes(
+            contract.contractType,
+            salesCodes,
+            codeByLookup,
+          )
+        ) {
+          salesMonthlyNewContracts.push(contract);
+        }
+      }
+      const monthlyNewAmount = salesMonthlyNewContracts.reduce(
+        (sum, contract) => sum.plus(contract.amountWithTax),
+        new Decimal(0),
+      );
+      const monthlyNewCount = salesMonthlyNewContracts.length;
+
+      // 本月回款（仅销售）
+      const monthlyPaymentRecords = await this.prisma.paymentRecord.findMany({
+        where: {
+          paymentDate: {
+            gte: startOfMonth,
+            lte: endOfMonth,
+          },
+          contract: { isDeleted: false },
+        },
+        select: {
+          amount: true,
+          contract: {
+            select: { contractType: true },
           },
         },
-      },
-      orderBy: { planDate: "asc" },
-    });
-    const salesUpcomingPayments = upcomingPayments.filter((plan) =>
-      this.isSalesContractByCodes(plan.contract.contractType, salesCodes),
-    );
+      });
+      const monthlyPaymentAmount = monthlyPaymentRecords.reduce(
+        (sum, record) =>
+          this.isSalesContractByCodes(
+            record.contract?.contractType,
+            salesCodes,
+            codeByLookup,
+          )
+            ? sum.plus(record.amount)
+            : sum,
+        new Decimal(0),
+      );
 
-    return {
-      executingCount,
-      monthlyNewCount,
-      monthlyNewAmount: monthlyNewAmount.toNumber(),
-      monthlyPaymentAmount: monthlyPaymentAmount.toNumber(),
-      upcomingPayments: salesUpcomingPayments.map((plan) => ({
-        planId: plan.id,
-        contractId: plan.contract.id,
-        contractNo: plan.contract.contractNo,
-        contractName: plan.contract.name,
-        period: plan.period,
-        planAmount: plan.planAmount,
-        planDate: plan.planDate,
-        daysUntilDue: Math.ceil(
-          (new Date(plan.planDate).getTime() - now.getTime()) /
-            (1000 * 60 * 60 * 24),
+      // 即将到期的回款计划（7天内）
+      const upcomingPayments = await this.prisma.paymentPlan.findMany({
+        where: {
+          status: { not: PaymentPlanStatus.COMPLETED },
+          planDate: {
+            gte: now,
+            lte: sevenDaysLater,
+          },
+          contract: {
+            isDeleted: false,
+          },
+        },
+        include: {
+          contract: {
+            select: {
+              id: true,
+              contractNo: true,
+              name: true,
+              contractType: true,
+            },
+          },
+        },
+        orderBy: { planDate: "asc" },
+      });
+      const salesUpcomingPayments = upcomingPayments.filter((plan) =>
+        this.isSalesContractByCodes(
+          plan.contract.contractType,
+          salesCodes,
+          codeByLookup,
         ),
-      })),
-    };
+      );
+
+      return {
+        executingCount,
+        monthlyNewCount,
+        monthlyNewAmount: monthlyNewAmount.toNumber(),
+        monthlyPaymentAmount: monthlyPaymentAmount.toNumber(),
+        upcomingPayments: salesUpcomingPayments.map((plan) => ({
+          planId: plan.id,
+          contractId: plan.contract.id,
+          contractNo: plan.contract.contractNo,
+          contractName: plan.contract.name,
+          period: plan.period,
+          planAmount: plan.planAmount,
+          planDate: plan.planDate,
+          daysUntilDue: Math.ceil(
+            (new Date(plan.planDate).getTime() - now.getTime()) /
+              (1000 * 60 * 60 * 24),
+          ),
+        })),
+      };
+    });
   }
 
   /**

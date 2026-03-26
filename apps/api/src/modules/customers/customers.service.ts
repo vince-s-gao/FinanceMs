@@ -29,6 +29,10 @@ import {
   toCsv,
   toXlsxBuffer,
 } from "../../common/utils/tabular.utils";
+import {
+  decryptIfNeeded,
+  encryptNullable,
+} from "../../common/utils/encryption.utils";
 
 const ALLOWED_CUSTOMER_SORT_FIELDS = [
   "code",
@@ -93,6 +97,48 @@ export class CustomersService {
   private toNullable(value: string): string | null {
     const normalized = normalizeText(value || "");
     return normalized || null;
+  }
+
+  private toEncryptedCreditCode(
+    value: string | null | undefined,
+  ): string | null {
+    return encryptNullable(this.toNullable(value || ""));
+  }
+
+  private decodeCreditCode(value: string | null | undefined): string | null {
+    return decryptIfNeeded(value);
+  }
+
+  private decodeCustomer<T extends { creditCode?: string | null }>(item: T): T {
+    if (!item) return item;
+    return {
+      ...item,
+      creditCode: this.decodeCreditCode(item.creditCode),
+    };
+  }
+
+  private async findCustomerByCreditCode(creditCode: string) {
+    const encrypted = this.toEncryptedCreditCode(creditCode);
+    return this.prisma.customer.findFirst({
+      where: {
+        isDeleted: false,
+        OR: [{ creditCode: encrypted }, { creditCode }],
+      },
+    });
+  }
+
+  private async findDuplicateCustomerCreditCode(
+    creditCode: string,
+    currentId: string,
+  ) {
+    const encrypted = this.toEncryptedCreditCode(creditCode);
+    return this.prisma.customer.findFirst({
+      where: {
+        isDeleted: false,
+        NOT: { id: currentId },
+        OR: [{ creditCode: encrypted }, { creditCode }],
+      },
+    });
   }
 
   private buildWhere(
@@ -240,7 +286,7 @@ export class CustomersService {
     ]);
 
     return {
-      items,
+      items: items.map((item) => this.decodeCustomer(item)),
       total,
       page: safePage,
       pageSize: safePageSize,
@@ -274,7 +320,7 @@ export class CustomersService {
       throw new NotFoundException("客户不存在");
     }
 
-    return customer;
+    return this.decodeCustomer(customer);
   }
 
   /**
@@ -282,13 +328,13 @@ export class CustomersService {
    */
   async create(createCustomerDto: CreateCustomerDto, userId: string) {
     // 检查信用代码是否重复
-    if (createCustomerDto.creditCode) {
-      const existing = await this.prisma.customer.findFirst({
-        where: {
-          creditCode: createCustomerDto.creditCode,
-          isDeleted: false,
-        },
-      });
+    const encryptedCreditCode = this.toEncryptedCreditCode(
+      createCustomerDto.creditCode,
+    );
+    if (encryptedCreditCode) {
+      const existing = await this.findCustomerByCreditCode(
+        createCustomerDto.creditCode!,
+      );
       if (existing) {
         throw new ConflictException("该统一社会信用代码已存在");
       }
@@ -301,6 +347,7 @@ export class CustomersService {
           return await this.prisma.customer.create({
             data: {
               ...createCustomerDto,
+              creditCode: encryptedCreditCode,
               code,
               approvalStatus: ApprovalStatus.PENDING,
               submittedBy: userId,
@@ -318,7 +365,7 @@ export class CustomersService {
       exhaustedError: () => new ConflictException("客户编号生成失败，请重试"),
     });
     this.invalidateOptionsCache();
-    return created;
+    return this.decodeCustomer(created);
   }
 
   /**
@@ -328,28 +375,36 @@ export class CustomersService {
     const customer = await this.findOne(id);
 
     // 检查信用代码是否重复
-    if (
-      updateCustomerDto.creditCode &&
-      updateCustomerDto.creditCode !== customer.creditCode
-    ) {
-      const existing = await this.prisma.customer.findFirst({
-        where: {
-          creditCode: updateCustomerDto.creditCode,
-          isDeleted: false,
-          NOT: { id },
-        },
-      });
+    const incomingCreditCode = this.toNullable(
+      updateCustomerDto.creditCode || "",
+    );
+    if (incomingCreditCode && incomingCreditCode !== customer.creditCode) {
+      const existing = await this.findDuplicateCustomerCreditCode(
+        incomingCreditCode,
+        id,
+      );
       if (existing) {
         throw new ConflictException("该统一社会信用代码已存在");
       }
     }
 
+    const updateData = {
+      ...updateCustomerDto,
+      ...(updateCustomerDto.creditCode !== undefined
+        ? {
+            creditCode: this.toEncryptedCreditCode(
+              updateCustomerDto.creditCode,
+            ),
+          }
+        : {}),
+    };
+
     const updated = await this.prisma.customer.update({
       where: { id },
-      data: updateCustomerDto,
+      data: updateData,
     });
     this.invalidateOptionsCache();
-    return updated;
+    return this.decodeCustomer(updated);
   }
 
   /**
@@ -372,7 +427,7 @@ export class CustomersService {
       data: { isDeleted: true },
     });
     this.invalidateOptionsCache();
-    return removed;
+    return this.decodeCustomer(removed);
   }
 
   /**
@@ -431,7 +486,7 @@ export class CustomersService {
       },
     });
     this.invalidateOptionsCache();
-    return approvalResult;
+    return this.decodeCustomer(approvalResult);
   }
 
   /**
@@ -495,7 +550,7 @@ export class CustomersService {
     ]);
 
     return {
-      items,
+      items: items.map((item) => this.decodeCustomer(item)),
       total,
       page: safePage,
       pageSize: safePageSize,
@@ -539,7 +594,7 @@ export class CustomersService {
       item.code,
       item.name,
       customerTypeLookup.get(this.toLookupKey(item.type)) || item.type,
-      item.creditCode || "",
+      this.decodeCreditCode(item.creditCode) || "",
       item.contactName || "",
       item.contactPhone || "",
       item.contactEmail || "",
@@ -640,6 +695,7 @@ export class CustomersService {
       const typeRaw = getCell(row, typeIdx);
       const typeCode = this.resolveCustomerTypeCode(typeLookup, typeRaw);
       const creditCode = this.toNullable(getCell(row, creditCodeIdx));
+      const encryptedCreditCode = this.toEncryptedCreditCode(creditCode);
       const contactName = this.toNullable(getCell(row, contactNameIdx));
       const contactPhone = this.toNullable(getCell(row, contactPhoneIdx));
       const contactEmail = this.toNullable(getCell(row, contactEmailIdx));
@@ -666,21 +722,19 @@ export class CustomersService {
           : null;
         const existingByCredit =
           !existingByCode && creditCode
-            ? await this.prisma.customer.findFirst({
-                where: { creditCode, isDeleted: false },
-              })
+            ? await this.findCustomerByCreditCode(creditCode)
             : null;
         const existing = existingByCode || existingByCredit;
 
         if (existing) {
-          if (creditCode && creditCode !== existing.creditCode) {
-            const duplicateCredit = await this.prisma.customer.findFirst({
-              where: {
-                creditCode,
-                isDeleted: false,
-                NOT: { id: existing.id },
-              },
-            });
+          if (
+            creditCode &&
+            creditCode !== this.decodeCreditCode(existing.creditCode)
+          ) {
+            const duplicateCredit = await this.findDuplicateCustomerCreditCode(
+              creditCode,
+              existing.id,
+            );
             if (duplicateCredit) {
               throw new ConflictException("统一社会信用代码已存在");
             }
@@ -690,7 +744,7 @@ export class CustomersService {
             data: {
               name,
               type: typeCode,
-              creditCode,
+              creditCode: encryptedCreditCode,
               contactName,
               contactPhone,
               contactEmail,
@@ -705,7 +759,7 @@ export class CustomersService {
         const createData = {
           name,
           type: typeCode,
-          creditCode,
+          creditCode: encryptedCreditCode,
           contactName,
           contactPhone,
           contactEmail,

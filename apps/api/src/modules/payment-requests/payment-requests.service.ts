@@ -18,6 +18,7 @@ import {
 } from "../../common/utils/query.utils";
 import { isUniqueConflict } from "../../common/utils/prisma.utils";
 import { NotificationsService } from "../notifications/notifications.service";
+import { decryptIfNeeded } from "../../common/utils/encryption.utils";
 
 @Injectable()
 export class PaymentRequestsService {
@@ -27,6 +28,19 @@ export class PaymentRequestsService {
   ) {}
 
   private readonly approverRoles = ["MANAGER", "ADMIN"] as const;
+
+  private decodeRequestBankAccount<
+    T extends { bankAccount?: { accountNo?: string | null } | null },
+  >(request: T): T {
+    if (!request?.bankAccount) return request;
+    return {
+      ...request,
+      bankAccount: {
+        ...request.bankAccount,
+        accountNo: decryptIfNeeded(request.bankAccount.accountNo),
+      },
+    };
+  }
 
   private toNotificationContext(request: {
     id: string;
@@ -175,7 +189,7 @@ export class PaymentRequestsService {
     for (let i = 0; i < 8; i++) {
       const requestNo = await this.generateRequestNo(new Date());
       try {
-        return await this.prisma.paymentRequest.create({
+        const created = await this.prisma.paymentRequest.create({
           data: {
             requestNo,
             reason: createDto.reason,
@@ -214,6 +228,7 @@ export class PaymentRequestsService {
             },
           },
         });
+        return this.decodeRequestBankAccount(created);
       } catch (error) {
         if (this.isRequestNoConflict(error) && i < 7) {
           continue;
@@ -318,7 +333,7 @@ export class PaymentRequestsService {
     ]);
 
     return {
-      items,
+      items: items.map((item) => this.decodeRequestBankAccount(item)),
       total,
       page: safePage,
       pageSize: safePageSize,
@@ -358,7 +373,7 @@ export class PaymentRequestsService {
       throw new NotFoundException("付款申请不存在");
     }
 
-    return request;
+    return this.decodeRequestBankAccount(request);
   }
 
   /**
@@ -433,7 +448,7 @@ export class PaymentRequestsService {
       }
     });
 
-    return this.prisma.paymentRequest.update({
+    const updated = await this.prisma.paymentRequest.update({
       where: { id },
       data: updateData,
       include: {
@@ -454,6 +469,7 @@ export class PaymentRequestsService {
         },
       },
     });
+    return this.decodeRequestBankAccount(updated);
   }
 
   /**
@@ -481,7 +497,7 @@ export class PaymentRequestsService {
     });
 
     await this.notifyApproversForSubmit(this.toNotificationContext(request));
-    return updated;
+    return this.decodeRequestBankAccount(updated);
   }
 
   /**
@@ -527,7 +543,7 @@ export class PaymentRequestsService {
       "APPROVAL",
     );
 
-    return updated;
+    return this.decodeRequestBankAccount(updated);
   }
 
   /**
@@ -564,7 +580,7 @@ export class PaymentRequestsService {
       "PAYMENT",
     );
 
-    return updated;
+    return this.decodeRequestBankAccount(updated);
   }
 
   /**

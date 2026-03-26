@@ -27,6 +27,7 @@ import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "crypto";
 import { ERROR_CODE } from "@inffinancems/shared";
 import type { AuthenticatedUser } from "../../common/types/auth-user.type";
+import { buildDeviceFingerprint } from "../../common/utils/device-fingerprint.utils";
 
 // 公开接口装饰器
 const Public = () => SetMetadata("isPublic", true);
@@ -49,6 +50,7 @@ export class AuthController {
     return {
       ipAddress: req.ip,
       userAgent: typeof userAgent === "string" ? userAgent : undefined,
+      deviceFingerprint: buildDeviceFingerprint(req),
     };
   }
 

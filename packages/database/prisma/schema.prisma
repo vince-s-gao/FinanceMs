@@ -28,6 +28,7 @@ model User {
   lastLoginAt         DateTime? // 最近登录时间
   lastLoginIp         String? // 最近登录IP
   lastLoginUserAgent  String? // 最近登录设备信息
+  lastLoginDeviceFingerprint String? // 最近登录设备指纹
   
   // 飞书账户关联字段
   feishuUserId   String?  @unique // 飞书用户ID
@@ -60,6 +61,7 @@ model UserSession {
   refreshTokenHash String
   ipAddress        String?
   userAgent        String?
+  deviceFingerprint String?
   expiresAt        DateTime
   lastActivityAt   DateTime @default(now())
   revokedAt        DateTime?

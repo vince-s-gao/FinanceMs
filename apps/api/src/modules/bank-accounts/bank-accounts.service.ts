@@ -8,19 +8,55 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { CreateBankAccountDto } from "./dto/create-bank-account.dto";
 import { UpdateBankAccountDto } from "./dto/update-bank-account.dto";
 import type { Prisma } from "@prisma/client";
+import {
+  decryptIfNeeded,
+  encryptNullable,
+} from "../../common/utils/encryption.utils";
 
 @Injectable()
 export class BankAccountsService {
   constructor(private prisma: PrismaService) {}
 
+  private toEncryptedAccountNo(
+    value: string | null | undefined,
+  ): string | null {
+    return encryptNullable(value || null);
+  }
+
+  private decodeAccount<T extends { accountNo?: string | null }>(item: T): T {
+    if (!item) return item;
+    return {
+      ...item,
+      accountNo: decryptIfNeeded(item.accountNo),
+    };
+  }
+
+  private async findByAccountNo(accountNo: string) {
+    const encrypted = this.toEncryptedAccountNo(accountNo);
+    return this.prisma.bankAccount.findFirst({
+      where: {
+        OR: [{ accountNo: encrypted }, { accountNo }],
+      },
+    });
+  }
+
+  private async findDuplicateAccountNo(accountNo: string, currentId: string) {
+    const encrypted = this.toEncryptedAccountNo(accountNo);
+    return this.prisma.bankAccount.findFirst({
+      where: {
+        id: { not: currentId },
+        OR: [{ accountNo: encrypted }, { accountNo }],
+      },
+    });
+  }
+
   /**
    * 创建银行账户
    */
   async create(createDto: CreateBankAccountDto) {
+    const encryptedAccountNo = this.toEncryptedAccountNo(createDto.accountNo);
     // 检查账号是否已存在
-    const existing = await this.prisma.bankAccount.findUnique({
-      where: { accountNo: createDto.accountNo },
-    });
+    const existing = await this.findByAccountNo(createDto.accountNo);
     if (existing) {
       throw new BadRequestException("该银行账号已存在");
     }
@@ -33,11 +69,11 @@ export class BankAccountsService {
       });
     }
 
-    return this.prisma.bankAccount.create({
+    const created = await this.prisma.bankAccount.create({
       data: {
         accountType: createDto.accountType || "PERSONAL",
         accountName: createDto.accountName,
-        accountNo: createDto.accountNo,
+        accountNo: encryptedAccountNo,
         bankCode: createDto.bankCode,
         bankName: createDto.bankName,
         region: createDto.region,
@@ -47,6 +83,7 @@ export class BankAccountsService {
         remark: createDto.remark,
       },
     });
+    return this.decodeAccount(created);
   }
 
   /**
@@ -58,10 +95,11 @@ export class BankAccountsService {
       where.isEnabled = true;
     }
 
-    return this.prisma.bankAccount.findMany({
+    const items = await this.prisma.bankAccount.findMany({
       where,
       orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
     });
+    return items.map((item) => this.decodeAccount(item));
   }
 
   /**
@@ -76,7 +114,7 @@ export class BankAccountsService {
       throw new NotFoundException("银行账户不存在");
     }
 
-    return account;
+    return this.decodeAccount(account);
   }
 
   /**
@@ -87,12 +125,10 @@ export class BankAccountsService {
 
     // 如果更新账号，检查是否与其他账户重复
     if (updateDto.accountNo) {
-      const existing = await this.prisma.bankAccount.findFirst({
-        where: {
-          accountNo: updateDto.accountNo,
-          id: { not: id },
-        },
-      });
+      const existing = await this.findDuplicateAccountNo(
+        updateDto.accountNo,
+        id,
+      );
       if (existing) {
         throw new BadRequestException("该银行账号已存在");
       }
@@ -106,10 +142,16 @@ export class BankAccountsService {
       });
     }
 
-    return this.prisma.bankAccount.update({
+    const updated = await this.prisma.bankAccount.update({
       where: { id },
-      data: updateDto,
+      data: {
+        ...updateDto,
+        ...(updateDto.accountNo !== undefined
+          ? { accountNo: this.toEncryptedAccountNo(updateDto.accountNo) }
+          : {}),
+      },
     });
+    return this.decodeAccount(updated);
   }
 
   /**
@@ -118,10 +160,11 @@ export class BankAccountsService {
   async toggleEnabled(id: string) {
     const account = await this.findOne(id);
 
-    return this.prisma.bankAccount.update({
+    const updated = await this.prisma.bankAccount.update({
       where: { id },
       data: { isEnabled: !account.isEnabled },
     });
+    return this.decodeAccount(updated);
   }
 
   /**
@@ -137,10 +180,11 @@ export class BankAccountsService {
     });
 
     // 设置当前账户为默认
-    return this.prisma.bankAccount.update({
+    const updated = await this.prisma.bankAccount.update({
       where: { id },
       data: { isDefault: true },
     });
+    return this.decodeAccount(updated);
   }
 
   /**
@@ -160,8 +204,9 @@ export class BankAccountsService {
       );
     }
 
-    return this.prisma.bankAccount.delete({
+    const removed = await this.prisma.bankAccount.delete({
       where: { id },
     });
+    return this.decodeAccount(removed);
   }
 }
