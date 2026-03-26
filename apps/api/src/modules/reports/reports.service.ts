@@ -89,9 +89,7 @@ export class ReportsService {
     rows.forEach((row) => registerDictionaryLookup(codeByLookup, row));
 
     const detected = rows
-      .filter((row) =>
-        isSalesContractType([row.code, row.name || "", row.value || ""]),
-      )
+      .filter((row) => isSalesContractType([row.code, row.value || ""]))
       .map((row) => normalizeText(row.code).toUpperCase())
       .filter(Boolean);
 

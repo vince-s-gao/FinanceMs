@@ -151,7 +151,7 @@ export class InvoicesService {
     for (const value of values) {
       const normalized = normalizeText(value || "").toUpperCase();
       if (!normalized) continue;
-      if (normalized.includes("SALES") || value.includes("销售")) {
+      if (normalized.includes("SALES") || normalized.includes("RECEIVABLE")) {
         return true;
       }
     }
@@ -180,9 +180,7 @@ export class InvoicesService {
     });
 
     const codes = rows
-      .filter((row) =>
-        this.isSalesContractType([row.code, row.name || "", row.value || ""]),
-      )
+      .filter((row) => this.isSalesContractType([row.code, row.value || ""]))
       .map((row) => row.code)
       .filter((code) => !!normalizeText(code));
 
