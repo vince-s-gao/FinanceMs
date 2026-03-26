@@ -69,6 +69,8 @@ export default function InvoiceManagementPage({
   fixedDirection,
   hidePageTitle = false,
 }: InvoiceManagementPageProps) {
+  const [invoicePermissions, setInvoicePermissions] =
+    useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);
@@ -480,10 +482,36 @@ export default function InvoiceManagementPage({
     () => contracts.find((item) => item.id === importContractId),
     [contracts, importContractId],
   );
+  const canCreateInvoice =
+    invoicePermissions === null || invoicePermissions.has("invoice.create");
+  const canVoidInvoice =
+    invoicePermissions === null || invoicePermissions.has("invoice.void");
+  const canDeleteInvoice =
+    invoicePermissions === null || invoicePermissions.has("invoice.delete");
 
   useEffect(() => {
     void fetchInvoices();
   }, [fetchInvoices]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPermissions = async () => {
+      try {
+        const res = await api.get<{ functions?: string[] }>("/permissions/me");
+        if (!mounted) return;
+        setInvoicePermissions(new Set(res.functions || []));
+      } catch {
+        if (!mounted) return;
+        setInvoicePermissions(null);
+      }
+    };
+
+    void loadPermissions();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (fixedDirection) {
@@ -502,16 +530,20 @@ export default function InvoiceManagementPage({
           </Title>
         )}
         <Space>
-          <Button icon={<FileSearchOutlined />} onClick={openImportModal}>
-            上传发票并解析
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={openCreateModal}
-          >
-            新增发票
-          </Button>
+          {canCreateInvoice ? (
+            <>
+              <Button icon={<FileSearchOutlined />} onClick={openImportModal}>
+                上传发票并解析
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openCreateModal}
+              >
+                新增发票
+              </Button>
+            </>
+          ) : null}
         </Space>
       </div>
 
@@ -572,6 +604,8 @@ export default function InvoiceManagementPage({
         onDelete={handleDelete}
         resolveAttachmentUrl={resolveAttachmentUrl}
         getTaxRateDisplay={getTaxRateDisplay}
+        canVoid={canVoidInvoice}
+        canDelete={canDeleteInvoice}
       />
 
       <InvoiceCreateModal

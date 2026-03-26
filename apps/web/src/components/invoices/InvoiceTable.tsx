@@ -1,6 +1,6 @@
-import { Button, Popconfirm, Space, Table, Tag, Typography } from 'antd';
-import { DeleteOutlined, LinkOutlined, StopOutlined } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import { Button, Popconfirm, Space, Table, Tag, Typography } from "antd";
+import { DeleteOutlined, LinkOutlined, StopOutlined } from "@ant-design/icons";
+import type { ColumnsType } from "antd/es/table";
 import {
   INVOICE_DIRECTION_COLORS,
   INVOICE_DIRECTION_LABELS,
@@ -9,8 +9,8 @@ import {
   INVOICE_TYPE_LABELS,
   formatAmount,
   formatDate,
-} from '@/lib/constants';
-import type { Invoice } from './types';
+} from "@/lib/constants";
+import type { Invoice } from "./types";
 
 const { Text } = Typography;
 
@@ -25,6 +25,8 @@ interface InvoiceTableProps {
   onDelete: (id: string) => Promise<void>;
   resolveAttachmentUrl: (url?: string) => string;
   getTaxRateDisplay: (amount?: number, taxAmount?: number) => string;
+  canVoid: boolean;
+  canDelete: boolean;
 }
 
 export default function InvoiceTable({
@@ -38,17 +40,19 @@ export default function InvoiceTable({
   onDelete,
   resolveAttachmentUrl,
   getTaxRateDisplay,
+  canVoid,
+  canDelete,
 }: InvoiceTableProps) {
   const columns: ColumnsType<Invoice> = [
     {
-      title: '发票号码',
-      dataIndex: 'invoiceNo',
-      key: 'invoiceNo',
+      title: "发票号码",
+      dataIndex: "invoiceNo",
+      key: "invoiceNo",
       width: 150,
     },
     {
-      title: '合同',
-      key: 'contract',
+      title: "合同",
+      key: "contract",
       width: 200,
       ellipsis: true,
       render: (_, record) => (
@@ -61,16 +65,16 @@ export default function InvoiceTable({
       ),
     },
     {
-      title: '客户',
-      dataIndex: ['contract', 'customer', 'name'],
-      key: 'customer',
+      title: "客户",
+      dataIndex: ["contract", "customer", "name"],
+      key: "customer",
       width: 150,
       ellipsis: true,
     },
     {
-      title: '发票方向',
-      dataIndex: 'direction',
-      key: 'direction',
+      title: "发票方向",
+      dataIndex: "direction",
+      key: "direction",
       width: 220,
       render: (direction) => (
         <Tag color={INVOICE_DIRECTION_COLORS[direction]}>
@@ -79,15 +83,15 @@ export default function InvoiceTable({
       ),
     },
     {
-      title: '发票类型',
-      dataIndex: 'invoiceType',
-      key: 'invoiceType',
+      title: "发票类型",
+      dataIndex: "invoiceType",
+      key: "invoiceType",
       width: 130,
       render: (value: string) => INVOICE_TYPE_LABELS[value],
     },
     {
-      title: '附件',
-      key: 'attachment',
+      title: "附件",
+      key: "attachment",
       width: 110,
       render: (_, record) =>
         record.attachmentUrl ? (
@@ -101,77 +105,89 @@ export default function InvoiceTable({
             查看附件
           </Button>
         ) : (
-          '-'
+          "-"
         ),
     },
     {
-      title: '金额',
-      dataIndex: 'amount',
-      key: 'amount',
+      title: "金额",
+      dataIndex: "amount",
+      key: "amount",
       width: 120,
       render: (value: number) => <Text strong>¥{formatAmount(value)}</Text>,
     },
     {
-      title: '税额',
-      dataIndex: 'taxAmount',
-      key: 'taxAmount',
+      title: "税额",
+      dataIndex: "taxAmount",
+      key: "taxAmount",
       width: 100,
-      render: (value?: number) => (value ? `¥${formatAmount(value)}` : '-'),
+      render: (value?: number) => (value ? `¥${formatAmount(value)}` : "-"),
     },
     {
-      title: '税率',
-      key: 'taxRate',
+      title: "税率",
+      key: "taxRate",
       width: 90,
       render: (_, record) => getTaxRateDisplay(record.amount, record.taxAmount),
     },
     {
-      title: '开票日期',
-      dataIndex: 'invoiceDate',
-      key: 'invoiceDate',
+      title: "开票日期",
+      dataIndex: "invoiceDate",
+      key: "invoiceDate",
       width: 110,
       render: (value: string) => formatDate(value),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
       width: 90,
       render: (status: string) => (
-        <Tag color={INVOICE_STATUS_COLORS[status]}>{INVOICE_STATUS_LABELS[status]}</Tag>
+        <Tag color={INVOICE_STATUS_COLORS[status]}>
+          {INVOICE_STATUS_LABELS[status]}
+        </Tag>
       ),
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 170,
-      render: (_, record) => (
-        <Space size="small">
-          {record.status === 'ISSUED' ? (
-            <Popconfirm
-              title="确定作废该发票吗？"
-              description="作废后该发票将无法恢复"
-              onConfirm={() => onVoid(record.id)}
-              okText="确定"
-              cancelText="取消"
-            >
-              <Button type="link" size="small" danger icon={<StopOutlined />}>
-                作废
-              </Button>
-            </Popconfirm>
-          ) : null}
-          <Popconfirm
-            title="确定删除该发票吗？"
-            description="删除后数据将无法恢复"
-            onConfirm={() => onDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_, record) =>
+        canVoid || canDelete ? (
+          <Space size="small">
+            {canVoid && record.status === "ISSUED" ? (
+              <Popconfirm
+                title="确定作废该发票吗？"
+                description="作废后该发票将无法恢复"
+                onConfirm={() => onVoid(record.id)}
+                okText="确定"
+                cancelText="取消"
+              >
+                <Button type="link" size="small" danger icon={<StopOutlined />}>
+                  作废
+                </Button>
+              </Popconfirm>
+            ) : null}
+            {canDelete ? (
+              <Popconfirm
+                title="确定删除该发票吗？"
+                description="删除后数据将无法恢复"
+                onConfirm={() => onDelete(record.id)}
+                okText="确定"
+                cancelText="取消"
+              >
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                >
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
+          </Space>
+        ) : (
+          "-"
+        ),
     },
   ];
 
