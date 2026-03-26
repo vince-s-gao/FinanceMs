@@ -4,11 +4,10 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { Decimal } from "@prisma/client/runtime/library";
 import { normalizeText, toCsv } from "../../common/utils/tabular.utils";
-import { isSalesContractType } from "../contracts/contracts.type.utils";
 import {
-  registerDictionaryLookup,
-  resolveDictionaryCodeByText,
-} from "../contracts/contracts.lookup.utils";
+  isSalesContractByContext,
+  resolveSalesContractTypeContext,
+} from "../contracts/contracts.sales-type.utils";
 import {
   ContractStatus as PrismaContractStatus,
   ExpenseStatus as PrismaExpenseStatus,
@@ -81,22 +80,14 @@ export class ReportsService {
       return this.salesContractTypesCache.codes;
     }
 
-    const rows = await this.prisma.dictionary.findMany({
-      where: { type: "CONTRACT_TYPE", isEnabled: true },
-      select: { code: true, name: true, value: true },
+    const resolvedContext = await resolveSalesContractTypeContext({
+      prisma: this.prisma,
+      fallbackCodes: ["SALES"],
     });
-    const codeByLookup = new Map<string, string>();
-    rows.forEach((row) => registerDictionaryLookup(codeByLookup, row));
-
-    const detected = rows
-      .filter((row) => isSalesContractType([row.code, row.value || ""]))
-      .map((row) => normalizeText(row.code).toUpperCase())
-      .filter(Boolean);
-
-    const resolved = [...new Set([...detected, "SALES"])];
+    const resolved = resolvedContext.codes;
     this.salesContractTypesCache = {
       codes: resolved,
-      codeByLookup,
+      codeByLookup: resolvedContext.codeByLookup,
       expiresAt: now + SALES_CONTRACT_TYPES_CACHE_TTL_MS,
     };
 
@@ -119,16 +110,13 @@ export class ReportsService {
     salesCodes: string[],
     codeByLookup: Map<string, string>,
   ): boolean {
-    const raw = normalizeText(contractType || "");
-    if (!raw) return false;
-    const normalized = raw.toUpperCase();
-    if (!normalized) return false;
-    if (salesCodes.includes(normalized)) return true;
-
-    const mappedCode = resolveDictionaryCodeByText(codeByLookup, raw);
-    if (!mappedCode) return false;
-
-    return salesCodes.includes(normalizeText(mappedCode).toUpperCase());
+    return isSalesContractByContext({
+      contractType,
+      context: {
+        codes: salesCodes,
+        codeByLookup,
+      },
+    });
   }
 
   /**

@@ -28,6 +28,10 @@ import {
 } from "../../common/utils/tabular.utils";
 import { UploadService } from "../upload/upload.service";
 import { PDFParse } from "pdf-parse";
+import {
+  isSalesContractByContext,
+  resolveSalesContractTypeContext,
+} from "../contracts/contracts.sales-type.utils";
 
 // 发票状态常量
 const InvoiceStatus = {
@@ -147,17 +151,6 @@ export class InvoicesService {
     return "请求失败";
   }
 
-  private isSalesContractType(values: string[]): boolean {
-    for (const value of values) {
-      const normalized = normalizeText(value || "").toUpperCase();
-      if (!normalized) continue;
-      if (normalized.includes("SALES") || normalized.includes("RECEIVABLE")) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   private async getSalesContractTypeCodes(): Promise<string[]> {
     const now = Date.now();
     if (
@@ -167,25 +160,12 @@ export class InvoicesService {
       return this.salesContractTypesCache.codes;
     }
 
-    const fallback = ["SALES"];
-    const rows = await this.prisma.dictionary.findMany({
-      where: {
-        type: "CONTRACT_TYPE",
-      },
-      select: {
-        code: true,
-        name: true,
-        value: true,
-      },
+    const resolvedContext = await resolveSalesContractTypeContext({
+      prisma: this.prisma,
+      includeDisabled: true,
+      fallbackCodes: ["SALES"],
     });
-
-    const codes = rows
-      .filter((row) => this.isSalesContractType([row.code, row.value || ""]))
-      .map((row) => row.code)
-      .filter((code) => !!normalizeText(code));
-
-    const merged = [...new Set([...codes, ...fallback])];
-    const resolved = merged.length > 0 ? merged : fallback;
+    const resolved = resolvedContext.codes;
     this.salesContractTypesCache = {
       codes: resolved,
       expiresAt: now + SALES_CONTRACT_TYPES_CACHE_TTL_MS,
@@ -197,9 +177,14 @@ export class InvoicesService {
     contractType: string | null | undefined,
     salesContractTypeCodeSet: Set<string>,
   ): InvoiceDirectionValue {
-    const normalized = normalizeText(contractType || "").toUpperCase();
-    if (!normalized) return "INBOUND";
-    return salesContractTypeCodeSet.has(normalized) ? "OUTBOUND" : "INBOUND";
+    const isSales = isSalesContractByContext({
+      contractType,
+      context: {
+        codes: Array.from(salesContractTypeCodeSet),
+        codeByLookup: new Map(),
+      },
+    });
+    return isSales ? "OUTBOUND" : "INBOUND";
   }
 
   private directionLabel(direction: InvoiceDirectionValue): string {
