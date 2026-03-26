@@ -27,6 +27,12 @@ export class DictionariesService {
     { expiresAt: number; items: DictionaryOption[] }
   >();
   private readonly byTypeCacheTtlMs = 5 * 60 * 1000;
+  private readonly typesCache = new Map<
+    string,
+    { expiresAt: number; items: string[] }
+  >();
+  private readonly typesCacheKey = "dictionary-types";
+  private readonly typesCacheTtlMs = 5 * 60 * 1000;
 
   constructor(private prisma: PrismaService) {}
 
@@ -61,6 +67,27 @@ export class DictionariesService {
       return;
     }
     this.byTypeCache.delete(this.toTypeCacheKey(type));
+  }
+
+  private getTypesCache(): string[] | null {
+    const entry = this.typesCache.get(this.typesCacheKey);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      this.typesCache.delete(this.typesCacheKey);
+      return null;
+    }
+    return entry.items;
+  }
+
+  private setTypesCache(items: string[]) {
+    this.typesCache.set(this.typesCacheKey, {
+      expiresAt: Date.now() + this.typesCacheTtlMs,
+      items,
+    });
+  }
+
+  private invalidateTypesCache() {
+    this.typesCache.delete(this.typesCacheKey);
   }
 
   /**
@@ -156,6 +183,7 @@ export class DictionariesService {
       data: createDto,
     });
     this.invalidateByTypeCache(createDto.type);
+    this.invalidateTypesCache();
     return created;
   }
 
@@ -202,6 +230,7 @@ export class DictionariesService {
     if (targetType !== dictionary.type) {
       this.invalidateByTypeCache(targetType);
     }
+    this.invalidateTypesCache();
     return updated;
   }
 
@@ -214,6 +243,7 @@ export class DictionariesService {
       where: { id },
     });
     this.invalidateByTypeCache(dictionary.type);
+    this.invalidateTypesCache();
     return removed;
   }
 
@@ -240,13 +270,17 @@ export class DictionariesService {
    * 获取所有字典类型
    */
   async getTypes() {
+    const cached = this.getTypesCache();
+    if (cached) return cached;
+
     const types = await this.prisma.dictionary.findMany({
       select: { type: true },
       distinct: ["type"],
       orderBy: { type: "asc" },
     });
-
-    return types.map((t) => t.type);
+    const items = types.map((t) => t.type);
+    this.setTypesCache(items);
+    return items;
   }
 
   /**

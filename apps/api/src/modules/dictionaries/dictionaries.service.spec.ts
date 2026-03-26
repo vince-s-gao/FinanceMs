@@ -219,6 +219,44 @@ describe("DictionariesService", () => {
     expect(result).toEqual(["CUSTOMER_TYPE", "EXPENSE_TYPE"]);
   });
 
+  it("should reuse getTypes cache on repeated calls", async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { type: "CUSTOMER_TYPE" },
+      { type: "EXPENSE_TYPE" },
+    ]);
+
+    const first = await service.getTypes();
+    const second = await service.getTypes();
+
+    expect(first).toEqual(["CUSTOMER_TYPE", "EXPENSE_TYPE"]);
+    expect(second).toEqual(["CUSTOMER_TYPE", "EXPENSE_TYPE"]);
+    expect(prisma.dictionary.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("should invalidate getTypes cache after create", async () => {
+    prisma.dictionary.findMany
+      .mockResolvedValueOnce([{ type: "CUSTOMER_TYPE" }])
+      .mockResolvedValueOnce([{ type: "CUSTOMER_TYPE" }, { type: "NEW_TYPE" }]);
+    prisma.dictionary.findUnique.mockResolvedValueOnce(null);
+    prisma.dictionary.create.mockResolvedValueOnce({
+      id: "new",
+      type: "NEW_TYPE",
+      code: "NEW",
+      name: "新类型",
+    });
+
+    await service.getTypes();
+    await service.create({
+      type: "NEW_TYPE",
+      code: "NEW",
+      name: "新类型",
+    } as any);
+    const latest = await service.getTypes();
+
+    expect(latest).toEqual(["CUSTOMER_TYPE", "NEW_TYPE"]);
+    expect(prisma.dictionary.findMany).toHaveBeenCalledTimes(2);
+  });
+
   it("should remove dictionary item after existence check", async () => {
     prisma.dictionary.findUnique.mockResolvedValueOnce({ id: "d1" });
     prisma.dictionary.delete.mockResolvedValueOnce({ id: "d1" });
