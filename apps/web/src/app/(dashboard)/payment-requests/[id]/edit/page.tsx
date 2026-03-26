@@ -36,6 +36,7 @@ import dayjs from "dayjs";
 import { getErrorMessage } from "@/lib/error";
 import { isFormValidationError } from "@/lib/form";
 import { resolveUploadFileMeta } from "@/lib/upload";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -192,6 +193,9 @@ export default function EditPaymentRequestPage() {
   const [addAccountModalVisible, setAddAccountModalVisible] = useState(false);
   const [addAccountLoading, setAddAccountLoading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canEditRequest = has("payment-request.edit");
+  const canEditBankAccount = has("bank-account.edit");
 
   // 加载银行账户列表
   const loadBankAccounts = async () => {
@@ -305,24 +309,36 @@ export default function EditPaymentRequestPage() {
         )}
       </div>
       {/* 新增按钮 */}
-      <div className="p-2 border-t">
-        <Button
-          type="dashed"
-          icon={<PlusOutlined />}
-          block
-          onClick={() => {
-            setDropdownOpen(false);
-            setAddAccountModalVisible(true);
-          }}
-        >
-          新增收款方账户
-        </Button>
-      </div>
+      {canEditBankAccount ? (
+        <div className="p-2 border-t">
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            block
+            onClick={() => {
+              setDropdownOpen(false);
+              setAddAccountModalVisible(true);
+            }}
+          >
+            新增收款方账户
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 
+  useEffect(() => {
+    if (permissionLoaded && !canEditRequest) {
+      message.warning("当前账号没有编辑付款申请权限");
+      router.replace(`/payment-requests/${params.id}`);
+    }
+  }, [canEditRequest, params.id, permissionLoaded, router]);
+
   // 加载数据
   useEffect(() => {
+    if (permissionLoaded && !canEditRequest) {
+      return;
+    }
     const loadData = async () => {
       try {
         const [request, accounts, contracts] = await Promise.all([
@@ -376,7 +392,7 @@ export default function EditPaymentRequestPage() {
       }
     };
     loadData();
-  }, [params.id, form, router]);
+  }, [canEditRequest, permissionLoaded, params.id, form, router]);
 
   // 处理文件上传
   const handleUpload: UploadProps["customRequest"] = async (options) => {

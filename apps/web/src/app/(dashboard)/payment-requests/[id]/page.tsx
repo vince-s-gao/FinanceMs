@@ -28,6 +28,7 @@ import {
   DownloadOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -99,6 +100,12 @@ export default function PaymentRequestDetailPage() {
     "APPROVED",
   );
   const [approvalRemark, setApprovalRemark] = useState("");
+  const { has } = useFunctionPermissions();
+  const canEdit = has("payment-request.edit");
+  const canSubmit = has("payment-request.submit");
+  const canApprove = has("payment-request.approve");
+  const canCancel = has("payment-request.cancel");
+  const canConfirm = has("payment-request.confirm");
 
   // 加载数据
   const loadData = useCallback(async () => {
@@ -218,47 +225,59 @@ export default function PaymentRequestDetailPage() {
         <Space>
           {data.status === "DRAFT" && (
             <>
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => router.push(`/payment-requests/${data.id}/edit`)}
-              >
-                编辑
-              </Button>
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                onClick={handleSubmit}
-              >
-                提交
-              </Button>
+              {canEdit ? (
+                <Button
+                  icon={<EditOutlined />}
+                  onClick={() =>
+                    router.push(`/payment-requests/${data.id}/edit`)
+                  }
+                >
+                  编辑
+                </Button>
+              ) : null}
+              {canSubmit ? (
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  onClick={handleSubmit}
+                >
+                  提交
+                </Button>
+              ) : null}
             </>
           )}
           {data.status === "PENDING" && (
             <>
-              <Button
-                danger
-                icon={<CloseOutlined />}
-                onClick={() => {
-                  setApproveAction("REJECTED");
-                  setApproveModalOpen(true);
-                }}
-              >
-                拒绝
-              </Button>
-              <Button
-                type="primary"
-                icon={<CheckOutlined />}
-                onClick={() => {
-                  setApproveAction("APPROVED");
-                  setApproveModalOpen(true);
-                }}
-              >
-                通过
-              </Button>
-              <Button onClick={handleCancel}>取消申请</Button>
+              {canApprove ? (
+                <>
+                  <Button
+                    danger
+                    icon={<CloseOutlined />}
+                    onClick={() => {
+                      setApproveAction("REJECTED");
+                      setApproveModalOpen(true);
+                    }}
+                  >
+                    拒绝
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<CheckOutlined />}
+                    onClick={() => {
+                      setApproveAction("APPROVED");
+                      setApproveModalOpen(true);
+                    }}
+                  >
+                    通过
+                  </Button>
+                </>
+              ) : null}
+              {canCancel ? (
+                <Button onClick={handleCancel}>取消申请</Button>
+              ) : null}
             </>
           )}
-          {data.status === "APPROVED" && (
+          {data.status === "APPROVED" && canConfirm && (
             <Button
               type="primary"
               icon={<CheckOutlined />}

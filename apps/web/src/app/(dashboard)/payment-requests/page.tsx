@@ -28,6 +28,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 
@@ -83,6 +84,12 @@ interface PageData {
 
 export default function PaymentRequestsPage() {
   const router = useRouter();
+  const { has } = useFunctionPermissions();
+  const canCreate = has("payment-request.create");
+  const canEdit = has("payment-request.edit");
+  const canSubmit = has("payment-request.submit");
+  const canCancel = has("payment-request.cancel");
+  const canDelete = has("payment-request.delete");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PageData | null>(null);
   const [searchForm, setSearchForm] = useState({
@@ -267,39 +274,39 @@ export default function PaymentRequestsPage() {
             icon={<EyeOutlined />}
             onClick={() => router.push(`/payment-requests/${record.id}`)}
           />
-          {record.status === "DRAFT" && (
-            <>
-              <Button
-                type="link"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() =>
-                  router.push(`/payment-requests/${record.id}/edit`)
-                }
-              />
-              <Button
-                type="link"
-                size="small"
-                icon={<SendOutlined />}
-                onClick={() => handleSubmit(record.id)}
-              />
-              <Popconfirm
-                title="确定要删除该付款申请吗？"
-                description="删除后数据将无法恢复"
-                onConfirm={() => handleDelete(record.id)}
-                okText="确定"
-                cancelText="取消"
-              >
-                <Button
-                  type="link"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                />
-              </Popconfirm>
-            </>
+          {record.status === "DRAFT" && canEdit && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => router.push(`/payment-requests/${record.id}/edit`)}
+            />
           )}
-          {record.status === "PENDING" && (
+          {record.status === "DRAFT" && canSubmit && (
+            <Button
+              type="link"
+              size="small"
+              icon={<SendOutlined />}
+              onClick={() => handleSubmit(record.id)}
+            />
+          )}
+          {record.status === "DRAFT" && canDelete && (
+            <Popconfirm
+              title="确定要删除该付款申请吗？"
+              description="删除后数据将无法恢复"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button
+                type="link"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+              />
+            </Popconfirm>
+          )}
+          {record.status === "PENDING" && canCancel && (
             <Popconfirm
               title="确定要取消该付款申请吗？"
               description="取消后需要重新提交审批"
@@ -325,13 +332,15 @@ export default function PaymentRequestsPage() {
           </Title>
           <Text type="secondary">现金、支票等各类（对公）付款申请</Text>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => router.push("/payment-requests/new")}
-        >
-          新建申请
-        </Button>
+        {canCreate ? (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => router.push("/payment-requests/new")}
+          >
+            新建申请
+          </Button>
+        ) : null}
       </div>
 
       {/* 搜索筛选 */}

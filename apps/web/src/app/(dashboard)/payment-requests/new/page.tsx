@@ -36,6 +36,7 @@ import type { UploadProps } from "antd";
 import { getErrorMessage } from "@/lib/error";
 import { isFormValidationError } from "@/lib/form";
 import { resolveUploadFileMeta } from "@/lib/upload";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -175,6 +176,7 @@ interface Attachment {
 
 export default function NewPaymentRequestPage() {
   const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
   const [form] = Form.useForm();
   const [addAccountForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -188,6 +190,9 @@ export default function NewPaymentRequestPage() {
   const [addAccountModalVisible, setAddAccountModalVisible] = useState(false);
   const [addAccountLoading, setAddAccountLoading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const canCreateRequest = has("payment-request.create");
+  const canSubmitRequest = has("payment-request.submit");
+  const canCreateBankAccount = has("bank-account.create");
 
   // 加载项目列表
   const loadProjects = useCallback(async () => {
@@ -233,10 +238,26 @@ export default function NewPaymentRequestPage() {
   }, [form]);
 
   useEffect(() => {
+    if (permissionLoaded && !canCreateRequest) {
+      message.warning("当前账号没有新建付款申请权限");
+      router.replace("/payment-requests");
+      return;
+    }
+  }, [canCreateRequest, permissionLoaded, router]);
+
+  useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canCreateRequest) return;
     loadProjects();
     loadPurchaseContracts();
     loadBankAccounts();
-  }, [loadBankAccounts, loadProjects, loadPurchaseContracts]);
+  }, [
+    canCreateRequest,
+    loadBankAccounts,
+    loadProjects,
+    loadPurchaseContracts,
+    permissionLoaded,
+  ]);
 
   // 根据搜索关键词过滤银行账户
   const filteredBankAccounts = useMemo(() => {
@@ -339,19 +360,21 @@ export default function NewPaymentRequestPage() {
         )}
       </div>
       {/* 新增按钮 */}
-      <div className="p-2 border-t">
-        <Button
-          type="dashed"
-          icon={<PlusOutlined />}
-          block
-          onClick={() => {
-            setDropdownOpen(false);
-            setAddAccountModalVisible(true);
-          }}
-        >
-          新增收款方账户
-        </Button>
-      </div>
+      {canCreateBankAccount ? (
+        <div className="p-2 border-t">
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            block
+            onClick={() => {
+              setDropdownOpen(false);
+              setAddAccountModalVisible(true);
+            }}
+          >
+            新增收款方账户
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 
@@ -638,13 +661,15 @@ export default function NewPaymentRequestPage() {
             <Button onClick={() => handleSubmit(true)} loading={loading}>
               保存草稿
             </Button>
-            <Button
-              type="primary"
-              onClick={() => handleSubmit(false)}
-              loading={loading}
-            >
-              提交
-            </Button>
+            {canSubmitRequest ? (
+              <Button
+                type="primary"
+                onClick={() => handleSubmit(false)}
+                loading={loading}
+              >
+                提交
+              </Button>
+            ) : null}
           </Space>
         </div>
       </Form>
