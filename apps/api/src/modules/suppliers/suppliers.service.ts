@@ -110,14 +110,20 @@ export class SuppliersService {
     return decryptIfNeeded(value);
   }
 
-  private decodeSupplier<
-    T extends { creditCode?: string | null; bankAccountNo?: string | null },
-  >(item: T): T {
+  private decodeSupplier<T extends Record<string, unknown>>(item: T): T {
     if (!item) return item;
+    const creditCode =
+      "creditCode" in item
+        ? this.decodeSensitive(item.creditCode as string | null | undefined)
+        : undefined;
+    const bankAccountNo =
+      "bankAccountNo" in item
+        ? this.decodeSensitive(item.bankAccountNo as string | null | undefined)
+        : undefined;
     return {
       ...item,
-      creditCode: this.decodeSensitive(item.creditCode),
-      bankAccountNo: this.decodeSensitive(item.bankAccountNo),
+      ...(creditCode !== undefined ? { creditCode } : {}),
+      ...(bankAccountNo !== undefined ? { bankAccountNo } : {}),
     };
   }
 
