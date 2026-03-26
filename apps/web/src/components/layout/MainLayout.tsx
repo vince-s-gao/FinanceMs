@@ -359,7 +359,15 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   const handleUserMenuClick = async ({ key }: { key: string }) => {
     if (key === "profile") {
+      if (pathname === "/profile") return;
       router.push("/profile");
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => {
+          if (window.location.pathname !== "/profile") {
+            window.location.assign("/profile");
+          }
+        }, 250);
+      }
       return;
     }
     if (key === "logout") {
