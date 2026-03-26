@@ -20,6 +20,9 @@ import { isUniqueConflict } from "../../common/utils/prisma.utils";
 import { NotificationsService } from "../notifications/notifications.service";
 import { decryptIfNeeded } from "../../common/utils/encryption.utils";
 
+const PAYMENT_REQUEST_STATS_CACHE_TTL_MS = 30 * 1000;
+const PURCHASE_CONTRACT_OPTIONS_CACHE_TTL_MS = 60 * 1000;
+
 @Injectable()
 export class PaymentRequestsService {
   constructor(
@@ -28,6 +31,71 @@ export class PaymentRequestsService {
   ) {}
 
   private readonly approverRoles = ["MANAGER", "ADMIN"] as const;
+  private statisticsCache: {
+    expiresAt: number;
+    value: Awaited<ReturnType<PaymentRequestsService["computeStatistics"]>>;
+  } | null = null;
+  private purchaseContractOptionsCache = new Map<
+    string,
+    {
+      expiresAt: number;
+      value: Awaited<
+        ReturnType<PaymentRequestsService["computePurchaseContractOptions"]>
+      >;
+    }
+  >();
+
+  private invalidateStatisticsCache() {
+    this.statisticsCache = null;
+  }
+
+  private invalidatePurchaseContractOptionsCache() {
+    this.purchaseContractOptionsCache.clear();
+  }
+
+  private getCachedStatistics() {
+    if (this.statisticsCache && this.statisticsCache.expiresAt > Date.now()) {
+      return this.statisticsCache.value;
+    }
+    this.statisticsCache = null;
+    return null;
+  }
+
+  private setCachedStatistics(
+    value: Awaited<ReturnType<PaymentRequestsService["computeStatistics"]>>,
+  ) {
+    this.statisticsCache = {
+      expiresAt: Date.now() + PAYMENT_REQUEST_STATS_CACHE_TTL_MS,
+      value,
+    };
+  }
+
+  private getPurchaseOptionsCacheKey(keyword?: string): string {
+    return (keyword || "").trim().toLowerCase();
+  }
+
+  private getCachedPurchaseContractOptions(keyword?: string) {
+    const key = this.getPurchaseOptionsCacheKey(keyword);
+    const cached = this.purchaseContractOptionsCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+    this.purchaseContractOptionsCache.delete(key);
+    return null;
+  }
+
+  private setCachedPurchaseContractOptions(
+    keyword: string | undefined,
+    value: Awaited<
+      ReturnType<PaymentRequestsService["computePurchaseContractOptions"]>
+    >,
+  ) {
+    const key = this.getPurchaseOptionsCacheKey(keyword);
+    this.purchaseContractOptionsCache.set(key, {
+      expiresAt: Date.now() + PURCHASE_CONTRACT_OPTIONS_CACHE_TTL_MS,
+      value,
+    });
+  }
 
   private decodeRequestBankAccount<
     T extends { bankAccount?: { accountNo?: string | null } | null },
@@ -228,6 +296,8 @@ export class PaymentRequestsService {
             },
           },
         });
+        this.invalidateStatisticsCache();
+        this.invalidatePurchaseContractOptionsCache();
         return this.decodeRequestBankAccount(created);
       } catch (error) {
         if (this.isRequestNoConflict(error) && i < 7) {
@@ -469,6 +539,8 @@ export class PaymentRequestsService {
         },
       },
     });
+    this.invalidateStatisticsCache();
+    this.invalidatePurchaseContractOptionsCache();
     return this.decodeRequestBankAccount(updated);
   }
 
@@ -496,6 +568,7 @@ export class PaymentRequestsService {
       },
     });
 
+    this.invalidateStatisticsCache();
     await this.notifyApproversForSubmit(this.toNotificationContext(request));
     return this.decodeRequestBankAccount(updated);
   }
@@ -533,6 +606,7 @@ export class PaymentRequestsService {
       },
     });
 
+    this.invalidateStatisticsCache();
     const isApproved = approveDto.status === "APPROVED";
     await this.notifyApplicant(
       this.toNotificationContext(request),
@@ -573,6 +647,7 @@ export class PaymentRequestsService {
       },
     });
 
+    this.invalidateStatisticsCache();
     await this.notifyApplicant(
       this.toNotificationContext(request),
       "付款申请已完成付款",
@@ -593,12 +668,14 @@ export class PaymentRequestsService {
       throw new BadRequestException("只有草稿或待审批状态的申请可以取消");
     }
 
-    return this.prisma.paymentRequest.update({
+    const updated = await this.prisma.paymentRequest.update({
       where: { id },
       data: {
         status: "CANCELLED",
       },
     });
+    this.invalidateStatisticsCache();
+    return updated;
   }
 
   /**
@@ -611,16 +688,18 @@ export class PaymentRequestsService {
       throw new BadRequestException("只有草稿状态的申请可以删除");
     }
 
-    return this.prisma.paymentRequest.update({
+    const updated = await this.prisma.paymentRequest.update({
       where: { id },
       data: { isDeleted: true },
     });
+    this.invalidateStatisticsCache();
+    return updated;
   }
 
   /**
    * 获取付款申请统计
    */
-  async getStatistics() {
+  private async computeStatistics() {
     const [
       totalCount,
       draftCount,
@@ -676,7 +755,15 @@ export class PaymentRequestsService {
     };
   }
 
-  async getPurchaseContractOptions(keyword?: string) {
+  async getStatistics() {
+    const cached = this.getCachedStatistics();
+    if (cached) return cached;
+    const value = await this.computeStatistics();
+    this.setCachedStatistics(value);
+    return value;
+  }
+
+  private async computePurchaseContractOptions(keyword?: string) {
     const where: Prisma.ContractWhereInput = {
       isDeleted: false,
     };
@@ -711,5 +798,13 @@ export class PaymentRequestsService {
     return contracts.filter((contract) =>
       this.isPurchaseContractType(contract.contractType),
     );
+  }
+
+  async getPurchaseContractOptions(keyword?: string) {
+    const cached = this.getCachedPurchaseContractOptions(keyword);
+    if (cached) return cached;
+    const value = await this.computePurchaseContractOptions(keyword);
+    this.setCachedPurchaseContractOptions(keyword, value);
+    return value;
   }
 }

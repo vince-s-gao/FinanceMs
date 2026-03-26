@@ -383,6 +383,7 @@ const ALL_FUNCTIONS = [
   { key: "dictionary.delete", name: "删除字典项", module: "数据字典" },
 ];
 const ALL_FUNCTION_KEYS = new Set(ALL_FUNCTIONS.map((item) => item.key));
+const ROLE_PERMISSIONS_CACHE_TTL_MS = 60 * 1000;
 const MENU_BASE_FUNCTIONS: Record<string, string[]> = {
   "/customers": ["customer.view"],
   "/suppliers": ["supplier.view"],
@@ -456,6 +457,13 @@ const FUNCTION_INHERITANCE: Record<string, string[]> = {
 @Injectable()
 export class PermissionsService {
   constructor(private prisma: PrismaService) {}
+  private rolePermissionsCache = new Map<
+    string,
+    {
+      expiresAt: number;
+      value: { role: string; menus: string[]; functions: string[] };
+    }
+  >();
 
   private applyPermissionInheritance(
     menus: string[],
@@ -482,6 +490,35 @@ export class PermissionsService {
     }
 
     return functionSet;
+  }
+
+  private getCachedRolePermissions(role: string) {
+    const key = role.toUpperCase();
+    const cached = this.rolePermissionsCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+    this.rolePermissionsCache.delete(key);
+    return null;
+  }
+
+  private setCachedRolePermissions(value: {
+    role: string;
+    menus: string[];
+    functions: string[];
+  }) {
+    this.rolePermissionsCache.set(value.role.toUpperCase(), {
+      expiresAt: Date.now() + ROLE_PERMISSIONS_CACHE_TTL_MS,
+      value,
+    });
+  }
+
+  private invalidateRolePermissionsCache(role?: string) {
+    if (role) {
+      this.rolePermissionsCache.delete(role.toUpperCase());
+      return;
+    }
+    this.rolePermissionsCache.clear();
   }
 
   private toRole(role: string): Role | null {
@@ -546,6 +583,9 @@ export class PermissionsService {
    * 获取角色的权限配置
    */
   async getRolePermissions(role: string) {
+    const cached = this.getCachedRolePermissions(role);
+    if (cached) return cached;
+
     const normalizedRole = this.toRole(role);
     if (!normalizedRole) {
       return {
@@ -562,11 +602,13 @@ export class PermissionsService {
 
     // 如果数据库没有配置，返回默认配置
     if (dbPermissions.length === 0) {
-      return {
+      const fallback = {
         role,
         menus: this.normalizeMenuKeys(DEFAULT_MENU_PERMISSIONS[role] || []),
         functions: DEFAULT_FUNCTION_PERMISSIONS[role] || [],
       };
+      this.setCachedRolePermissions(fallback);
+      return fallback;
     }
 
     // 从数据库配置构建权限
@@ -846,13 +888,15 @@ export class PermissionsService {
       functionSet.add("project.delete");
     }
 
-    return {
+    const resolved = {
       role,
       menus,
       functions: Array.from(
         this.applyPermissionInheritance(menus, functionSet),
       ),
     };
+    this.setCachedRolePermissions(resolved);
+    return resolved;
   }
 
   /**
@@ -896,6 +940,7 @@ export class PermissionsService {
       });
     }
 
+    this.invalidateRolePermissionsCache(role);
     return this.getRolePermissions(role);
   }
 
@@ -924,6 +969,7 @@ export class PermissionsService {
       });
     }
 
+    this.invalidateRolePermissionsCache(role);
     return this.getRolePermissions(role);
   }
 
@@ -965,6 +1011,7 @@ export class PermissionsService {
       }),
     ]);
 
+    this.invalidateRolePermissionsCache(role);
     return this.getRolePermissions(role);
   }
 
@@ -984,6 +1031,7 @@ export class PermissionsService {
     await this.prisma.rolePermission.deleteMany({
       where: { role: normalizedRole },
     });
+    this.invalidateRolePermissionsCache(role);
 
     return {
       role,
@@ -1067,6 +1115,7 @@ export class PermissionsService {
         skipDuplicates: true,
       });
     }
+    this.invalidateRolePermissionsCache();
 
     return { message: "初始化完成" };
   }
