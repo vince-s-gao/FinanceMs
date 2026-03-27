@@ -107,6 +107,7 @@ export default function PaymentRequestDetailPage() {
   const canApprove = has("payment-request.approve");
   const canCancel = has("payment-request.cancel");
   const canConfirm = has("payment-request.confirm");
+  const canViewBankAccount = has("bank-account.view");
 
   // 加载数据
   const loadData = useCallback(async () => {
@@ -325,27 +326,32 @@ export default function PaymentRequestDetailPage() {
             {dayjs(data.paymentDate).format("YYYY-MM-DD")}
           </Descriptions.Item>
           <Descriptions.Item label="收款方账户" span={2}>
-            {/* 收款方信息已整合到银行账户中 */}
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium">
-                  {data.bankAccount.accountName}
-                </span>
-                {data.bankAccount.accountType && (
-                  <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded">
-                    {data.bankAccount.accountType === "PERSONAL"
-                      ? "个人"
-                      : "对公"}
+            {canViewBankAccount ? (
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">
+                    {data.bankAccount.accountName}
                   </span>
-                )}
+                  {data.bankAccount.accountType && (
+                    <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded">
+                      {data.bankAccount.accountType === "PERSONAL"
+                        ? "个人"
+                        : "对公"}
+                    </span>
+                  )}
+                </div>
+                <div className="text-gray-500">
+                  {data.bankAccount.bankName}
+                  {data.bankAccount.bankBranch &&
+                    ` · ${data.bankAccount.bankBranch}`}
+                </div>
+                <div className="text-gray-400">
+                  {data.bankAccount.accountNo}
+                </div>
               </div>
-              <div className="text-gray-500">
-                {data.bankAccount.bankName}
-                {data.bankAccount.bankBranch &&
-                  ` · ${data.bankAccount.bankBranch}`}
-              </div>
-              <div className="text-gray-400">{data.bankAccount.accountNo}</div>
-            </div>
+            ) : (
+              <Text type="secondary">无收款账户查看权限</Text>
+            )}
           </Descriptions.Item>
           <Descriptions.Item label="申请人">
             <div>
