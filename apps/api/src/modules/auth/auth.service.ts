@@ -12,6 +12,10 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { AuditService } from "../audit/audit.service";
 import { assertPasswordPolicy } from "../../common/utils/password-policy.utils";
+import {
+  generateTotpSecret,
+  verifyTotpCode,
+} from "../../common/utils/totp.utils";
 
 const ACCESS_TOKEN_TYPE = "access";
 const REFRESH_TOKEN_TYPE = "refresh";
@@ -31,6 +35,8 @@ interface TokenUser {
   lastLoginIp?: string | null;
   lastLoginUserAgent?: string | null;
   lastLoginDeviceFingerprint?: string | null;
+  mfaEnabled?: boolean;
+  mfaSecret?: string | null;
 }
 
 interface JwtPayload {
@@ -79,6 +85,7 @@ export class AuthService {
       departmentId: user.departmentId,
       avatar: user.avatar,
       feishuUserId: user.feishuUserId,
+      mfaEnabled: !!user.mfaEnabled,
     };
   }
 
@@ -156,6 +163,19 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return createHash("sha256").update(token).digest("hex");
+  }
+
+  private normalizeMfaCode(code?: string): string {
+    return typeof code === "string" ? code.trim() : "";
+  }
+
+  private assertMfaCodeValid(user: TokenUser, code: string): void {
+    if (!user.mfaSecret) {
+      this.unauthorized(ERROR_CODE.AUTH_MFA_NOT_SETUP, "MFA尚未完成绑定");
+    }
+    if (!verifyTotpCode(user.mfaSecret, code, { window: 1 })) {
+      this.unauthorized(ERROR_CODE.AUTH_MFA_CODE_INVALID, "MFA验证码错误");
+    }
   }
 
   private async createSessionAndTokens(
@@ -552,8 +572,93 @@ export class AuthService {
       this.unauthorized(ERROR_CODE.AUTH_INVALID_CREDENTIALS, "邮箱或密码错误");
     }
 
+    if (normalizedUser.mfaEnabled) {
+      const mfaCode = this.normalizeMfaCode(loginDto.mfaCode);
+      if (!mfaCode) {
+        this.unauthorized(ERROR_CODE.AUTH_MFA_REQUIRED, "请填写MFA验证码");
+      }
+      this.assertMfaCodeValid(normalizedUser, mfaCode);
+    }
+
     this.logger.log(`用户 ${email} 登录成功`);
     return this.issueLoginResult(normalizedUser, metadata);
+  }
+
+  async getMfaStatus(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      this.unauthorized(ERROR_CODE.AUTH_USER_NOT_FOUND, "用户不存在");
+    }
+    return {
+      enabled: !!user.mfaEnabled,
+    };
+  }
+
+  async setupMfa(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      this.unauthorized(ERROR_CODE.AUTH_USER_NOT_FOUND, "用户不存在");
+    }
+
+    const secret = generateTotpSecret();
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        mfaSecret: secret,
+        mfaEnabled: false,
+      },
+    });
+
+    const issuer = "InfFinanceMs";
+    const label = `${issuer}:${user.email}`;
+    const otpauthUrl = `otpauth://totp/${encodeURIComponent(label)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+
+    return {
+      secret,
+      otpauthUrl,
+      manualEntryKey: secret,
+    };
+  }
+
+  async enableMfa(userId: string, code: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      this.unauthorized(ERROR_CODE.AUTH_USER_NOT_FOUND, "用户不存在");
+    }
+    if (!user.mfaSecret) {
+      this.unauthorized(ERROR_CODE.AUTH_MFA_NOT_SETUP, "请先绑定MFA");
+    }
+    this.assertMfaCodeValid(user, code);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        mfaEnabled: true,
+      },
+    });
+
+    return { enabled: true };
+  }
+
+  async disableMfa(userId: string, code: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      this.unauthorized(ERROR_CODE.AUTH_USER_NOT_FOUND, "用户不存在");
+    }
+    if (!user.mfaEnabled) {
+      this.unauthorized(ERROR_CODE.AUTH_MFA_NOT_ENABLED, "MFA尚未启用");
+    }
+    this.assertMfaCodeValid(user, code);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        mfaEnabled: false,
+        mfaSecret: null,
+      },
+    });
+
+    return { enabled: false };
   }
 
   /**

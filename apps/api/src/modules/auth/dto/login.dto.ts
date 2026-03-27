@@ -6,6 +6,8 @@ import {
   MinLength,
   IsNotEmpty,
   MaxLength,
+  IsOptional,
+  Matches,
 } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
@@ -27,4 +29,14 @@ export class LoginDto {
   @MinLength(8, { message: "密码长度不能少于8位" })
   @MaxLength(64, { message: "密码长度不能超过64位" })
   password: string;
+
+  @ApiProperty({
+    description: "MFA验证码（启用MFA后必填）",
+    required: false,
+    example: "123456",
+  })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @Matches(/^\d{6}$/, { message: "MFA验证码格式不正确" })
+  mfaCode?: string;
 }

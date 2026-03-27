@@ -22,6 +22,7 @@ const FeishuIcon = () => (
 interface LoginForm {
   email: string;
   password: string;
+  mfaCode?: string;
 }
 
 // 是否启用飞书登录
@@ -61,7 +62,7 @@ function LoginPageContent() {
   const handleSubmit = async (values: LoginForm) => {
     try {
       await ensureCsrfToken();
-      await login(values.email, values.password);
+      await login(values.email, values.password, values.mfaCode);
       message.success('登录成功');
       
       // 登录成功后跳转到 dashboard
@@ -132,6 +133,25 @@ function LoginPageContent() {
               iconRender={(visible) =>
                 visible ? <EyeTwoTone twoToneColor="#1890ff" /> : <EyeInvisibleOutlined />
               }
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="mfaCode"
+            rules={[
+              {
+                validator: (_, value: string | undefined) => {
+                  if (!value) return Promise.resolve();
+                  if (/^\d{6}$/.test(value.trim())) return Promise.resolve();
+                  return Promise.reject(new Error('MFA验证码需为6位数字'));
+                },
+              },
+            ]}
+          >
+            <Input
+              prefix={<LockOutlined className="text-gray-400" />}
+              placeholder="MFA验证码（启用后必填）"
+              maxLength={6}
             />
           </Form.Item>
 

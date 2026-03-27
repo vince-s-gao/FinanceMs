@@ -181,6 +181,7 @@ describe("AuthService", () => {
       departmentId: "d1",
       avatar: "avatar.png",
       feishuUserId: undefined,
+      mfaEnabled: false,
     });
   });
 

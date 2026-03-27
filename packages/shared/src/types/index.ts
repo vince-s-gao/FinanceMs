@@ -40,6 +40,7 @@ export type UserRole = 'EMPLOYEE' | 'FINANCE' | 'MANAGER' | 'ADMIN';
 export interface LoginRequest {
   email: string;
   password: string;
+  mfaCode?: string;
 }
 
 /** 登录响应 */
@@ -65,6 +66,7 @@ export interface AuthUser {
   role: UserRole | 'SALES';
   departmentId?: string | null;
   avatar?: string | null;
+  mfaEnabled?: boolean;
 }
 
 // ==================== 客户相关类型 ====================

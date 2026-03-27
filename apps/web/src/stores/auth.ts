@@ -10,7 +10,7 @@ interface AuthState {
   isLoading: boolean;
   isHydrated: boolean;
 
-  login: (email: string, password: string) => Promise<LoginResponse>;
+  login: (email: string, password: string, mfaCode?: string) => Promise<LoginResponse>;
   logout: () => Promise<void>;
   fetchCurrentUser: () => Promise<void>;
   setUser: (user: AuthUser | null) => void;
@@ -37,12 +37,13 @@ export const useAuthStore = create<AuthState>()((set) => ({
     }
   },
 
-  login: async (email: string, password: string) => {
+  login: async (email: string, password: string, mfaCode?: string) => {
     set({ isLoading: true });
     try {
       const response = await api.post<LoginResponse>('/auth/login', {
         email,
         password,
+        ...(mfaCode ? { mfaCode } : {}),
       });
       set({
         user: response.user,

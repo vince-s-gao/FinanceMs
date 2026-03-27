@@ -11,4 +11,5 @@ export interface AuthenticatedUser {
   avatar?: string | null;
   feishuUserId?: string | null;
   isActive?: boolean;
+  mfaEnabled?: boolean;
 }

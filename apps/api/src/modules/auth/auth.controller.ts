@@ -19,6 +19,7 @@ import { Request, Response } from "express";
 import { AuthService, LoginMetadata } from "./auth.service";
 import { FeishuService } from "./feishu.service";
 import { LoginDto } from "./dto/login.dto";
+import { MfaCodeDto } from "./dto/mfa-code.dto";
 import { FeishuLoginDto } from "./dto/feishu-login.dto";
 import { ExchangeFeishuTicketDto } from "./dto/exchange-feishu-ticket.dto";
 import { JwtAuthGuard } from "../../common/guards";
@@ -400,7 +401,46 @@ export class AuthController {
       department: user.department,
       avatar: user.avatar,
       feishuUserId: user.feishuUserId,
+      mfaEnabled: !!user.mfaEnabled,
     };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get("mfa/status")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "获取MFA启用状态" })
+  async getMfaStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.getMfaStatus(user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("mfa/setup")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "初始化MFA绑定（返回密钥和otpauth URL）" })
+  async setupMfa(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.setupMfa(user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("mfa/enable")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "启用MFA" })
+  async enableMfa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: MfaCodeDto,
+  ) {
+    return this.authService.enableMfa(user.id, dto.code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("mfa/disable")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "停用MFA" })
+  async disableMfa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: MfaCodeDto,
+  ) {
+    return this.authService.disableMfa(user.id, dto.code);
   }
 
   @Post("logout")
