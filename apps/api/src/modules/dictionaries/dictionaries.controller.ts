@@ -67,6 +67,7 @@ export class DictionariesController {
 
   @Post("init-customer-types")
   @Roles(Role.ADMIN)
+  @Functions("dictionary.create")
   @ApiOperation({ summary: "初始化默认客户类型" })
   async initCustomerTypes() {
     return this.dictionariesService.initCustomerTypes();
@@ -74,6 +75,7 @@ export class DictionariesController {
 
   @Post("init-expense-types")
   @Roles(Role.ADMIN)
+  @Functions("dictionary.create")
   @ApiOperation({ summary: "初始化默认报销类型" })
   async initExpenseTypes() {
     return this.dictionariesService.initExpenseTypes();
@@ -81,6 +83,7 @@ export class DictionariesController {
 
   @Post("init-contract-types")
   @Roles(Role.ADMIN)
+  @Functions("dictionary.create")
   @ApiOperation({ summary: "初始化默认合同类型" })
   async initContractTypes() {
     return this.dictionariesService.initContractTypes();
