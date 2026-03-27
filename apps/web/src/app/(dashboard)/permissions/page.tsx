@@ -84,6 +84,7 @@ const MENU_PERMISSIONS: MenuPermission[] = [
   },
   { key: "/permissions", name: "权限管理", description: "角色权限配置" },
   { key: "/audit-logs", name: "日志管理", description: "登录与增删改日志审计" },
+  { key: "/profile", name: "个人信息", description: "当前登录账号信息" },
 ];
 
 // 功能权限配置
@@ -164,7 +165,7 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
   { menus: string[]; functions: string[] }
 > = {
   EMPLOYEE: {
-    menus: ["/dashboard", "/expenses"],
+    menus: ["/dashboard", "/expenses", "/profile"],
     functions: [
       "expense.view",
       "expense.create",
@@ -181,6 +182,7 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
       "/payments",
       "/expenses",
       "/projects",
+      "/profile",
     ],
     functions: [
       "expense.create",
@@ -208,6 +210,7 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
       "/budgets",
       "/reports",
       "/projects",
+      "/profile",
     ],
     functions: [
       "customer.view",
@@ -275,6 +278,7 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
       "/budgets",
       "/reports",
       "/projects",
+      "/profile",
     ],
     functions: [
       "expense.view",
