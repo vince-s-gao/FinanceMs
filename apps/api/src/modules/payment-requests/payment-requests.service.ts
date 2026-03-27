@@ -18,7 +18,10 @@ import {
 } from "../../common/utils/query.utils";
 import { isUniqueConflict } from "../../common/utils/prisma.utils";
 import { NotificationsService } from "../notifications/notifications.service";
-import { decryptIfNeeded } from "../../common/utils/encryption.utils";
+import {
+  decryptIfNeeded,
+  encryptNullable,
+} from "../../common/utils/encryption.utils";
 
 const PAYMENT_REQUEST_STATS_CACHE_TTL_MS = 30 * 1000;
 const PURCHASE_CONTRACT_OPTIONS_CACHE_TTL_MS = 60 * 1000;
@@ -98,15 +101,25 @@ export class PaymentRequestsService {
   }
 
   private decodeRequestBankAccount<
-    T extends { bankAccount?: { accountNo?: string | null } | null },
+    T extends {
+      bankAccount?: { accountNo?: string | null } | null;
+      payeeName?: string | null;
+      payeeAccount?: string | null;
+      payeeBank?: string | null;
+    },
   >(request: T): T {
-    if (!request?.bankAccount) return request;
+    if (!request) return request;
     return {
       ...request,
-      bankAccount: {
-        ...request.bankAccount,
-        accountNo: decryptIfNeeded(request.bankAccount.accountNo),
-      },
+      payeeName: decryptIfNeeded(request.payeeName),
+      payeeAccount: decryptIfNeeded(request.payeeAccount),
+      payeeBank: decryptIfNeeded(request.payeeBank),
+      bankAccount: request.bankAccount
+        ? {
+            ...request.bankAccount,
+            accountNo: decryptIfNeeded(request.bankAccount.accountNo),
+          }
+        : request.bankAccount,
     };
   }
 
@@ -268,9 +281,9 @@ export class PaymentRequestsService {
             project: { connect: { id: createDto.projectId } },
             contract: { connect: { id: createDto.contractId } },
             bankAccount: { connect: { id: createDto.bankAccountId } },
-            payeeName: createDto.payeeName,
-            payeeAccount: createDto.payeeAccount,
-            payeeBank: createDto.payeeBank,
+            payeeName: encryptNullable(createDto.payeeName),
+            payeeAccount: encryptNullable(createDto.payeeAccount),
+            payeeBank: encryptNullable(createDto.payeeBank),
             attachments: createDto.attachments
               ? JSON.parse(JSON.stringify(createDto.attachments))
               : undefined,
@@ -484,9 +497,18 @@ export class PaymentRequestsService {
       amount: updateDto.amount,
       currency: updateDto.currency,
       paymentMethod: updateDto.paymentMethod,
-      payeeName: updateDto.payeeName,
-      payeeAccount: updateDto.payeeAccount,
-      payeeBank: updateDto.payeeBank,
+      payeeName:
+        updateDto.payeeName === undefined
+          ? undefined
+          : encryptNullable(updateDto.payeeName),
+      payeeAccount:
+        updateDto.payeeAccount === undefined
+          ? undefined
+          : encryptNullable(updateDto.payeeAccount),
+      payeeBank:
+        updateDto.payeeBank === undefined
+          ? undefined
+          : encryptNullable(updateDto.payeeBank),
       remark: updateDto.remark,
     };
 

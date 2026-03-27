@@ -1,6 +1,11 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PaymentRequestsService } from "./payment-requests.service";
+import {
+  decryptIfNeeded,
+  encryptNullable,
+  isEncryptedValue,
+} from "../../common/utils/encryption.utils";
 
 describe("PaymentRequestsService", () => {
   let service: PaymentRequestsService;
@@ -259,6 +264,37 @@ describe("PaymentRequestsService", () => {
     expect(data.attachments).toBeUndefined();
   });
 
+  it("should encrypt payee fields when creating payment request", async () => {
+    prisma.project.findFirst.mockResolvedValueOnce({ id: "proj-1" });
+    prisma.bankAccount.findUnique.mockResolvedValueOnce({ id: "bank-1" });
+    prisma.paymentRequest.findFirst.mockResolvedValueOnce(null);
+    prisma.paymentRequest.create.mockResolvedValueOnce({ id: "pr-sec-1" });
+
+    await service.create(
+      {
+        projectId: "proj-1",
+        contractId: "contract-1",
+        bankAccountId: "bank-1",
+        reason: "敏感信息加密测试",
+        amount: 200,
+        paymentMethod: "TRANSFER",
+        paymentDate: "2026-03-01",
+        payeeName: "张三",
+        payeeAccount: "6222020202020202",
+        payeeBank: "招商银行",
+      } as any,
+      "u2",
+    );
+
+    const data = prisma.paymentRequest.create.mock.calls[0][0].data;
+    expect(data.payeeName).not.toBe("张三");
+    expect(data.payeeAccount).not.toBe("6222020202020202");
+    expect(data.payeeBank).not.toBe("招商银行");
+    expect(isEncryptedValue(data.payeeName)).toBe(true);
+    expect(isEncryptedValue(data.payeeAccount)).toBe(true);
+    expect(isEncryptedValue(data.payeeBank)).toBe(true);
+  });
+
   it("should retry create when requestNo conflicts and then succeed", async () => {
     prisma.project.findFirst.mockResolvedValue({
       id: "proj-1",
@@ -410,6 +446,24 @@ describe("PaymentRequestsService", () => {
     expect(updateArg.data.paymentDate).toBeInstanceOf(Date);
     expect(updateArg.data.bankAccount).toEqual({ connect: { id: "bank-2" } });
     expect(updateArg.data.attachments).toEqual([{ name: "b.pdf" }]);
+  });
+
+  it("should encrypt payee fields when updating payment request", async () => {
+    await service.update("pr-1", {
+      payeeName: "李四",
+      payeeAccount: "6217000000000000000",
+      payeeBank: "建设银行",
+    } as any);
+
+    const updateArg = prisma.paymentRequest.update.mock.calls[0][0];
+    expect(isEncryptedValue(updateArg.data.payeeName)).toBe(true);
+    expect(isEncryptedValue(updateArg.data.payeeAccount)).toBe(true);
+    expect(isEncryptedValue(updateArg.data.payeeBank)).toBe(true);
+    expect(decryptIfNeeded(updateArg.data.payeeName)).toBe("李四");
+    expect(decryptIfNeeded(updateArg.data.payeeAccount)).toBe(
+      "6217000000000000000",
+    );
+    expect(decryptIfNeeded(updateArg.data.payeeBank)).toBe("建设银行");
   });
 
   it("should reject submit when request is not draft", async () => {
@@ -774,5 +828,42 @@ describe("PaymentRequestsService", () => {
     const where = prisma.paymentRequest.findMany.mock.calls[0][0].where;
     expect(where.paymentDate.gte).toBeUndefined();
     expect(where.paymentDate.lte).toBeInstanceOf(Date);
+  });
+
+  it("should decrypt payee fields when returning list and detail", async () => {
+    const realEncryptedName = encryptNullable("王五");
+    const realEncryptedAccount = encryptNullable("6222333344445555");
+    const realEncryptedBank = encryptNullable("工商银行");
+
+    prisma.paymentRequest.findMany.mockResolvedValueOnce([
+      {
+        id: "pr-10",
+        payeeName: realEncryptedName,
+        payeeAccount: realEncryptedAccount,
+        payeeBank: realEncryptedBank,
+        bankAccount: { accountNo: null },
+      },
+    ]);
+    prisma.paymentRequest.count.mockResolvedValueOnce(1);
+
+    const list = await service.findAll({ page: 1, pageSize: 10 } as any);
+    expect(list.items[0].payeeName).toBe("王五");
+    expect(list.items[0].payeeAccount).toBe("6222333344445555");
+    expect(list.items[0].payeeBank).toBe("工商银行");
+
+    prisma.paymentRequest.findUnique.mockResolvedValueOnce({
+      id: "pr-10",
+      isDeleted: false,
+      status: "DRAFT",
+      payeeName: realEncryptedName,
+      payeeAccount: realEncryptedAccount,
+      payeeBank: realEncryptedBank,
+      bankAccount: { accountNo: null },
+    });
+
+    const detail = await service.findOne("pr-10");
+    expect(detail.payeeName).toBe("王五");
+    expect(detail.payeeAccount).toBe("6222333344445555");
+    expect(detail.payeeBank).toBe("工商银行");
   });
 });
