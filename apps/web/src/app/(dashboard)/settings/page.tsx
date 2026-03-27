@@ -56,7 +56,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const currentUser = useAuthStore((state) => state.user);
   const { loaded: permissionLoaded, has } = useFunctionPermissions();
-  const canViewPage = currentUser?.role === "ADMIN";
+  const canViewPage = has("user.view");
   const canCreateUser = has("user.create");
   const canEditUser = has("user.edit");
   const canDeleteUser = has("user.delete");

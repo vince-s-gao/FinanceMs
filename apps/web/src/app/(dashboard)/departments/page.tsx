@@ -125,7 +125,7 @@ export default function EmployeeManagementPage() {
   const canCreateUser = has("user.create");
   const canEditUser = has("user.edit");
   const canDeleteUser = has("user.delete");
-  const canViewPage = currentUser?.role === "ADMIN";
+  const canViewPage = has("user.view");
 
   // 员工管理状态
   const [employeeLoading, setEmployeeLoading] = useState(false);

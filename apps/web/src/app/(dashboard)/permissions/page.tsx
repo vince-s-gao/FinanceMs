@@ -149,6 +149,7 @@ const FUNCTION_PERMISSIONS: FunctionPermission[] = [
   { key: "project.delete", name: "删除项目", module: "项目管理" },
   { key: "report.view", name: "查看报表", module: "报表看板" },
   { key: "report.export", name: "导出报表", module: "报表看板" },
+  { key: "user.view", name: "查看用户", module: "员工管理" },
   { key: "user.create", name: "创建用户", module: "系统设置" },
   { key: "user.edit", name: "编辑用户", module: "系统设置" },
   { key: "user.delete", name: "删除用户", module: "系统设置" },

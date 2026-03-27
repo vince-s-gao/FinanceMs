@@ -35,6 +35,7 @@ export class UsersController {
 
   @Get()
   @Roles(Role.ADMIN)
+  @Functions("user.view")
   @ApiOperation({ summary: "获取用户列表" })
   async findAll(
     @Query("page") page?: string,
@@ -66,6 +67,7 @@ export class UsersController {
 
   @Get(":id")
   @Roles(Role.ADMIN)
+  @Functions("user.view")
   @ApiOperation({ summary: "获取用户详情" })
   async findOne(@Param("id") id: string) {
     return this.usersService.findById(id);
