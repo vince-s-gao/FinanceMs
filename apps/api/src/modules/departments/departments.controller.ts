@@ -44,6 +44,7 @@ export class DepartmentsController {
 
   @Get("tree")
   @Roles(Role.EMPLOYEE, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("user.view")
   @ApiOperation({ summary: "获取部门树形结构" })
   async getTree() {
     return this.departmentsService.getTree();
@@ -51,6 +52,7 @@ export class DepartmentsController {
 
   @Get("options")
   @Roles(Role.EMPLOYEE, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("user.view")
   @ApiOperation({ summary: "获取部门选项列表" })
   async getOptions() {
     return this.departmentsService.getOptions();

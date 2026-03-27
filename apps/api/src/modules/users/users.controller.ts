@@ -60,6 +60,7 @@ export class UsersController {
 
   @Get("options")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("user.view")
   @ApiOperation({ summary: "获取用户选项列表（用于下拉选择）" })
   async getOptions() {
     return this.usersService.getOptions();
