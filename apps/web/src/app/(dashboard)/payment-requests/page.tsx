@@ -145,8 +145,8 @@ export default function PaymentRequestsPage() {
   const handleSearch = () => {
     setFilters((prev) => ({
       ...prev,
-      requestNo: searchForm.requestNo,
-      reason: searchForm.reason,
+      requestNo: searchForm.requestNo.trim(),
+      reason: searchForm.reason.trim(),
       status: searchForm.status,
       page: 1,
     }));
@@ -287,7 +287,7 @@ export default function PaymentRequestsPage() {
     {
       title: "操作",
       key: "action",
-      width: 180,
+      width: 220,
       render: (_, record) => (
         <Space size="small">
           {canView && (
@@ -348,92 +348,100 @@ export default function PaymentRequestsPage() {
 
   return (
     <div className="space-y-4">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <Title level={4} style={{ margin: 0 }}>
-            付款申请
-          </Title>
-          <Text type="secondary">现金、支票等各类（对公）付款申请</Text>
-        </div>
-        {canCreate ? (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => router.push("/payment-requests/new")}
-          >
-            新建申请
-          </Button>
-        ) : null}
-      </div>
+      {permissionLoaded && !canView ? null : (
+        <>
+          {/* 页面标题 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <Title level={4} style={{ margin: 0 }}>
+                付款申请
+              </Title>
+              <Text type="secondary">现金、支票等各类（对公）付款申请</Text>
+            </div>
+            {canCreate ? (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => router.push("/payment-requests/new")}
+              >
+                新建申请
+              </Button>
+            ) : null}
+          </div>
 
-      {/* 搜索筛选 */}
-      <Card size="small">
-        <Space wrap>
-          <Input
-            placeholder="申请单号"
-            value={searchForm.requestNo}
-            onChange={(e) =>
-              setSearchForm((prev) => ({ ...prev, requestNo: e.target.value }))
-            }
-            style={{ width: 160 }}
-            allowClear
-          />
-          <Input
-            placeholder="付款事由"
-            value={searchForm.reason}
-            onChange={(e) =>
-              setSearchForm((prev) => ({ ...prev, reason: e.target.value }))
-            }
-            style={{ width: 160 }}
-            allowClear
-          />
-          <Select
-            placeholder="状态"
-            value={searchForm.status || undefined}
-            onChange={(value) =>
-              setSearchForm((prev) => ({ ...prev, status: value || "" }))
-            }
-            style={{ width: 120 }}
-            allowClear
-            options={[
-              { value: "DRAFT", label: "草稿" },
-              { value: "PENDING", label: "待审批" },
-              { value: "APPROVED", label: "已通过" },
-              { value: "REJECTED", label: "已拒绝" },
-              { value: "PAID", label: "已付款" },
-            ]}
-          />
-          <Button
-            type="primary"
-            icon={<SearchOutlined />}
-            onClick={handleSearch}
-          >
-            搜索
-          </Button>
-        </Space>
-      </Card>
+          {/* 搜索筛选 */}
+          <Card size="small">
+            <Space wrap>
+              <Input
+                placeholder="申请单号"
+                value={searchForm.requestNo}
+                onChange={(e) =>
+                  setSearchForm((prev) => ({
+                    ...prev,
+                    requestNo: e.target.value,
+                  }))
+                }
+                style={{ width: 160 }}
+                allowClear
+              />
+              <Input
+                placeholder="付款事由"
+                value={searchForm.reason}
+                onChange={(e) =>
+                  setSearchForm((prev) => ({ ...prev, reason: e.target.value }))
+                }
+                style={{ width: 160 }}
+                allowClear
+              />
+              <Select
+                placeholder="状态"
+                value={searchForm.status || undefined}
+                onChange={(value) =>
+                  setSearchForm((prev) => ({ ...prev, status: value || "" }))
+                }
+                style={{ width: 120 }}
+                allowClear
+                options={[
+                  { value: "DRAFT", label: "草稿" },
+                  { value: "PENDING", label: "待审批" },
+                  { value: "APPROVED", label: "已通过" },
+                  { value: "REJECTED", label: "已拒绝" },
+                  { value: "PAID", label: "已付款" },
+                ]}
+              />
+              <Button
+                type="primary"
+                icon={<SearchOutlined />}
+                onClick={handleSearch}
+              >
+                搜索
+              </Button>
+            </Space>
+          </Card>
 
-      {/* 数据表格 */}
-      <Card>
-        <Table
-          columns={columns}
-          dataSource={data?.items || []}
-          rowKey="id"
-          loading={loading}
-          pagination={{
-            current: filters.page,
-            pageSize: filters.pageSize,
-            total: data?.total || 0,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条记录`,
-            onChange: (page, pageSize) => {
-              setFilters((prev) => ({ ...prev, page, pageSize }));
-            },
-          }}
-        />
-      </Card>
+          {/* 数据表格 */}
+          <Card>
+            <Table
+              columns={columns}
+              dataSource={data?.items || []}
+              rowKey="id"
+              loading={loading}
+              scroll={{ x: 1500 }}
+              pagination={{
+                current: filters.page,
+                pageSize: filters.pageSize,
+                total: data?.total || 0,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total) => `共 ${total} 条记录`,
+                onChange: (page, pageSize) => {
+                  setFilters((prev) => ({ ...prev, page, pageSize }));
+                },
+              }}
+            />
+          </Card>
+        </>
+      )}
     </div>
   );
 }
