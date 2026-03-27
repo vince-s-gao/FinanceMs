@@ -76,6 +76,7 @@ const DEFAULT_FUNCTION_PERMISSIONS: Record<string, string[]> = {
     "expense.edit",
     "expense.submit",
     "expense.delete",
+    "dictionary.read",
   ],
   SALES: [
     "expense.create",
@@ -87,6 +88,7 @@ const DEFAULT_FUNCTION_PERMISSIONS: Record<string, string[]> = {
     "contract.edit",
     "payment.view",
     "project.view",
+    "dictionary.read",
   ],
   FINANCE: [
     "contract.view",
@@ -138,6 +140,7 @@ const DEFAULT_FUNCTION_PERMISSIONS: Record<string, string[]> = {
     "project.delete",
     "report.view",
     "report.export",
+    "dictionary.read",
   ],
   MANAGER: [
     "expense.view",
@@ -172,6 +175,7 @@ const DEFAULT_FUNCTION_PERMISSIONS: Record<string, string[]> = {
     "project.delete",
     "report.view",
     "report.export",
+    "dictionary.read",
   ],
   ADMIN: [
     "expense.view",
@@ -916,6 +920,9 @@ export class PermissionsService {
       functionSet.add("project.create");
       functionSet.add("project.edit");
       functionSet.add("project.delete");
+    }
+    if (!functionSet.has("dictionary.read")) {
+      functionSet.add("dictionary.read");
     }
 
     const resolved = {

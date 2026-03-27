@@ -44,6 +44,7 @@ export class DictionariesController {
 
   @Get("by-type/:type")
   @Roles(Role.EMPLOYEE, Role.SALES, Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("dictionary.read")
   @ApiOperation({ summary: "根据类型获取字典列表（用于下拉选择）" })
   async findByType(@Param("type") type: string) {
     return this.dictionariesService.findByType(type);

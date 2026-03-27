@@ -176,6 +176,7 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
       "expense.edit",
       "expense.submit",
       "expense.delete",
+      "dictionary.read",
     ],
   },
   SALES: {
@@ -198,6 +199,7 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
       "contract.edit",
       "payment.view",
       "project.view",
+      "dictionary.read",
     ],
   },
   FINANCE: {
@@ -266,6 +268,7 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
       "project.delete",
       "report.view",
       "report.export",
+      "dictionary.read",
     ],
   },
   MANAGER: {
@@ -317,6 +320,7 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
       "project.delete",
       "report.view",
       "report.export",
+      "dictionary.read",
     ],
   },
   ADMIN: {
