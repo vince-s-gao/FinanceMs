@@ -360,14 +360,11 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const handleUserMenuClick = async ({ key }: { key: string }) => {
     if (key === "profile") {
       if (pathname === "/profile") return;
-      router.push("/profile");
       if (typeof window !== "undefined") {
-        window.setTimeout(() => {
-          if (window.location.pathname !== "/profile") {
-            window.location.assign("/profile");
-          }
-        }, 250);
+        window.location.assign("/profile");
+        return;
       }
+      router.push("/profile");
       return;
     }
     if (key === "logout") {
