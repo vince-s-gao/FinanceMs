@@ -19,9 +19,10 @@ function LoginCallbackContent() {
     const handleCallback = async () => {
       const ticket = searchParams.get('ticket');
       const error = searchParams.get('error');
+      const reason = searchParams.get('reason');
 
       if (error) {
-        message.error('登录失败，请重试');
+        message.error(getErrorMessage({ code: reason }, '登录失败，请重试'));
         router.push('/login');
         return;
       }

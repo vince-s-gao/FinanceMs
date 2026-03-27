@@ -5,6 +5,7 @@ import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
 import { randomUUID } from "crypto";
 import { AuthService, LoginMetadata } from "./auth.service";
+import { ERROR_CODE } from "@inffinancems/shared";
 
 // 飞书用户信息接口
 interface FeishuUserInfo {
@@ -84,6 +85,24 @@ export class FeishuService {
     );
   }
 
+  private unauthorized(code: string, message: string): never {
+    throw new UnauthorizedException({ code, message });
+  }
+
+  private assertFeishuConfigured(): void {
+    if (!this.appId || !this.appSecret || !this.redirectUri) {
+      this.logger.error("飞书登录配置缺失", {
+        hasAppId: !!this.appId,
+        hasAppSecret: !!this.appSecret,
+        hasRedirectUri: !!this.redirectUri,
+      });
+      this.unauthorized(
+        ERROR_CODE.AUTH_FEISHU_NOT_CONFIGURED,
+        "飞书登录未完成配置",
+      );
+    }
+  }
+
   private sanitizeFeishuLogValue(value: unknown): unknown {
     if (value === null || value === undefined) return value;
     if (typeof value === "string") return value;
@@ -119,6 +138,7 @@ export class FeishuService {
    * 获取飞书授权登录URL
    */
   getAuthUrl(state: string): string {
+    this.assertFeishuConfigured();
     const baseUrl = "https://open.feishu.cn/open-apis/authen/v1/authorize";
     const params = new URLSearchParams({
       app_id: this.appId,
@@ -146,13 +166,16 @@ export class FeishuService {
   exchangeLoginTicket(ticket: string): FeishuLoginResult {
     const entry = this.loginTickets.get(ticket);
     if (!entry) {
-      throw new UnauthorizedException("登录票据无效或已失效");
+      this.unauthorized(
+        ERROR_CODE.AUTH_FEISHU_TICKET_INVALID,
+        "登录票据无效或已失效",
+      );
     }
 
     this.loginTickets.delete(ticket);
 
     if (entry.expiresAt < Date.now()) {
-      throw new UnauthorizedException("登录票据已过期");
+      this.unauthorized(ERROR_CODE.AUTH_FEISHU_TICKET_INVALID, "登录票据已过期");
     }
 
     return entry.payload;
@@ -174,6 +197,7 @@ export class FeishuService {
    * 获取飞书应用访问令牌 (app_access_token)
    */
   private async getAppAccessToken(): Promise<string> {
+    this.assertFeishuConfigured();
     const url =
       "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal";
 
@@ -193,7 +217,7 @@ export class FeishuService {
         "获取飞书 app_access_token 失败",
         this.sanitizeFeishuLogValue(data),
       );
-      throw new UnauthorizedException("飞书认证失败");
+      this.unauthorized(ERROR_CODE.AUTH_FEISHU_APP_TOKEN_FAILED, "飞书认证失败");
     }
 
     return data.app_access_token;
@@ -228,7 +252,7 @@ export class FeishuService {
         "获取飞书用户令牌失败",
         this.sanitizeFeishuLogValue(data),
       );
-      throw new UnauthorizedException("飞书授权失败");
+      this.unauthorized(ERROR_CODE.AUTH_FEISHU_USER_TOKEN_FAILED, "飞书授权失败");
     }
 
     return data.data;
@@ -284,7 +308,10 @@ export class FeishuService {
         "获取飞书用户信息失败",
         this.sanitizeFeishuLogValue(data),
       );
-      throw new UnauthorizedException("获取用户信息失败");
+      this.unauthorized(
+        ERROR_CODE.AUTH_FEISHU_USERINFO_FAILED,
+        "获取飞书用户信息失败",
+      );
     }
 
     return user;
@@ -298,6 +325,7 @@ export class FeishuService {
     code: string,
     metadata?: LoginMetadata,
   ): Promise<FeishuLoginResult> {
+    this.assertFeishuConfigured();
     // 1. 获取用户访问令牌
     const tokenData = await this.getUserAccessToken(code);
 

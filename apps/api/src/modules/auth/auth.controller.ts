@@ -152,6 +152,21 @@ export class AuthController {
     return decodeURIComponent(target.substring(name.length + 1));
   }
 
+  private extractErrorCode(error: unknown): string {
+    if (error instanceof UnauthorizedException) {
+      const response = error.getResponse();
+      if (
+        response &&
+        typeof response === "object" &&
+        "code" in response &&
+        typeof (response as { code?: unknown }).code === "string"
+      ) {
+        return (response as { code: string }).code;
+      }
+    }
+    return "AUTH_FEISHU_UNKNOWN_ERROR";
+  }
+
   @Public()
   @Post("login")
   @ApiOperation({ summary: "用户登录（邮箱密码）" })
@@ -217,7 +232,9 @@ export class AuthController {
     });
 
     if (!state || !stateInCookie || state !== stateInCookie) {
-      res.redirect(`${frontendUrl}/login?error=feishu_state_invalid`);
+      res.redirect(
+        `${frontendUrl}/login?error=feishu_state_invalid&reason=${ERROR_CODE.AUTH_FEISHU_STATE_INVALID}`,
+      );
       return;
     }
 
@@ -228,8 +245,11 @@ export class AuthController {
       );
       const ticket = this.feishuService.createLoginTicket(result);
       res.redirect(`${frontendUrl}/login/callback?ticket=${ticket}`);
-    } catch {
-      res.redirect(`${frontendUrl}/login?error=feishu_auth_failed`);
+    } catch (error) {
+      const reason = this.extractErrorCode(error);
+      res.redirect(
+        `${frontendUrl}/login?error=feishu_auth_failed&reason=${reason}`,
+      );
     }
   }
 

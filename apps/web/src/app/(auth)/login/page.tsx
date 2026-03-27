@@ -42,10 +42,11 @@ function LoginPageContent() {
   // 处理飞书登录错误
   useEffect(() => {
     const error = searchParams.get('error');
+    const reason = searchParams.get('reason');
     if (error === 'feishu_auth_failed') {
-      message.error('飞书登录失败，请重试');
+      message.error(getErrorMessage({ code: reason }, '飞书登录失败，请重试'));
     } else if (error === 'feishu_state_invalid') {
-      message.error('登录状态校验失败，请重新发起飞书登录');
+      message.error(getErrorMessage({ code: reason }, '登录状态校验失败，请重新发起飞书登录'));
     }
   }, [searchParams]);
 
