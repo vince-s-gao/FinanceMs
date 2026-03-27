@@ -203,6 +203,7 @@ export class ContractsController {
 
   @Post("import/csv/preview")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("contract.create")
   @UseInterceptors(
     FileInterceptor(
       "file",
@@ -235,6 +236,7 @@ export class ContractsController {
 
   @Get("import/template/excel")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("contract.create")
   @ApiOperation({ summary: "下载合同导入模板（Excel）" })
   async downloadImportTemplateExcel(@Res() res: Response) {
     const buffer = this.contractsService.getImportTemplateExcel();
@@ -243,6 +245,7 @@ export class ContractsController {
 
   @Get("import/history")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("contract.create")
   @ApiOperation({ summary: "获取合同导入历史（最近记录）" })
   async getImportHistory(
     @Query("limit") limitRaw?: string,
@@ -258,6 +261,7 @@ export class ContractsController {
 
   @Get("import/history/:id/errors/csv")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("contract.create")
   @ApiOperation({ summary: "下载导入错误报告（CSV）" })
   async downloadImportErrorsCsv(
     @Param("id") id: string,
@@ -273,6 +277,7 @@ export class ContractsController {
 
   @Get("import/history/:id/errors/excel")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("contract.create")
   @ApiOperation({ summary: "下载导入错误报告（Excel）" })
   async downloadImportErrorsExcel(
     @Param("id") id: string,
@@ -288,6 +293,7 @@ export class ContractsController {
 
   @Delete("import/history")
   @Roles(Role.FINANCE, Role.ADMIN)
+  @Functions("contract.create")
   @ApiOperation({ summary: "清空合同导入历史" })
   async clearImportHistory(@CurrentUser() currentUser?: AuthenticatedUser) {
     return this.contractsService.clearImportHistory(
