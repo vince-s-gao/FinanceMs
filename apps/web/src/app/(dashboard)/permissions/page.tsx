@@ -32,6 +32,7 @@ import { ROLE_LABELS, ROLE_COLORS } from "@/lib/constants";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/error";
 import { useAuthStore } from "@/stores/auth";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -327,7 +328,8 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
 export default function PermissionsPage() {
   const router = useRouter();
   const currentUser = useAuthStore((state) => state.user);
-  const canViewPage = currentUser?.role === "ADMIN";
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canViewPage = has("permission.manage");
   const [activeTab, setActiveTab] = useState("menu");
   const [loading, setLoading] = useState(false);
   const [rolePermissions, setRolePermissions] = useState<RolePermissionsMatrix>(
@@ -354,14 +356,14 @@ export default function PermissionsPage() {
   }, []);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !permissionLoaded) return;
     if (!canViewPage) {
       message.warning("当前账号没有权限管理访问权限");
       router.replace("/dashboard");
       return;
     }
     fetchPermissions();
-  }, [canViewPage, currentUser, fetchPermissions, router]);
+  }, [canViewPage, currentUser, fetchPermissions, permissionLoaded, router]);
 
   // 获取当前权限矩阵
   const getCurrentMatrix = () => {
@@ -370,7 +372,7 @@ export default function PermissionsPage() {
       : ROLE_MENU_MATRIX_DEFAULT;
   };
 
-  if (!currentUser || !canViewPage) {
+  if (!currentUser || !permissionLoaded || !canViewPage) {
     return null;
   }
 
