@@ -5,6 +5,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { Decimal } from "@prisma/client/runtime/library";
 import { normalizeText, toCsv } from "../../common/utils/tabular.utils";
 import {
+  buildSalesContractTypePrefilterValues,
   isSalesContractByContext,
   resolveSalesContractTypeContext,
 } from "../contracts/contracts.sales-type.utils";
@@ -119,6 +120,24 @@ export class ReportsService {
     });
   }
 
+  private buildSalesContractTypeWhereFilter():
+    | Prisma.ContractWhereInput
+    | undefined {
+    if (!this.salesContractTypesCache) return undefined;
+    const values = buildSalesContractTypePrefilterValues({
+      context: {
+        codes: this.salesContractTypesCache.codes,
+        codeByLookup: this.salesContractTypesCache.codeByLookup,
+      },
+    });
+    if (values.length === 0) return undefined;
+    return {
+      contractType: {
+        in: values,
+      },
+    };
+  }
+
   /**
    * 应收账款总览
    */
@@ -127,11 +146,13 @@ export class ReportsService {
       const salesCodes = await this.getSalesContractTypeCodes();
       const codeByLookup =
         this.salesContractTypesCache?.codeByLookup || new Map();
+      const salesTypeWhere = this.buildSalesContractTypeWhereFilter();
       // 获取所有执行中的合同
       const contracts = await this.prisma.contract.findMany({
         where: {
           isDeleted: false,
           status: { in: [ContractStatus.EXECUTING, ContractStatus.COMPLETED] },
+          ...(salesTypeWhere || {}),
         },
         include: {
           paymentPlans: true,
@@ -237,11 +258,12 @@ export class ReportsService {
       const salesCodes = await this.getSalesContractTypeCodes();
       const codeByLookup =
         this.salesContractTypesCache?.codeByLookup || new Map();
+      const salesTypeWhere = this.buildSalesContractTypeWhereFilter();
       const customers = await this.prisma.customer.findMany({
         where: { isDeleted: false },
         include: {
           contracts: {
-            where: { isDeleted: false },
+            where: { isDeleted: false, ...(salesTypeWhere || {}) },
             include: {
               paymentPlans: true,
               paymentRecords: true,
@@ -387,11 +409,13 @@ export class ReportsService {
       const salesCodes = await this.getSalesContractTypeCodes();
       const codeByLookup =
         this.salesContractTypesCache?.codeByLookup || new Map();
+      const salesTypeWhere = this.buildSalesContractTypeWhereFilter();
       // 执行中合同数（仅销售）
       const executingContracts = await this.prisma.contract.findMany({
         where: {
           status: ContractStatus.EXECUTING,
           isDeleted: false,
+          ...(salesTypeWhere || {}),
         },
         select: { id: true, contractType: true },
       });
@@ -417,6 +441,7 @@ export class ReportsService {
             lte: endOfMonth,
           },
           isDeleted: false,
+          ...(salesTypeWhere || {}),
         },
         select: {
           amountWithTax: true,
@@ -448,7 +473,7 @@ export class ReportsService {
             gte: startOfMonth,
             lte: endOfMonth,
           },
-          contract: { isDeleted: false },
+          contract: { isDeleted: false, ...(salesTypeWhere || {}) },
         },
         select: {
           amount: true,
@@ -479,6 +504,7 @@ export class ReportsService {
           },
           contract: {
             isDeleted: false,
+            ...(salesTypeWhere || {}),
           },
         },
         include: {

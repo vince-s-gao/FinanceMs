@@ -66,3 +66,31 @@ export function isSalesContractByContext(args: {
 
   return args.context.codes.includes(normalizeText(mappedCode).toUpperCase());
 }
+
+export function buildSalesContractTypePrefilterValues(args: {
+  context: SalesContractTypeContext;
+}): string[] {
+  const codeSet = new Set(
+    args.context.codes
+      .map((item) => normalizeText(item).toUpperCase())
+      .filter(Boolean),
+  );
+  if (codeSet.size === 0) return [];
+
+  const values = new Set<string>();
+  args.context.codes.forEach((code) => {
+    const normalizedCode = normalizeText(code);
+    if (normalizedCode) values.add(normalizedCode);
+  });
+
+  args.context.codeByLookup.forEach((mappedCode, lookup) => {
+    const normalizedMappedCode = normalizeText(mappedCode).toUpperCase();
+    const normalizedLookup = normalizeText(lookup);
+    if (!normalizedLookup) return;
+    if (codeSet.has(normalizedMappedCode)) {
+      values.add(normalizedLookup);
+    }
+  });
+
+  return Array.from(values);
+}

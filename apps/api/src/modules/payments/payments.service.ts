@@ -12,6 +12,7 @@ import { CreatePaymentRecordDto } from "./dto/create-payment-record.dto";
 import { Decimal } from "@prisma/client/runtime/library";
 import { normalizeText } from "../../common/utils/tabular.utils";
 import {
+  buildSalesContractTypePrefilterValues,
   resolveSalesContractTypeContext,
   isSalesContractByContext,
 } from "../contracts/contracts.sales-type.utils";
@@ -98,6 +99,24 @@ export class PaymentsService {
     return resolved;
   }
 
+  private buildSalesContractTypeWhereFilter():
+    | Prisma.ContractWhereInput
+    | undefined {
+    if (!this.salesContractTypesCache) return undefined;
+    const values = buildSalesContractTypePrefilterValues({
+      context: {
+        codes: this.salesContractTypesCache.codes,
+        codeByLookup: this.salesContractTypesCache.codeByLookup,
+      },
+    });
+    if (values.length === 0) return undefined;
+    return {
+      contractType: {
+        in: values,
+      },
+    };
+  }
+
   private async isSalesContract(
     contractType?: string | null,
   ): Promise<boolean> {
@@ -166,12 +185,14 @@ export class PaymentsService {
     );
     const codeByLookup =
       this.salesContractTypesCache?.codeByLookup || new Map();
+    const salesTypeWhere = this.buildSalesContractTypeWhereFilter();
 
     // 读取执行中合同后再按销售类型进行严格过滤，避免“销售保密协议”等误判。
     const contracts = await this.prisma.contract.findMany({
       where: {
         isDeleted: false,
         status: ContractStatus.EXECUTING,
+        ...(salesTypeWhere || {}),
       },
       include: {
         customer: {
