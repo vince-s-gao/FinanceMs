@@ -195,10 +195,18 @@ export default function EditPaymentRequestPage() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const { loaded: permissionLoaded, has } = useFunctionPermissions();
   const canEditRequest = has("payment-request.edit");
+  const canViewBankAccount = has("bank-account.view");
   const canCreateBankAccount = has("bank-account.create");
+  const canEditBankAccount = has("bank-account.edit");
+  const canDeleteBankAccount = has("bank-account.delete");
 
   // 加载银行账户列表
   const loadBankAccounts = async () => {
+    if (!canViewBankAccount) {
+      setBankAccounts([]);
+      form.setFieldValue("bankAccountId", undefined);
+      return [];
+    }
     try {
       const accounts = await api.get<BankAccount[]>("/bank-accounts");
       setBankAccounts(accounts);
@@ -324,6 +332,11 @@ export default function EditPaymentRequestPage() {
           </Button>
         </div>
       ) : null}
+      {(canEditBankAccount || canDeleteBankAccount) && (
+        <div className="px-3 py-2 border-t text-xs text-gray-500">
+          已开通收款账户管理权限，可在后续账户管理页进行编辑/删除。
+        </div>
+      )}
     </div>
   );
 
@@ -334,9 +347,17 @@ export default function EditPaymentRequestPage() {
     }
   }, [canEditRequest, params.id, permissionLoaded, router]);
 
+  useEffect(() => {
+    if (!permissionLoaded || !canEditRequest) return;
+    if (!canViewBankAccount) {
+      message.warning("当前账号没有查看收款账户权限");
+      router.replace(`/payment-requests/${params.id}`);
+    }
+  }, [canEditRequest, canViewBankAccount, params.id, permissionLoaded, router]);
+
   // 加载数据
   useEffect(() => {
-    if (permissionLoaded && !canEditRequest) {
+    if (permissionLoaded && (!canEditRequest || !canViewBankAccount)) {
       return;
     }
     const loadData = async () => {
@@ -392,7 +413,14 @@ export default function EditPaymentRequestPage() {
       }
     };
     loadData();
-  }, [canEditRequest, permissionLoaded, params.id, form, router]);
+  }, [
+    canEditRequest,
+    canViewBankAccount,
+    permissionLoaded,
+    params.id,
+    form,
+    router,
+  ]);
 
   // 处理文件上传
   const handleUpload: UploadProps["customRequest"] = async (options) => {
@@ -543,7 +571,7 @@ export default function EditPaymentRequestPage() {
               </Form.Item>
             </Col>
 
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="amount"
                 label="付款金额"
@@ -557,13 +585,13 @@ export default function EditPaymentRequestPage() {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item name="currency" label="币种">
                 <Select options={currencies} />
               </Form.Item>
             </Col>
 
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="paymentMethod"
                 label="付款方式"
@@ -572,7 +600,7 @@ export default function EditPaymentRequestPage() {
                 <Select placeholder="请选择" options={paymentMethods} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="paymentDate"
                 label="付款日期"

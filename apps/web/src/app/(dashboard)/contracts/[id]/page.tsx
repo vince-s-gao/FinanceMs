@@ -16,6 +16,13 @@ import {
   message,
   Progress,
   Divider,
+  Modal,
+  Form,
+  InputNumber,
+  DatePicker,
+  Select,
+  Popconfirm,
+  Input,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -24,6 +31,7 @@ import {
   PaperClipOutlined,
   EyeOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/error";
 import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
@@ -114,11 +122,21 @@ export default function ContractDetailPage() {
   const { loaded: permissionLoaded, has } = useFunctionPermissions();
   const canView = has("contract.view");
   const canEdit = has("contract.edit");
+  const canCreatePaymentPlan = has("payment.plan.create");
+  const canDeletePaymentPlan = has("payment.plan.delete");
+  const canCreatePaymentRecord = has("payment.record.create");
+  const canDeletePaymentRecord = has("payment.record.delete");
   const [loading, setLoading] = useState(true);
   const [contract, setContract] = useState<Contract | null>(null);
   const [contractTypeMap, setContractTypeMap] = useState<
     Record<string, string>
   >({});
+  const [planModalOpen, setPlanModalOpen] = useState(false);
+  const [recordModalOpen, setRecordModalOpen] = useState(false);
+  const [creatingPlan, setCreatingPlan] = useState(false);
+  const [creatingRecord, setCreatingRecord] = useState(false);
+  const [planForm] = Form.useForm();
+  const [recordForm] = Form.useForm();
 
   const contractId = params.id as string;
 
@@ -406,6 +424,33 @@ export default function ContractDetailPage() {
         return <Tag color={info.color}>{info.label}</Tag>;
       },
     },
+    {
+      title: "操作",
+      key: "actions",
+      width: 100,
+      render: (_: unknown, record: PaymentPlan) =>
+        canDeletePaymentPlan ? (
+          <Popconfirm
+            title="确定删除该计划吗？"
+            description="已有关联回款记录时将无法删除"
+            onConfirm={async () => {
+              try {
+                await api.delete(`/payments/plans/${record.id}`);
+                message.success("删除计划成功");
+                fetchContract();
+              } catch (error: unknown) {
+                message.error(getErrorMessage(error, "删除计划失败"));
+              }
+            }}
+          >
+            <Button type="link" size="small" danger>
+              删除
+            </Button>
+          </Popconfirm>
+        ) : (
+          "-"
+        ),
+    },
   ];
 
   // 回款记录表格列
@@ -444,6 +489,32 @@ export default function ContractDetailPage() {
       key: "remark",
       ellipsis: true,
       render: (v: string) => v || "-",
+    },
+    {
+      title: "操作",
+      key: "actions",
+      width: 100,
+      render: (_: unknown, record: PaymentRecord) =>
+        canDeletePaymentRecord ? (
+          <Popconfirm
+            title="确定删除该记录吗？"
+            onConfirm={async () => {
+              try {
+                await api.delete(`/payments/records/${record.id}`);
+                message.success("删除记录成功");
+                fetchContract();
+              } catch (error: unknown) {
+                message.error(getErrorMessage(error, "删除记录失败"));
+              }
+            }}
+          >
+            <Button type="link" size="small" danger>
+              删除
+            </Button>
+          </Popconfirm>
+        ) : (
+          "-"
+        ),
     },
   ];
 
@@ -705,7 +776,21 @@ export default function ContractDetailPage() {
           </Card>
 
           {/* 回款计划 */}
-          <Card title={flowLabels.planTitle} className="mb-4">
+          <Card
+            title={flowLabels.planTitle}
+            className="mb-4"
+            extra={
+              canCreatePaymentPlan ? (
+                <Button
+                  size="small"
+                  type="primary"
+                  onClick={() => setPlanModalOpen(true)}
+                >
+                  新增计划
+                </Button>
+              ) : null
+            }
+          >
             <Table
               columns={planColumns.map((item) =>
                 item.key === "status"
@@ -744,7 +829,20 @@ export default function ContractDetailPage() {
           </Card>
 
           {/* 回款记录 */}
-          <Card title={flowLabels.recordTitle}>
+          <Card
+            title={flowLabels.recordTitle}
+            extra={
+              canCreatePaymentRecord ? (
+                <Button
+                  size="small"
+                  type="primary"
+                  onClick={() => setRecordModalOpen(true)}
+                >
+                  新增记录
+                </Button>
+              ) : null
+            }
+          >
             <Table
               columns={recordColumns.map((item) => {
                 if (item.key === "amount")
@@ -803,6 +901,136 @@ export default function ContractDetailPage() {
           scroll={{ x: 1140 }}
         />
       </Card>
+
+      <Modal
+        title={`新增${flowLabels.planTitle}`}
+        open={planModalOpen}
+        onCancel={() => {
+          setPlanModalOpen(false);
+          planForm.resetFields();
+        }}
+        confirmLoading={creatingPlan}
+        onOk={async () => {
+          try {
+            const values = await planForm.validateFields();
+            setCreatingPlan(true);
+            await api.post("/payments/plans", {
+              contractId,
+              period: Number(values.period),
+              planAmount: Number(values.planAmount),
+              planDate: dayjs(values.planDate).format("YYYY-MM-DD"),
+            });
+            message.success("计划创建成功");
+            setPlanModalOpen(false);
+            planForm.resetFields();
+            fetchContract();
+          } catch (error: unknown) {
+            message.error(getErrorMessage(error, "创建计划失败"));
+          } finally {
+            setCreatingPlan(false);
+          }
+        }}
+      >
+        <Form form={planForm} layout="vertical">
+          <Form.Item
+            name="period"
+            label="期数"
+            rules={[{ required: true, message: "请输入期数" }]}
+          >
+            <InputNumber min={1} precision={0} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            name="planAmount"
+            label={flowLabels.amountColumn}
+            rules={[{ required: true, message: "请输入金额" }]}
+          >
+            <InputNumber min={0.01} precision={2} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            name="planDate"
+            label={flowLabels.dateColumn}
+            rules={[{ required: true, message: "请选择日期" }]}
+          >
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`新增${flowLabels.recordTitle}`}
+        open={recordModalOpen}
+        onCancel={() => {
+          setRecordModalOpen(false);
+          recordForm.resetFields();
+        }}
+        confirmLoading={creatingRecord}
+        onOk={async () => {
+          try {
+            const values = await recordForm.validateFields();
+            setCreatingRecord(true);
+            await api.post("/payments/records", {
+              contractId,
+              planId: values.planId || undefined,
+              amount: Number(values.amount),
+              paymentDate: dayjs(values.paymentDate).format("YYYY-MM-DD"),
+              paymentMethod: values.paymentMethod || undefined,
+              remark: values.remark || undefined,
+            });
+            message.success("记录创建成功");
+            setRecordModalOpen(false);
+            recordForm.resetFields();
+            fetchContract();
+          } catch (error: unknown) {
+            message.error(getErrorMessage(error, "创建记录失败"));
+          } finally {
+            setCreatingRecord(false);
+          }
+        }}
+      >
+        <Form form={recordForm} layout="vertical">
+          <Form.Item
+            name="planId"
+            label={`关联${flowLabels.planTitle}（可选）`}
+          >
+            <Select
+              allowClear
+              placeholder={`请选择${flowLabels.planTitle}`}
+              options={(contract.paymentPlans || []).map((plan) => ({
+                value: plan.id,
+                label: `第${plan.period}期 - ¥${formatAmount(Number(plan.planAmount))}`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="amount"
+            label={flowLabels.amountColumn}
+            rules={[{ required: true, message: "请输入金额" }]}
+          >
+            <InputNumber min={0.01} precision={2} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            name="paymentDate"
+            label={flowLabels.dateColumn}
+            rules={[{ required: true, message: "请选择日期" }]}
+          >
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="paymentMethod" label={flowLabels.methodColumn}>
+            <Select
+              allowClear
+              placeholder="请选择回款方式"
+              options={[
+                { value: "TRANSFER", label: "转账" },
+                { value: "CASH", label: "现金" },
+                { value: "CHECK", label: "支票" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="remark" label="备注">
+            <Input.TextArea rows={3} placeholder="请输入备注（可选）" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

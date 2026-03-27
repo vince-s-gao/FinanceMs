@@ -192,7 +192,10 @@ export default function NewPaymentRequestPage() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const canCreateRequest = has("payment-request.create");
   const canSubmitRequest = has("payment-request.submit");
+  const canViewBankAccount = has("bank-account.view");
   const canCreateBankAccount = has("bank-account.create");
+  const canEditBankAccount = has("bank-account.edit");
+  const canDeleteBankAccount = has("bank-account.delete");
 
   // 加载项目列表
   const loadProjects = useCallback(async () => {
@@ -224,6 +227,11 @@ export default function NewPaymentRequestPage() {
 
   // 加载银行账户列表
   const loadBankAccounts = useCallback(async () => {
+    if (!canViewBankAccount) {
+      setBankAccounts([]);
+      form.setFieldValue("bankAccountId", undefined);
+      return;
+    }
     try {
       const accounts = await api.get<BankAccount[]>("/bank-accounts");
       setBankAccounts(accounts);
@@ -235,7 +243,7 @@ export default function NewPaymentRequestPage() {
     } catch (error: unknown) {
       message.error(getErrorMessage(error, "加载银行账户失败"));
     }
-  }, [form]);
+  }, [canViewBankAccount, form]);
 
   useEffect(() => {
     if (permissionLoaded && !canCreateRequest) {
@@ -248,15 +256,22 @@ export default function NewPaymentRequestPage() {
   useEffect(() => {
     if (!permissionLoaded) return;
     if (!canCreateRequest) return;
+    if (!canViewBankAccount) {
+      message.warning("当前账号没有查看收款账户权限，请联系管理员开通");
+      router.replace("/payment-requests");
+      return;
+    }
     loadProjects();
     loadPurchaseContracts();
     loadBankAccounts();
   }, [
     canCreateRequest,
+    canViewBankAccount,
     loadBankAccounts,
     loadProjects,
     loadPurchaseContracts,
     permissionLoaded,
+    router,
   ]);
 
   // 根据搜索关键词过滤银行账户
@@ -375,6 +390,11 @@ export default function NewPaymentRequestPage() {
           </Button>
         </div>
       ) : null}
+      {(canEditBankAccount || canDeleteBankAccount) && (
+        <div className="px-3 py-2 border-t text-xs text-gray-500">
+          已开通收款账户管理权限，可在后续账户管理页进行编辑/删除。
+        </div>
+      )}
     </div>
   );
 
@@ -560,7 +580,7 @@ export default function NewPaymentRequestPage() {
               </Form.Item>
             </Col>
 
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="amount"
                 label="付款金额"
@@ -574,13 +594,13 @@ export default function NewPaymentRequestPage() {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item name="currency" label="币种">
                 <Select options={currencies} />
               </Form.Item>
             </Col>
 
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="paymentMethod"
                 label="付款方式"
@@ -589,7 +609,7 @@ export default function NewPaymentRequestPage() {
                 <Select placeholder="请选择" options={paymentMethods} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="paymentDate"
                 label="付款日期"

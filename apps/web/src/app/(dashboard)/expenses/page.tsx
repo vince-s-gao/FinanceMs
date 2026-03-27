@@ -25,6 +25,7 @@ import {
   CheckOutlined,
   CloseOutlined,
   DollarOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { useAuthStore, isFinance } from "@/stores/auth";
@@ -73,6 +74,7 @@ export default function ExpensesPage() {
   const { loaded: permissionLoaded, has } = useFunctionPermissions();
   const canView = has("expense.view");
   const canCreate = has("expense.create");
+  const canDelete = has("expense.delete");
   const canSubmit = has("expense.submit");
   const canApprove = has("expense.approve");
   const canPay = has("expense.pay");
@@ -158,6 +160,21 @@ export default function ExpensesPage() {
       fetchExpenses();
     } catch (error: unknown) {
       message.error(getErrorMessage(error, "打款失败"));
+    }
+  };
+
+  // 删除报销
+  const handleDelete = async (id: string) => {
+    if (!canDelete) {
+      message.warning("当前账号没有删除报销权限");
+      return;
+    }
+    try {
+      await api.delete(`/expenses/${id}`);
+      message.success("删除成功");
+      fetchExpenses();
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error, "删除失败"));
     }
   };
 
@@ -301,6 +318,24 @@ export default function ExpensesPage() {
               </Button>
             </Popconfirm>
           )}
+          {["DRAFT", "REJECTED"].includes(record.status) &&
+            record.applicant.id === user?.id &&
+            canDelete && (
+              <Popconfirm
+                title="确定删除该报销单吗？"
+                description="删除后无法恢复"
+                onConfirm={() => handleDelete(record.id)}
+              >
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                >
+                  删除
+                </Button>
+              </Popconfirm>
+            )}
         </Space>
       ),
     },
