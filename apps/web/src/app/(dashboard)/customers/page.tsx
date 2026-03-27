@@ -3,6 +3,7 @@
 // InfFinanceMs - 客户管理页面
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   Button,
@@ -41,6 +42,7 @@ import { useEntityDelete } from "@/hooks/useEntityDelete";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useImportUpload } from "@/hooks/useImportUpload";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -92,6 +94,14 @@ interface CustomerListResponse {
 }
 
 export default function CustomersPage() {
+  const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("customer.view");
+  const canCreate = has("customer.create");
+  const canEdit = has("customer.edit");
+  const canDelete = has("customer.delete");
+  const canApprove = has("customer.approve");
+  const canExport = has("customer.export");
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
@@ -170,15 +180,29 @@ export default function CustomersPage() {
   }, [page, pageSize, debouncedKeyword, typeFilter]);
 
   useEffect(() => {
-    fetchCustomerTypes();
-  }, [fetchCustomerTypes]);
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.error("您没有查看客户的权限");
+      router.replace("/dashboard");
+    }
+  }, [canView, permissionLoaded, router]);
 
   useEffect(() => {
+    if (!permissionLoaded || !canView) return;
+    fetchCustomerTypes();
+  }, [canView, fetchCustomerTypes, permissionLoaded]);
+
+  useEffect(() => {
+    if (!permissionLoaded || !canView) return;
     fetchCustomers();
-  }, [fetchCustomers]);
+  }, [canView, fetchCustomers, permissionLoaded]);
 
   // 打开新增弹窗
   const handleAdd = () => {
+    if (!canCreate) {
+      message.warning("您没有新增客户的权限");
+      return;
+    }
     setModalTitle("新增客户");
     setEditingId(null);
     form.resetFields();
@@ -186,6 +210,10 @@ export default function CustomersPage() {
   };
 
   const handleExport = async () => {
+    if (!canExport) {
+      message.warning("您没有导出客户的权限");
+      return;
+    }
     const params: Record<string, unknown> = {};
     if (keyword) params.keyword = keyword;
     if (typeFilter) params.type = typeFilter;
@@ -198,6 +226,10 @@ export default function CustomersPage() {
 
   // 打开编辑弹窗
   const handleEdit = (record: Customer) => {
+    if (!canEdit) {
+      message.warning("您没有编辑客户的权限");
+      return;
+    }
     setModalTitle("编辑客户");
     setEditingId(record.id);
     form.setFieldsValue(record);
@@ -206,6 +238,14 @@ export default function CustomersPage() {
 
   // 提交表单
   const handleSubmit = async () => {
+    if (editingId && !canEdit) {
+      message.warning("您没有编辑客户的权限");
+      return;
+    }
+    if (!editingId && !canCreate) {
+      message.warning("您没有新增客户的权限");
+      return;
+    }
     try {
       const values = await form.validateFields();
       setSubmitting(true);
@@ -230,6 +270,10 @@ export default function CustomersPage() {
 
   // 删除客户
   const handleDelete = async (id: string) => {
+    if (!canDelete) {
+      message.warning("您没有删除客户的权限");
+      return;
+    }
     const success = await deleteOne(id);
     if (success) {
       setSelectedRowKeys((prev) => prev.filter((key) => key !== id));
@@ -238,12 +282,20 @@ export default function CustomersPage() {
   };
 
   const handleBatchDelete = async () => {
+    if (!canDelete) {
+      message.warning("您没有删除客户的权限");
+      return;
+    }
     await deleteBatch(selectedRowKeys);
     setSelectedRowKeys([]);
     fetchCustomers();
   };
 
   const handleApprove = async (id: string, approved: boolean) => {
+    if (!canApprove) {
+      message.warning("您没有审批客户的权限");
+      return;
+    }
     try {
       await api.patch(`/customers/${id}/approve`, {
         approved,
@@ -257,6 +309,10 @@ export default function CustomersPage() {
   };
 
   const handleView = async (id: string) => {
+    if (!canView) {
+      message.warning("您没有查看客户详情的权限");
+      return;
+    }
     setDetailVisible(true);
     setDetailLoading(true);
     try {
@@ -332,24 +388,28 @@ export default function CustomersPage() {
       width: 200,
       render: (_: unknown, record: Customer) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => handleView(record.id)}
-          >
-            详情
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
+          {canView && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => handleView(record.id)}
+            >
+              详情
+            </Button>
+          )}
+          {canEdit && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              编辑
+            </Button>
+          )}
           {/* 待审批状态显示审批按钮 */}
-          {record.approvalStatus === "PENDING" && (
+          {canApprove && record.approvalStatus === "PENDING" && (
             <>
               <Popconfirm
                 title="确定通过该客户吗？"
@@ -378,17 +438,19 @@ export default function CustomersPage() {
               </Popconfirm>
             </>
           )}
-          <Popconfirm
-            title="确定删除该客户吗？"
-            description="删除后数据将无法恢复"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
+          {canDelete && (
+            <Popconfirm
+              title="确定删除该客户吗？"
+              description="删除后数据将无法恢复"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -401,38 +463,46 @@ export default function CustomersPage() {
           客户管理
         </Title>
         <Space>
-          <Upload {...uploadProps}>
-            <Button icon={<UploadOutlined />} loading={importing}>
-              批量上传
-            </Button>
-          </Upload>
-          <Button
-            icon={<DownloadOutlined />}
-            onClick={handleExport}
-            loading={exporting}
-          >
-            批量导出
-          </Button>
-          <Popconfirm
-            title={`确定删除选中的 ${selectedRowKeys.length} 个客户吗？`}
-            description="删除后数据将无法恢复"
-            onConfirm={handleBatchDelete}
-            okText="确定"
-            cancelText="取消"
-            disabled={selectedRowKeys.length === 0}
-          >
+          {canCreate && (
+            <Upload {...uploadProps}>
+              <Button icon={<UploadOutlined />} loading={importing}>
+                批量上传
+              </Button>
+            </Upload>
+          )}
+          {canExport && (
             <Button
-              danger
-              icon={<DeleteOutlined />}
-              loading={batchDeleting}
+              icon={<DownloadOutlined />}
+              onClick={handleExport}
+              loading={exporting}
+            >
+              批量导出
+            </Button>
+          )}
+          {canDelete && (
+            <Popconfirm
+              title={`确定删除选中的 ${selectedRowKeys.length} 个客户吗？`}
+              description="删除后数据将无法恢复"
+              onConfirm={handleBatchDelete}
+              okText="确定"
+              cancelText="取消"
               disabled={selectedRowKeys.length === 0}
             >
-              批量删除
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                loading={batchDeleting}
+                disabled={selectedRowKeys.length === 0}
+              >
+                批量删除
+              </Button>
+            </Popconfirm>
+          )}
+          {canCreate && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+              新增客户
             </Button>
-          </Popconfirm>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-            新增客户
-          </Button>
+          )}
         </Space>
       </div>
 
@@ -474,10 +544,14 @@ export default function CustomersPage() {
         columns={columns}
         dataSource={customers}
         rowKey="id"
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as string[]),
-        }}
+        rowSelection={
+          canDelete
+            ? {
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys as string[]),
+              }
+            : undefined
+        }
         loading={loading}
         scroll={{ x: 1220 }}
         pagination={{

@@ -26,6 +26,7 @@ import {
 import apiClient, { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/error";
 import { formatThousandSeparated, parseThousandSeparated } from "@/lib/number";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 import dayjs from "dayjs";
 import type { UploadFile, UploadProps } from "antd/es/upload/interface";
 
@@ -73,6 +74,8 @@ interface DictionaryItem {
 export default function ContractEditPage() {
   const params = useParams();
   const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canEdit = has("contract.edit");
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -215,12 +218,29 @@ export default function ContractEditPage() {
   }, [contractId, form, mergeCurrentCustomerOption]);
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canEdit) {
+      message.error("暂无编辑合同权限");
+      router.replace("/contracts");
+      return;
+    }
+  }, [canEdit, permissionLoaded, router]);
+
+  useEffect(() => {
+    if (!permissionLoaded || !canEdit) return;
     fetchCustomers();
     fetchContractTypes();
     if (contractId) {
       fetchContract();
     }
-  }, [contractId, fetchContract, fetchContractTypes, fetchCustomers]);
+  }, [
+    canEdit,
+    contractId,
+    fetchContract,
+    fetchContractTypes,
+    fetchCustomers,
+    permissionLoaded,
+  ]);
 
   // 提交表单
   const handleSubmit = async () => {

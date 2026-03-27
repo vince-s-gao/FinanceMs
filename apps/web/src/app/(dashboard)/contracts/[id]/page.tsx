@@ -26,6 +26,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 import {
   CONTRACT_STATUS_LABELS,
   CONTRACT_STATUS_COLORS,
@@ -110,6 +111,9 @@ interface DictionaryItem {
 export default function ContractDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("contract.view");
+  const canEdit = has("contract.edit");
   const [loading, setLoading] = useState(true);
   const [contract, setContract] = useState<Contract | null>(null);
   const [contractTypeMap, setContractTypeMap] = useState<
@@ -286,11 +290,24 @@ export default function ContractDetailPage() {
   }, []);
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.error("您没有查看合同的权限");
+      router.replace("/contracts");
+      return;
+    }
     fetchContractTypes();
     if (contractId) {
       fetchContract();
     }
-  }, [contractId, fetchContract, fetchContractTypes]);
+  }, [
+    canView,
+    contractId,
+    fetchContract,
+    fetchContractTypes,
+    permissionLoaded,
+    router,
+  ]);
 
   // 计算回款进度
   const toNumber = (value: number | string | null | undefined) => {
@@ -430,7 +447,7 @@ export default function ContractDetailPage() {
     },
   ];
 
-  if (loading) {
+  if (!permissionLoaded || loading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
         <Spin size="large" tip="加载中..." />
@@ -555,13 +572,15 @@ export default function ContractDetailPage() {
             合同详情
           </Title>
         </Space>
-        <Button
-          type="primary"
-          icon={<EditOutlined />}
-          onClick={() => router.push(`/contracts/${contractId}/edit`)}
-        >
-          编辑
-        </Button>
+        {canEdit && (
+          <Button
+            type="primary"
+            icon={<EditOutlined />}
+            onClick={() => router.push(`/contracts/${contractId}/edit`)}
+          >
+            编辑
+          </Button>
+        )}
       </div>
 
       {/* 基本信息 */}

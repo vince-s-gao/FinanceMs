@@ -3,6 +3,7 @@
 // InfFinanceMs - 供应商管理页面
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   Button,
@@ -35,6 +36,7 @@ import { useEntityDelete } from "@/hooks/useEntityDelete";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useImportUpload } from "@/hooks/useImportUpload";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -71,6 +73,13 @@ interface SupplierListResponse {
 }
 
 export default function SuppliersPage() {
+  const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("supplier.view");
+  const canCreate = has("supplier.create");
+  const canEdit = has("supplier.edit");
+  const canDelete = has("supplier.delete");
+  const canExport = has("supplier.export");
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
@@ -142,14 +151,28 @@ export default function SuppliersPage() {
   }, [page, pageSize, debouncedKeyword, typeFilter]);
 
   useEffect(() => {
-    fetchSupplierTypes();
-  }, [fetchSupplierTypes]);
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.error("您没有查看供应商的权限");
+      router.replace("/dashboard");
+    }
+  }, [canView, permissionLoaded, router]);
 
   useEffect(() => {
+    if (!permissionLoaded || !canView) return;
+    fetchSupplierTypes();
+  }, [canView, fetchSupplierTypes, permissionLoaded]);
+
+  useEffect(() => {
+    if (!permissionLoaded || !canView) return;
     fetchSuppliers();
-  }, [fetchSuppliers]);
+  }, [canView, fetchSuppliers, permissionLoaded]);
 
   const handleAdd = () => {
+    if (!canCreate) {
+      message.warning("您没有新增供应商的权限");
+      return;
+    }
     setModalTitle("新增供应商");
     setEditingId(null);
     form.resetFields();
@@ -157,6 +180,10 @@ export default function SuppliersPage() {
   };
 
   const handleExport = async () => {
+    if (!canExport) {
+      message.warning("您没有导出供应商的权限");
+      return;
+    }
     const params: Record<string, unknown> = {};
     if (keyword) params.keyword = keyword;
     if (typeFilter) params.type = typeFilter;
@@ -168,6 +195,10 @@ export default function SuppliersPage() {
   });
 
   const handleEdit = (record: Supplier) => {
+    if (!canEdit) {
+      message.warning("您没有编辑供应商的权限");
+      return;
+    }
     setModalTitle("编辑供应商");
     setEditingId(record.id);
     form.setFieldsValue(record);
@@ -175,6 +206,14 @@ export default function SuppliersPage() {
   };
 
   const handleSubmit = async () => {
+    if (editingId && !canEdit) {
+      message.warning("您没有编辑供应商的权限");
+      return;
+    }
+    if (!editingId && !canCreate) {
+      message.warning("您没有新增供应商的权限");
+      return;
+    }
     try {
       const values = await form.validateFields();
       setSubmitting(true);
@@ -196,6 +235,10 @@ export default function SuppliersPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canDelete) {
+      message.warning("您没有删除供应商的权限");
+      return;
+    }
     const success = await deleteOne(id);
     if (success) {
       setSelectedRowKeys((prev) => prev.filter((key) => key !== id));
@@ -204,12 +247,20 @@ export default function SuppliersPage() {
   };
 
   const handleBatchDelete = async () => {
+    if (!canDelete) {
+      message.warning("您没有删除供应商的权限");
+      return;
+    }
     await deleteBatch(selectedRowKeys);
     setSelectedRowKeys([]);
     await fetchSuppliers();
   };
 
   const handleView = async (id: string) => {
+    if (!canView) {
+      message.warning("您没有查看供应商详情的权限");
+      return;
+    }
     setDetailVisible(true);
     setDetailLoading(true);
     try {
@@ -275,33 +326,39 @@ export default function SuppliersPage() {
       width: 200,
       render: (_: unknown, record: Supplier) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => handleView(record.id)}
-          >
-            详情
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确定删除该供应商吗？"
-            description="删除后数据将无法恢复"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
+          {canView && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => handleView(record.id)}
+            >
+              详情
             </Button>
-          </Popconfirm>
+          )}
+          {canEdit && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              编辑
+            </Button>
+          )}
+          {canDelete && (
+            <Popconfirm
+              title="确定删除该供应商吗？"
+              description="删除后数据将无法恢复"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -314,38 +371,46 @@ export default function SuppliersPage() {
           供应商管理
         </Title>
         <Space>
-          <Upload {...uploadProps}>
-            <Button icon={<UploadOutlined />} loading={importing}>
-              批量上传
-            </Button>
-          </Upload>
-          <Button
-            icon={<DownloadOutlined />}
-            onClick={handleExport}
-            loading={exporting}
-          >
-            批量导出
-          </Button>
-          <Popconfirm
-            title={`确定删除选中的 ${selectedRowKeys.length} 个供应商吗？`}
-            description="删除后数据将无法恢复"
-            onConfirm={handleBatchDelete}
-            okText="确定"
-            cancelText="取消"
-            disabled={selectedRowKeys.length === 0}
-          >
+          {canCreate && (
+            <Upload {...uploadProps}>
+              <Button icon={<UploadOutlined />} loading={importing}>
+                批量上传
+              </Button>
+            </Upload>
+          )}
+          {canExport && (
             <Button
-              danger
-              icon={<DeleteOutlined />}
-              loading={batchDeleting}
+              icon={<DownloadOutlined />}
+              onClick={handleExport}
+              loading={exporting}
+            >
+              批量导出
+            </Button>
+          )}
+          {canDelete && (
+            <Popconfirm
+              title={`确定删除选中的 ${selectedRowKeys.length} 个供应商吗？`}
+              description="删除后数据将无法恢复"
+              onConfirm={handleBatchDelete}
+              okText="确定"
+              cancelText="取消"
               disabled={selectedRowKeys.length === 0}
             >
-              批量删除
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                loading={batchDeleting}
+                disabled={selectedRowKeys.length === 0}
+              >
+                批量删除
+              </Button>
+            </Popconfirm>
+          )}
+          {canCreate && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+              新增供应商
             </Button>
-          </Popconfirm>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-            新增供应商
-          </Button>
+          )}
         </Space>
       </div>
 
@@ -385,10 +450,14 @@ export default function SuppliersPage() {
         columns={columns}
         dataSource={suppliers}
         rowKey="id"
-        rowSelection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys as string[]),
-        }}
+        rowSelection={
+          canDelete
+            ? {
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys as string[]),
+              }
+            : undefined
+        }
         loading={loading}
         scroll={{ x: 1300 }}
         pagination={{

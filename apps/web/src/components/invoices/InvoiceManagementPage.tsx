@@ -3,6 +3,7 @@
 // InfFinanceMs - 发票管理页面
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Button,
   Card,
@@ -27,6 +28,7 @@ import {
   INVOICE_DIRECTION_LABELS,
 } from "@/lib/constants";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 import InvoiceCreateModal from "./InvoiceCreateModal";
 import InvoiceImportModal from "./InvoiceImportModal";
 import InvoiceTable from "./InvoiceTable";
@@ -69,8 +71,12 @@ export default function InvoiceManagementPage({
   fixedDirection,
   hidePageTitle = false,
 }: InvoiceManagementPageProps) {
-  const [invoicePermissions, setInvoicePermissions] =
-    useState<Set<string> | null>(null);
+  const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("invoice.view");
+  const canCreateInvoice = has("invoice.create");
+  const canVoidInvoice = has("invoice.void");
+  const canDeleteInvoice = has("invoice.delete");
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [total, setTotal] = useState(0);
@@ -482,36 +488,19 @@ export default function InvoiceManagementPage({
     () => contracts.find((item) => item.id === importContractId),
     [contracts, importContractId],
   );
-  const canCreateInvoice =
-    invoicePermissions === null || invoicePermissions.has("invoice.create");
-  const canVoidInvoice =
-    invoicePermissions === null || invoicePermissions.has("invoice.void");
-  const canDeleteInvoice =
-    invoicePermissions === null || invoicePermissions.has("invoice.delete");
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.error("您没有查看发票的权限");
+      router.replace("/dashboard");
+    }
+  }, [canView, permissionLoaded, router]);
+
+  useEffect(() => {
+    if (!permissionLoaded || !canView) return;
     void fetchInvoices();
-  }, [fetchInvoices]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadPermissions = async () => {
-      try {
-        const res = await api.get<{ functions?: string[] }>("/permissions/me");
-        if (!mounted) return;
-        setInvoicePermissions(new Set(res.functions || []));
-      } catch {
-        if (!mounted) return;
-        setInvoicePermissions(null);
-      }
-    };
-
-    void loadPermissions();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  }, [canView, fetchInvoices, permissionLoaded]);
 
   useEffect(() => {
     if (fixedDirection) {

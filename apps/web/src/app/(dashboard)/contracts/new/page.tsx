@@ -30,6 +30,7 @@ import { api } from "@/lib/api";
 import apiClient from "@/lib/api";
 import { getErrorMessage } from "@/lib/error";
 import { formatThousandSeparated, parseThousandSeparated } from "@/lib/number";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -51,6 +52,8 @@ interface DictionaryItem {
 
 export default function ContractNewPage() {
   const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canCreate = has("contract.create");
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
@@ -88,6 +91,16 @@ export default function ContractNewPage() {
   }, []);
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canCreate) {
+      message.error("暂无新增合同权限");
+      router.replace("/contracts");
+      return;
+    }
+  }, [canCreate, permissionLoaded, router]);
+
+  useEffect(() => {
+    if (!permissionLoaded || !canCreate) return;
     fetchCustomers();
     fetchContractTypes();
     // 设置默认值
@@ -96,7 +109,7 @@ export default function ContractNewPage() {
       serviceTaxRate: 6,
       signingEntity: "InfFinanceMs",
     });
-  }, [fetchContractTypes, fetchCustomers, form]);
+  }, [canCreate, fetchContractTypes, fetchCustomers, form, permissionLoaded]);
 
   // 计算金额
   const calculateAmounts = () => {

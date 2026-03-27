@@ -1,9 +1,14 @@
-import { Button, Popconfirm, Space, Table, Tag, Typography } from 'antd';
-import { DeleteOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
-import { CONTRACT_STATUS_COLORS, CONTRACT_STATUS_LABELS, formatAmount, formatDate } from '@/lib/constants';
-import type { ColumnsType } from 'antd/es/table';
-import type { Contract } from './types';
+import { Button, Popconfirm, Space, Table, Tag, Typography } from "antd";
+import { DeleteOutlined, EditOutlined, EyeOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
+import {
+  CONTRACT_STATUS_COLORS,
+  CONTRACT_STATUS_LABELS,
+  formatAmount,
+  formatDate,
+} from "@/lib/constants";
+import type { ColumnsType } from "antd/es/table";
+import type { Contract } from "./types";
 
 const { Text } = Typography;
 
@@ -13,14 +18,19 @@ interface ContractsTableProps {
   total: number;
   page: number;
   pageSize: number;
-  isAdmin: boolean;
+  canView: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   selectedRowKeys: string[];
   onSelectedRowKeysChange: (keys: string[]) => void;
   onPageChange: (page: number, pageSize: number) => void;
   onView: (contractId: string) => void;
   onEdit: (contractId: string) => void;
   onDelete: (contractId: string) => Promise<void>;
-  getContractTypeInfo: (code?: string | null) => { name: string; color: string };
+  getContractTypeInfo: (code?: string | null) => {
+    name: string;
+    color: string;
+  };
 }
 
 export default function ContractsTable({
@@ -29,7 +39,9 @@ export default function ContractsTable({
   total,
   page,
   pageSize,
-  isAdmin,
+  canView,
+  canEdit,
+  canDelete,
   selectedRowKeys,
   onSelectedRowKeysChange,
   onPageChange,
@@ -40,44 +52,52 @@ export default function ContractsTable({
 }: ContractsTableProps) {
   const columns: ColumnsType<Contract> = [
     {
-      title: '合同编号',
-      dataIndex: 'contractNo',
-      key: 'contractNo',
+      title: "合同编号",
+      dataIndex: "contractNo",
+      key: "contractNo",
       width: 150,
-      render: (value: string, record) => <a onClick={() => onView(record.id)}>{value}</a>,
+      render: (value: string, record) => (
+        <a onClick={() => onView(record.id)}>{value}</a>
+      ),
+      onCell: () => ({
+        style: {
+          pointerEvents: canView ? "auto" : "none",
+          opacity: canView ? 1 : 0.6,
+        },
+      }),
     },
     {
-      title: '签约年份',
-      key: 'signYear',
+      title: "签约年份",
+      key: "signYear",
       width: 100,
       render: (_, record) => dayjs(record.signDate).year(),
     },
     {
-      title: '合同名称',
-      dataIndex: 'name',
-      key: 'name',
+      title: "合同名称",
+      dataIndex: "name",
+      key: "name",
       ellipsis: true,
       width: 260,
     },
     {
-      title: '对方签约主体',
-      dataIndex: ['customer', 'name'],
-      key: 'customer',
+      title: "对方签约主体",
+      dataIndex: ["customer", "name"],
+      key: "customer",
       width: 220,
       ellipsis: true,
     },
     {
-      title: '公司签约主体',
-      dataIndex: 'signingEntity',
-      key: 'signingEntity',
+      title: "公司签约主体",
+      dataIndex: "signingEntity",
+      key: "signingEntity",
       width: 220,
       ellipsis: true,
-      render: (value?: string | null) => value || '-',
+      render: (value?: string | null) => value || "-",
     },
     {
-      title: '合同类型',
-      dataIndex: 'contractType',
-      key: 'contractType',
+      title: "合同类型",
+      dataIndex: "contractType",
+      key: "contractType",
       width: 120,
       render: (code?: string | null) => {
         const typeInfo = getContractTypeInfo(code);
@@ -85,49 +105,65 @@ export default function ContractsTable({
       },
     },
     {
-      title: '合同金额',
-      dataIndex: 'amountWithTax',
-      key: 'amountWithTax',
+      title: "合同金额",
+      dataIndex: "amountWithTax",
+      key: "amountWithTax",
       width: 140,
       render: (value: number) => <Text strong>¥{formatAmount(value)}</Text>,
     },
     {
-      title: '签署日期',
-      dataIndex: 'signDate',
-      key: 'signDate',
+      title: "签署日期",
+      dataIndex: "signDate",
+      key: "signDate",
       width: 120,
       render: (value: string) => formatDate(value),
     },
     {
-      title: '结束日期',
-      dataIndex: 'endDate',
-      key: 'endDate',
+      title: "结束日期",
+      dataIndex: "endDate",
+      key: "endDate",
       width: 120,
-      render: (value?: string | null) => (value ? formatDate(value) : '-'),
+      render: (value?: string | null) => (value ? formatDate(value) : "-"),
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
+      title: "状态",
+      dataIndex: "status",
+      key: "status",
       width: 100,
-      render: (status: string) => <Tag color={CONTRACT_STATUS_COLORS[status]}>{CONTRACT_STATUS_LABELS[status]}</Tag>,
+      render: (status: string) => (
+        <Tag color={CONTRACT_STATUS_COLORS[status]}>
+          {CONTRACT_STATUS_LABELS[status]}
+        </Tag>
+      ),
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 200,
-      fixed: 'right',
+      fixed: "right",
       render: (_, record) => (
         <Space size={4}>
-          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => onView(record.id)}>
-            查看
-          </Button>
-          {isAdmin && (
-            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => onEdit(record.id)}>
+          {canView && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => onView(record.id)}
+            >
+              查看
+            </Button>
+          )}
+          {canEdit && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => onEdit(record.id)}
+            >
               编辑
             </Button>
           )}
-          {isAdmin && (
+          {canDelete && (
             <Popconfirm
               title="确定删除该合同吗？"
               description="删除后将不可恢复"
@@ -151,7 +187,7 @@ export default function ContractsTable({
       dataSource={data}
       rowKey="id"
       rowSelection={
-        isAdmin
+        canDelete
           ? {
               selectedRowKeys,
               onChange: (keys) => onSelectedRowKeysChange(keys as string[]),
