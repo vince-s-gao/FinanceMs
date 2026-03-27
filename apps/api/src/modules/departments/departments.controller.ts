@@ -36,6 +36,7 @@ export class DepartmentsController {
 
   @Get()
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("user.view")
   @ApiOperation({ summary: "获取部门列表" })
   async findAll(@Query() query: QueryDepartmentDto) {
     return this.departmentsService.findAll(query);
@@ -57,6 +58,7 @@ export class DepartmentsController {
 
   @Get(":id")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("user.view")
   @ApiOperation({ summary: "获取部门详情" })
   async findOne(@Param("id") id: string) {
     return this.departmentsService.findOne(id);
@@ -99,6 +101,7 @@ export class DepartmentsController {
 
   @Get(":id/members")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("user.view")
   @ApiOperation({ summary: "获取部门成员列表" })
   async getMembers(@Param("id") id: string) {
     return this.departmentsService.getMembers(id);
@@ -106,6 +109,7 @@ export class DepartmentsController {
 
   @Get(":id/detail")
   @Roles(Role.FINANCE, Role.MANAGER, Role.ADMIN)
+  @Functions("user.view")
   @ApiOperation({ summary: "获取部门详情（含成员）" })
   async findOneWithMembers(@Param("id") id: string) {
     return this.departmentsService.findOneWithMembers(id);
