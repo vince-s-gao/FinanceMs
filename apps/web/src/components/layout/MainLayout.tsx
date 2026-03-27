@@ -248,7 +248,6 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   useEffect(() => {
     if (!isHydrated || !isAuthenticated || !user) return;
-    if (pathname === "/profile") return;
     if (!hasMenuAccess(pathname)) {
       const fallbackPath = allowedPaths[0] || "/dashboard";
       if (pathname !== fallbackPath) {
@@ -359,6 +358,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   const handleUserMenuClick = async ({ key }: { key: string }) => {
     if (key === "profile") {
+      if (!hasMenuAccess("/profile")) {
+        message.warning("当前账号没有查看个人信息权限");
+        return;
+      }
       if (pathname === "/profile") return;
       if (typeof window !== "undefined") {
         window.location.assign("/profile");
@@ -374,14 +377,18 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   // 用户下拉菜单
   const userMenuItems = [
-    {
-      key: "profile",
-      icon: <UserOutlined />,
-      label: "个人信息",
-    },
-    {
-      type: "divider" as const,
-    },
+    ...(hasMenuAccess("/profile")
+      ? [
+          {
+            key: "profile",
+            icon: <UserOutlined />,
+            label: "个人信息",
+          },
+          {
+            type: "divider" as const,
+          },
+        ]
+      : []),
     {
       key: "logout",
       icon: <LogoutOutlined />,
