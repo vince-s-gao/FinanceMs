@@ -159,6 +159,7 @@ const FUNCTION_PERMISSIONS: FunctionPermission[] = [
   { key: "dictionary.edit", name: "编辑字典项", module: "数据字典" },
   { key: "dictionary.delete", name: "删除字典项", module: "数据字典" },
   { key: "audit-log.view", name: "查看日志", module: "日志管理" },
+  { key: "permission.manage", name: "管理权限配置", module: "权限管理" },
 ];
 
 // 角色功能权限矩阵（已移至动态加载）

@@ -4,7 +4,7 @@ import { Controller, Get, Post, Body, Param, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
 import { PermissionsService } from "./permissions.service";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
-import { Roles, CurrentUser } from "../../common/decorators";
+import { Roles, CurrentUser, Functions } from "../../common/decorators";
 import type { AuthenticatedUser } from "../../common/types/auth-user.type";
 
 // 角色常量
@@ -21,6 +21,7 @@ export class PermissionsController {
 
   @Get("menus")
   @Roles(Role.ADMIN)
+  @Functions("permission.manage")
   @ApiOperation({ summary: "获取所有菜单定义" })
   async getAllMenus() {
     return this.permissionsService.getAllMenus();
@@ -28,6 +29,7 @@ export class PermissionsController {
 
   @Get("functions")
   @Roles(Role.ADMIN)
+  @Functions("permission.manage")
   @ApiOperation({ summary: "获取所有功能定义" })
   async getAllFunctions() {
     return this.permissionsService.getAllFunctions();
@@ -35,6 +37,7 @@ export class PermissionsController {
 
   @Get("roles")
   @Roles(Role.ADMIN)
+  @Functions("permission.manage")
   @ApiOperation({ summary: "获取所有角色的权限配置" })
   async getAllRolePermissions() {
     return this.permissionsService.getAllRolePermissions();
@@ -42,6 +45,7 @@ export class PermissionsController {
 
   @Get("roles/:role")
   @Roles(Role.ADMIN)
+  @Functions("permission.manage")
   @ApiOperation({ summary: "获取指定角色的权限配置" })
   async getRolePermissions(@Param("role") role: string) {
     return this.permissionsService.getRolePermissions(role);
@@ -55,6 +59,7 @@ export class PermissionsController {
 
   @Post("roles/:role")
   @Roles(Role.ADMIN)
+  @Functions("permission.manage")
   @ApiOperation({ summary: "更新角色权限" })
   async updateRolePermissions(
     @Param("role") role: string,
@@ -69,6 +74,7 @@ export class PermissionsController {
 
   @Post("roles/:role/menus")
   @Roles(Role.ADMIN)
+  @Functions("permission.manage")
   @ApiOperation({ summary: "更新角色菜单权限" })
   async updateRoleMenuPermissions(
     @Param("role") role: string,
@@ -79,6 +85,7 @@ export class PermissionsController {
 
   @Post("roles/:role/functions")
   @Roles(Role.ADMIN)
+  @Functions("permission.manage")
   @ApiOperation({ summary: "更新角色功能权限" })
   async updateRoleFunctionPermissions(
     @Param("role") role: string,
@@ -92,6 +99,7 @@ export class PermissionsController {
 
   @Post("roles/:role/reset")
   @Roles(Role.ADMIN)
+  @Functions("permission.manage")
   @ApiOperation({ summary: "重置角色权限为默认值" })
   async resetRolePermissions(@Param("role") role: string) {
     return this.permissionsService.resetRolePermissions(role);
@@ -99,6 +107,7 @@ export class PermissionsController {
 
   @Post("initialize")
   @Roles(Role.ADMIN)
+  @Functions("permission.manage")
   @ApiOperation({ summary: "初始化默认权限配置" })
   async initializeDefaultPermissions() {
     return this.permissionsService.initializeDefaultPermissions();

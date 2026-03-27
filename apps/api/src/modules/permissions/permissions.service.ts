@@ -244,6 +244,7 @@ const DEFAULT_FUNCTION_PERMISSIONS: Record<string, string[]> = {
     "dictionary.edit",
     "dictionary.delete",
     "audit-log.view",
+    "permission.manage",
   ],
 };
 
@@ -390,6 +391,7 @@ const ALL_FUNCTIONS = [
   { key: "dictionary.edit", name: "编辑字典项", module: "数据字典" },
   { key: "dictionary.delete", name: "删除字典项", module: "数据字典" },
   { key: "audit-log.view", name: "查看日志", module: "日志管理" },
+  { key: "permission.manage", name: "管理权限配置", module: "权限管理" },
 ];
 const ALL_FUNCTION_KEYS = new Set(ALL_FUNCTIONS.map((item) => item.key));
 const ROLE_PERMISSIONS_CACHE_TTL_MS = 60 * 1000;
@@ -408,6 +410,7 @@ const MENU_BASE_FUNCTIONS: Record<string, string[]> = {
   "/departments": ["user.view"],
   "/settings": ["user.view"],
   "/audit-logs": ["audit-log.view"],
+  "/permissions": ["permission.manage"],
 };
 const FUNCTION_INHERITANCE: Record<string, string[]> = {
   "customer.create": ["customer.view"],
@@ -895,6 +898,13 @@ export class PermissionsService {
       !functionSet.has("report.export")
     ) {
       functionSet.add("report.export");
+    }
+    if (
+      normalizedRole === Role.ADMIN &&
+      menus.includes("/permissions") &&
+      !functionSet.has("permission.manage")
+    ) {
+      functionSet.add("permission.manage");
     }
     if (
       (normalizedRole === Role.FINANCE ||
