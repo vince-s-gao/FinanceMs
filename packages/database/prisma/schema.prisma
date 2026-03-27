@@ -52,6 +52,7 @@ model User {
   submittedPaymentRequests PaymentRequest[] @relation("PaymentRequestApplicant") // 提交的付款申请
   approvedPaymentRequests  PaymentRequest[] @relation("PaymentRequestApprover") // 审批的付款申请
   notifications      Notification[] // 消息通知
+  apiKeys            ApiKey[] // API 密钥
   contractImportLogs ContractImportLog[] // 合同导入日志
   sessions           UserSession[] // 登录会话
 
@@ -699,4 +700,23 @@ model Dictionary {
 
   @@unique([type, code]) // 同一类型下编码唯一
   @@map("dictionaries")
+}
+
+/// API 密钥
+model ApiKey {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String
+  keyPrefix  String
+  keyHash    String   @unique
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, createdAt])
+  @@map("api_keys")
 }

@@ -1,10 +1,16 @@
 // InfFinanceMs - 认证服务
 
-import { Injectable, UnauthorizedException, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import * as bcrypt from "bcryptjs";
-import { createHash, randomUUID } from "crypto";
+import { createHash, randomBytes, randomUUID } from "crypto";
 import { UsersService } from "../users/users.service";
 import { LoginDto } from "./dto/login.dto";
 import { ERROR_CODE } from "@inffinancems/shared";
@@ -59,6 +65,11 @@ interface TokenIssueResult {
   sessionId: string;
 }
 
+interface CreateApiKeyInput {
+  name: string;
+  expiresInDays?: number;
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -74,6 +85,14 @@ export class AuthService {
 
   private unauthorized(code: string, message: string): never {
     throw new UnauthorizedException({ code, message });
+  }
+
+  private badRequest(code: string, message: string): never {
+    throw new BadRequestException({ code, message });
+  }
+
+  private notFound(code: string, message: string): never {
+    throw new NotFoundException({ code, message });
   }
 
   private projectUser(user: TokenUser) {
@@ -163,6 +182,13 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return createHash("sha256").update(token).digest("hex");
+  }
+
+  private generateApiKeyToken(): { raw: string; prefix: string; hash: string } {
+    const raw = `ifm_${randomBytes(32).toString("hex")}`;
+    const prefix = raw.slice(0, 12);
+    const hash = this.hashToken(raw);
+    return { raw, prefix, hash };
   }
 
   private normalizeMfaCode(code?: string): string {
@@ -659,6 +685,93 @@ export class AuthService {
     });
 
     return { enabled: false };
+  }
+
+  async listApiKeys(userId: string) {
+    const now = new Date();
+    const rows = await this.prisma.apiKey.findMany({
+      where: {
+        userId,
+        OR: [{ revokedAt: null }, { revokedAt: { gt: now } }],
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        keyPrefix: true,
+        lastUsedAt: true,
+        expiresAt: true,
+        revokedAt: true,
+        createdAt: true,
+      },
+    });
+
+    return rows.map((row) => ({
+      ...row,
+      status:
+        row.revokedAt !== null
+          ? "REVOKED"
+          : row.expiresAt && row.expiresAt <= now
+            ? "EXPIRED"
+            : "ACTIVE",
+    }));
+  }
+
+  async createApiKey(userId: string, input: CreateApiKeyInput) {
+    const name = input.name.trim();
+    if (!name) {
+      this.badRequest(
+        ERROR_CODE.AUTH_INVALID_CREDENTIALS,
+        "API 密钥名称不能为空",
+      );
+    }
+
+    const expiresInDays = input.expiresInDays;
+    const expiresAt =
+      typeof expiresInDays === "number" && expiresInDays > 0
+        ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+        : null;
+    const token = this.generateApiKeyToken();
+
+    const created = await this.prisma.apiKey.create({
+      data: {
+        userId,
+        name,
+        keyPrefix: token.prefix,
+        keyHash: token.hash,
+        expiresAt,
+      },
+      select: {
+        id: true,
+        name: true,
+        keyPrefix: true,
+        expiresAt: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      ...created,
+      token: token.raw,
+    };
+  }
+
+  async revokeApiKey(userId: string, apiKeyId: string) {
+    const row = await this.prisma.apiKey.findFirst({
+      where: { id: apiKeyId, userId },
+      select: { id: true, revokedAt: true },
+    });
+    if (!row) {
+      this.notFound(ERROR_CODE.AUTH_USER_NOT_FOUND, "API 密钥不存在");
+    }
+    if (row.revokedAt) {
+      return { success: true };
+    }
+    await this.prisma.apiKey.update({
+      where: { id: apiKeyId },
+      data: { revokedAt: new Date() },
+    });
+    return { success: true };
   }
 
   /**

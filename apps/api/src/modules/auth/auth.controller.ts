@@ -22,6 +22,7 @@ import { LoginDto } from "./dto/login.dto";
 import { MfaCodeDto } from "./dto/mfa-code.dto";
 import { FeishuLoginDto } from "./dto/feishu-login.dto";
 import { ExchangeFeishuTicketDto } from "./dto/exchange-feishu-ticket.dto";
+import { CreateApiKeyDto } from "./dto/create-api-key.dto";
 import { JwtAuthGuard } from "../../common/guards";
 import { CurrentUser } from "../../common/decorators";
 import { ConfigService } from "@nestjs/config";
@@ -441,6 +442,36 @@ export class AuthController {
     @Body() dto: MfaCodeDto,
   ) {
     return this.authService.disableMfa(user.id, dto.code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get("api-keys")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "获取当前账号 API 密钥列表" })
+  async listApiKeys(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.listApiKeys(user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post("api-keys")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "创建 API 密钥（仅返回一次明文 token）" })
+  async createApiKey(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateApiKeyDto,
+  ) {
+    return this.authService.createApiKey(user.id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete("api-keys/:apiKeyId")
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "撤销指定 API 密钥" })
+  async revokeApiKey(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("apiKeyId") apiKeyId: string,
+  ) {
+    return this.authService.revokeApiKey(user.id, apiKeyId);
   }
 
   @Post("logout")
