@@ -9,4 +9,3 @@ export class MfaCodeDto {
   @Matches(/^\d{6}$/, { message: "验证码格式不正确" })
   code: string;
 }
-

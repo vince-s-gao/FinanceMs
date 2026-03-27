@@ -175,7 +175,10 @@ export class FeishuService {
     this.loginTickets.delete(ticket);
 
     if (entry.expiresAt < Date.now()) {
-      this.unauthorized(ERROR_CODE.AUTH_FEISHU_TICKET_INVALID, "登录票据已过期");
+      this.unauthorized(
+        ERROR_CODE.AUTH_FEISHU_TICKET_INVALID,
+        "登录票据已过期",
+      );
     }
 
     return entry.payload;
@@ -217,7 +220,10 @@ export class FeishuService {
         "获取飞书 app_access_token 失败",
         this.sanitizeFeishuLogValue(data),
       );
-      this.unauthorized(ERROR_CODE.AUTH_FEISHU_APP_TOKEN_FAILED, "飞书认证失败");
+      this.unauthorized(
+        ERROR_CODE.AUTH_FEISHU_APP_TOKEN_FAILED,
+        "飞书认证失败",
+      );
     }
 
     return data.app_access_token;
@@ -252,7 +258,10 @@ export class FeishuService {
         "获取飞书用户令牌失败",
         this.sanitizeFeishuLogValue(data),
       );
-      this.unauthorized(ERROR_CODE.AUTH_FEISHU_USER_TOKEN_FAILED, "飞书授权失败");
+      this.unauthorized(
+        ERROR_CODE.AUTH_FEISHU_USER_TOKEN_FAILED,
+        "飞书授权失败",
+      );
     }
 
     return data.data;
