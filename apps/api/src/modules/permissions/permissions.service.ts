@@ -242,6 +242,7 @@ const DEFAULT_FUNCTION_PERMISSIONS: Record<string, string[]> = {
     "dictionary.create",
     "dictionary.edit",
     "dictionary.delete",
+    "audit-log.view",
   ],
 };
 
@@ -386,6 +387,7 @@ const ALL_FUNCTIONS = [
   { key: "dictionary.create", name: "新增字典项", module: "数据字典" },
   { key: "dictionary.edit", name: "编辑字典项", module: "数据字典" },
   { key: "dictionary.delete", name: "删除字典项", module: "数据字典" },
+  { key: "audit-log.view", name: "查看日志", module: "日志管理" },
 ];
 const ALL_FUNCTION_KEYS = new Set(ALL_FUNCTIONS.map((item) => item.key));
 const ROLE_PERMISSIONS_CACHE_TTL_MS = 60 * 1000;
@@ -401,6 +403,7 @@ const MENU_BASE_FUNCTIONS: Record<string, string[]> = {
   "/budgets": ["budget.view"],
   "/reports": ["report.view"],
   "/projects": ["project.view"],
+  "/audit-logs": ["audit-log.view"],
 };
 const FUNCTION_INHERITANCE: Record<string, string[]> = {
   "customer.create": ["customer.view"],

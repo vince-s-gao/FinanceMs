@@ -1,6 +1,6 @@
 import { Controller, Get, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { Roles } from "../../common/decorators";
+import { Functions, Roles } from "../../common/decorators";
 import { JwtAuthGuard, RolesGuard } from "../../common/guards";
 import { AuditService } from "./audit.service";
 import { QueryAuditLogDto } from "./dto/query-audit-log.dto";
@@ -18,6 +18,7 @@ export class AuditController {
 
   @Get()
   @Roles(Role.ADMIN)
+  @Functions("audit-log.view")
   @ApiOperation({ summary: "分页查询操作日志" })
   async findAll(@Query() query: QueryAuditLogDto) {
     return this.auditService.findAll(query);
@@ -25,6 +26,7 @@ export class AuditController {
 
   @Get("meta")
   @Roles(Role.ADMIN)
+  @Functions("audit-log.view")
   @ApiOperation({ summary: "获取日志筛选元数据" })
   async getMeta() {
     return this.auditService.getMeta();
