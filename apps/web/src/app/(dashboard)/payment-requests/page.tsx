@@ -84,7 +84,8 @@ interface PageData {
 
 export default function PaymentRequestsPage() {
   const router = useRouter();
-  const { has } = useFunctionPermissions();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("payment-request.view");
   const canCreate = has("payment-request.create");
   const canEdit = has("payment-request.edit");
   const canSubmit = has("payment-request.submit");
@@ -128,8 +129,17 @@ export default function PaymentRequestsPage() {
   }, [filters]);
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.warning("当前账号没有查看付款申请权限");
+      router.replace("/dashboard");
+    }
+  }, [canView, permissionLoaded, router]);
+
+  useEffect(() => {
+    if (!permissionLoaded || !canView) return;
     loadData();
-  }, [loadData]);
+  }, [canView, loadData, permissionLoaded]);
 
   // 搜索
   const handleSearch = () => {
@@ -144,6 +154,10 @@ export default function PaymentRequestsPage() {
 
   // 提交申请
   const handleSubmit = async (id: string) => {
+    if (!canSubmit) {
+      message.warning("当前账号没有提交付款申请权限");
+      return;
+    }
     try {
       await api.post(`/payment-requests/${id}/submit`);
       message.success("提交成功");
@@ -155,6 +169,10 @@ export default function PaymentRequestsPage() {
 
   // 取消申请
   const handleCancel = async (id: string) => {
+    if (!canCancel) {
+      message.warning("当前账号没有取消付款申请权限");
+      return;
+    }
     try {
       await api.post(`/payment-requests/${id}/cancel`);
       message.success("取消成功");
@@ -166,6 +184,10 @@ export default function PaymentRequestsPage() {
 
   // 删除申请
   const handleDelete = async (id: string) => {
+    if (!canDelete) {
+      message.warning("当前账号没有删除付款申请权限");
+      return;
+    }
     try {
       await api.delete(`/payment-requests/${id}`);
       message.success("删除成功");
@@ -268,12 +290,14 @@ export default function PaymentRequestsPage() {
       width: 180,
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => router.push(`/payment-requests/${record.id}`)}
-          />
+          {canView && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => router.push(`/payment-requests/${record.id}`)}
+            />
+          )}
           {record.status === "DRAFT" && canEdit && (
             <Button
               type="link"

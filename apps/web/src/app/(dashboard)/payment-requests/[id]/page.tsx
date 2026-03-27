@@ -100,7 +100,8 @@ export default function PaymentRequestDetailPage() {
     "APPROVED",
   );
   const [approvalRemark, setApprovalRemark] = useState("");
-  const { has } = useFunctionPermissions();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("payment-request.view");
   const canEdit = has("payment-request.edit");
   const canSubmit = has("payment-request.submit");
   const canApprove = has("payment-request.approve");
@@ -124,8 +125,14 @@ export default function PaymentRequestDetailPage() {
   }, [requestId, router]);
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.warning("当前账号没有查看付款申请权限");
+      router.replace("/dashboard");
+      return;
+    }
     loadData();
-  }, [loadData]);
+  }, [canView, loadData, permissionLoaded, router]);
 
   // 提交申请
   const handleSubmit = async () => {
@@ -188,7 +195,7 @@ export default function PaymentRequestDetailPage() {
     });
   };
 
-  if (loading) {
+  if (!permissionLoaded || loading) {
     return (
       <div className="flex items-center justify-center h-64">加载中...</div>
     );
