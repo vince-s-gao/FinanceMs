@@ -35,6 +35,7 @@ import {
   formatDate,
 } from "@/lib/constants";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -69,6 +70,12 @@ interface ExpenseListResponse {
 export default function ExpensesPage() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("expense.view");
+  const canCreate = has("expense.create");
+  const canSubmit = has("expense.submit");
+  const canApprove = has("expense.approve");
+  const canPay = has("expense.pay");
   const [loading, setLoading] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [total, setTotal] = useState(0);
@@ -79,6 +86,7 @@ export default function ExpensesPage() {
 
   // 加载报销列表
   const fetchExpenses = useCallback(async () => {
+    if (!canView) return;
     setLoading(true);
     try {
       const params: Record<string, string | number> = { page, pageSize };
@@ -93,14 +101,24 @@ export default function ExpensesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword, statusFilter]);
+  }, [canView, page, pageSize, keyword, statusFilter]);
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.warning("当前账号没有查看报销权限");
+      router.replace("/dashboard");
+      return;
+    }
     fetchExpenses();
-  }, [fetchExpenses]);
+  }, [canView, fetchExpenses, permissionLoaded, router]);
 
   // 提交报销
   const handleSubmit = async (id: string) => {
+    if (!canSubmit) {
+      message.warning("当前账号没有提交报销权限");
+      return;
+    }
     try {
       await api.patch(`/expenses/${id}/submit`);
       message.success("提交成功");
@@ -112,6 +130,10 @@ export default function ExpensesPage() {
 
   // 审批报销
   const handleApprove = async (id: string, approved: boolean) => {
+    if (!canApprove) {
+      message.warning("当前账号没有审批报销权限");
+      return;
+    }
     try {
       await api.patch(`/expenses/${id}/approve`, {
         approved,
@@ -126,6 +148,10 @@ export default function ExpensesPage() {
 
   // 打款
   const handlePay = async (id: string) => {
+    if (!canPay) {
+      message.warning("当前账号没有报销打款权限");
+      return;
+    }
     try {
       await api.patch(`/expenses/${id}/pay`);
       message.success("打款成功");
@@ -215,7 +241,8 @@ export default function ExpensesPage() {
 
           {/* 草稿/驳回状态可提交 */}
           {["DRAFT", "REJECTED"].includes(record.status) &&
-            record.applicant.id === user?.id && (
+            record.applicant.id === user?.id &&
+            canSubmit && (
               <Popconfirm
                 title="确定提交该报销单吗？"
                 onConfirm={() => handleSubmit(record.id)}
@@ -227,7 +254,7 @@ export default function ExpensesPage() {
             )}
 
           {/* 财务可审批 */}
-          {record.status === "PENDING" && isFinance(user) && (
+          {record.status === "PENDING" && isFinance(user) && canApprove && (
             <>
               <Popconfirm
                 title="确定通过该报销单吗？"
@@ -259,7 +286,7 @@ export default function ExpensesPage() {
           )}
 
           {/* 财务可打款 */}
-          {record.status === "APPROVED" && isFinance(user) && (
+          {record.status === "APPROVED" && isFinance(user) && canPay && (
             <Popconfirm
               title="确定已完成打款吗？"
               onConfirm={() => handlePay(record.id)}
@@ -279,6 +306,10 @@ export default function ExpensesPage() {
     },
   ];
 
+  if (!permissionLoaded || !canView) {
+    return null;
+  }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -289,6 +320,7 @@ export default function ExpensesPage() {
           type="primary"
           icon={<PlusOutlined />}
           onClick={() => router.push("/expenses/new")}
+          disabled={!canCreate}
         >
           新增报销
         </Button>

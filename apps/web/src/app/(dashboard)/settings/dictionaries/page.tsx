@@ -3,6 +3,7 @@
 // InfFinanceMs - 数据字典管理页面
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import {
   Table,
@@ -24,6 +25,8 @@ import type { TableColumnsType } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/error";
+import { useAuthStore } from "@/stores/auth";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -70,6 +73,13 @@ const DICT_TYPE_LABEL_MAP = DICT_TYPES.reduce<Record<string, string>>(
 );
 
 export default function DictionariesPage() {
+  const router = useRouter();
+  const currentUser = useAuthStore((state) => state.user);
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = currentUser?.role === "ADMIN" && has("dictionary.read");
+  const canCreate = has("dictionary.create");
+  const canEdit = has("dictionary.edit");
+  const canDelete = has("dictionary.delete");
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [dictionaries, setDictionaries] = useState<Dictionary[]>([]);
@@ -86,6 +96,7 @@ export default function DictionariesPage() {
 
   // 加载字典列表
   const fetchDictionaries = useCallback(async () => {
+    if (!canView) return;
     setLoading(true);
     try {
       const params: Record<string, string> = {};
@@ -98,14 +109,24 @@ export default function DictionariesPage() {
     } finally {
       setLoading(false);
     }
-  }, [typeFilter]);
+  }, [canView, typeFilter]);
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.warning("当前账号没有查看数据字典权限");
+      router.replace("/dashboard");
+      return;
+    }
     fetchDictionaries();
-  }, [fetchDictionaries]);
+  }, [canView, fetchDictionaries, permissionLoaded, router]);
 
   // 打开新增弹窗
   const handleAdd = () => {
+    if (!canCreate) {
+      message.warning("当前账号没有新增字典项权限");
+      return;
+    }
     setModalTitle(`新增${typeLabel}`);
     setEditingId(null);
     form.resetFields();
@@ -120,6 +141,10 @@ export default function DictionariesPage() {
 
   // 打开编辑弹窗
   const handleEdit = (record: Dictionary) => {
+    if (!canEdit) {
+      message.warning("当前账号没有编辑字典项权限");
+      return;
+    }
     const label = DICT_TYPE_LABEL_MAP[record.type] || record.type;
     setModalTitle(`编辑${label}`);
     setEditingId(record.id);
@@ -129,6 +154,14 @@ export default function DictionariesPage() {
 
   // 提交表单
   const handleSubmit = async () => {
+    if (editingId && !canEdit) {
+      message.warning("当前账号没有编辑字典项权限");
+      return;
+    }
+    if (!editingId && !canCreate) {
+      message.warning("当前账号没有新增字典项权限");
+      return;
+    }
     try {
       const values = await form.validateFields();
       setSubmitting(true);
@@ -152,6 +185,10 @@ export default function DictionariesPage() {
 
   // 删除字典项
   const handleDelete = async (id: string) => {
+    if (!canDelete) {
+      message.warning("当前账号没有删除字典项权限");
+      return;
+    }
     try {
       await api.delete(`/dictionaries/${id}`);
       message.success("删除成功");
@@ -163,6 +200,10 @@ export default function DictionariesPage() {
 
   // 初始化默认客户类型
   const handleInitCustomerTypes = async () => {
+    if (!canCreate) {
+      message.warning("当前账号没有初始化字典项权限");
+      return;
+    }
     try {
       await api.post("/dictionaries/init-customer-types");
       message.success("初始化成功");
@@ -174,6 +215,10 @@ export default function DictionariesPage() {
 
   // 初始化默认报销类型
   const handleInitExpenseTypes = async () => {
+    if (!canCreate) {
+      message.warning("当前账号没有初始化字典项权限");
+      return;
+    }
     try {
       await api.post("/dictionaries/init-expense-types");
       message.success("初始化成功");
@@ -184,6 +229,10 @@ export default function DictionariesPage() {
   };
 
   const handleInitContractTypes = async () => {
+    if (!canCreate) {
+      message.warning("当前账号没有初始化字典项权限");
+      return;
+    }
     try {
       await api.post("/dictionaries/init-contract-types");
       message.success("初始化成功");
@@ -252,29 +301,37 @@ export default function DictionariesPage() {
       width: 150,
       render: (_: unknown, record: Dictionary) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确定删除该字典项吗？"
-            description="删除后数据将无法恢复"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
+          {canEdit && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              编辑
             </Button>
-          </Popconfirm>
+          )}
+          {canDelete && (
+            <Popconfirm
+              title="确定删除该字典项吗？"
+              description="删除后数据将无法恢复"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
   ];
+
+  if (!permissionLoaded || !canView) {
+    return null;
+  }
 
   return (
     <div>
@@ -291,15 +348,26 @@ export default function DictionariesPage() {
         </div>
         <Space>
           {typeFilter === "CUSTOMER_TYPE" && (
-            <Button onClick={handleInitCustomerTypes}>初始化客户类型</Button>
+            <Button onClick={handleInitCustomerTypes} disabled={!canCreate}>
+              初始化客户类型
+            </Button>
           )}
           {typeFilter === "EXPENSE_TYPE" && (
-            <Button onClick={handleInitExpenseTypes}>初始化报销类型</Button>
+            <Button onClick={handleInitExpenseTypes} disabled={!canCreate}>
+              初始化报销类型
+            </Button>
           )}
           {typeFilter === "CONTRACT_TYPE" && (
-            <Button onClick={handleInitContractTypes}>初始化合同类型</Button>
+            <Button onClick={handleInitContractTypes} disabled={!canCreate}>
+              初始化合同类型
+            </Button>
           )}
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleAdd}
+            disabled={!canCreate}
+          >
             {`新增${typeLabel}`}
           </Button>
         </Space>

@@ -3,6 +3,7 @@
 // InfFinanceMs - 权限管理页面
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Card,
   Table,
@@ -30,6 +31,7 @@ import {
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/constants";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/error";
+import { useAuthStore } from "@/stores/auth";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -316,6 +318,9 @@ const ROLE_MENU_MATRIX_DEFAULT: Record<
 };
 
 export default function PermissionsPage() {
+  const router = useRouter();
+  const currentUser = useAuthStore((state) => state.user);
+  const canViewPage = currentUser?.role === "ADMIN";
   const [activeTab, setActiveTab] = useState("menu");
   const [loading, setLoading] = useState(false);
   const [rolePermissions, setRolePermissions] = useState<RolePermissionsMatrix>(
@@ -342,8 +347,14 @@ export default function PermissionsPage() {
   }, []);
 
   useEffect(() => {
+    if (!currentUser) return;
+    if (!canViewPage) {
+      message.warning("当前账号没有权限管理访问权限");
+      router.replace("/dashboard");
+      return;
+    }
     fetchPermissions();
-  }, [fetchPermissions]);
+  }, [canViewPage, currentUser, fetchPermissions, router]);
 
   // 获取当前权限矩阵
   const getCurrentMatrix = () => {
@@ -351,6 +362,10 @@ export default function PermissionsPage() {
       ? rolePermissions
       : ROLE_MENU_MATRIX_DEFAULT;
   };
+
+  if (!currentUser || !canViewPage) {
+    return null;
+  }
 
   // 打开编辑弹窗
   const handleEdit = (role: string) => {

@@ -30,6 +30,7 @@ import {
 import { api } from "@/lib/api";
 import { FEE_TYPE_LABELS } from "@/lib/constants";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 import {
   formatLocaleMoney,
   formatThousandSeparated,
@@ -79,6 +80,8 @@ interface ExpenseTypeOption {
 
 export default function NewExpensePage() {
   const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canCreate = has("expense.create");
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -88,6 +91,7 @@ export default function NewExpensePage() {
 
   // 加载合同列表
   useEffect(() => {
+    if (!permissionLoaded || !canCreate) return;
     const fetchContracts = async () => {
       try {
         const res = await api.get<ListResponse<Contract>>("/contracts", {
@@ -99,10 +103,11 @@ export default function NewExpensePage() {
       }
     };
     fetchContracts();
-  }, []);
+  }, [canCreate, permissionLoaded]);
 
   // 加载项目列表
   useEffect(() => {
+    if (!permissionLoaded || !canCreate) return;
     const fetchProjects = async () => {
       try {
         const res = await api.get<ListResponse<Project>>("/projects", {
@@ -114,10 +119,22 @@ export default function NewExpensePage() {
       }
     };
     fetchProjects();
-  }, []);
+  }, [canCreate, permissionLoaded]);
+
+  useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canCreate) {
+      message.warning("当前账号没有创建报销权限");
+      router.replace("/expenses");
+    }
+  }, [canCreate, permissionLoaded, router]);
 
   // 添加明细行
   const handleAddDetail = () => {
+    if (!canCreate) {
+      message.warning("当前账号没有创建报销权限");
+      return;
+    }
     const newDetail: ExpenseDetail = {
       key: Date.now().toString(),
       description: "",
@@ -172,6 +189,10 @@ export default function NewExpensePage() {
 
   // 提交表单
   const handleSubmit = async () => {
+    if (!canCreate) {
+      message.warning("当前账号没有创建报销权限");
+      return;
+    }
     try {
       const values = await form.validateFields();
 
@@ -334,6 +355,10 @@ export default function NewExpensePage() {
       ),
     },
   ];
+
+  if (!permissionLoaded || !canCreate) {
+    return null;
+  }
 
   return (
     <div>
