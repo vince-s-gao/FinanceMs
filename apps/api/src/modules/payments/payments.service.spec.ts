@@ -174,6 +174,33 @@ describe("PaymentsService", () => {
     expect(result.contracts[0].id).toBe("sales-1");
   });
 
+  it("should not fallback to SALES when dictionary contains only non-sales types", async () => {
+    prisma.dictionary.findMany.mockResolvedValueOnce([
+      { code: "SALES", name: "NDA保密", value: "保密协议" },
+      { code: "PURCHASE", name: "采购合同", value: "采购" },
+    ]);
+    prisma.contract.findMany.mockResolvedValueOnce([
+      {
+        id: "misconfigured-sales",
+        contractType: "SALES",
+        contractNo: "HT-MIS-001",
+        name: "误配置合同",
+        customer: { id: "u1", name: "客户A", code: "CUS000001" },
+        amountWithTax: new Decimal(666),
+        paymentPlans: [],
+        paymentRecords: [],
+        signDate: new Date("2025-01-01T00:00:00.000Z"),
+        status: "EXECUTING",
+      },
+    ]);
+
+    const result = await service.getStatistics();
+
+    expect(result.summary.contractCount).toBe(0);
+    expect(result.contracts).toHaveLength(0);
+    expect(result.summary.totalContractAmount.toNumber()).toBe(0);
+  });
+
   it("should compute paid and remaining amount in findPlansByContract", async () => {
     prisma.contract.findFirst.mockResolvedValueOnce({
       id: "c1",
