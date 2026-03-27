@@ -4,6 +4,7 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
+import { PrismaService } from "./prisma/prisma.service";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
@@ -72,6 +73,33 @@ function validateCriticalEnv(): void {
   }
 }
 
+async function validateCriticalSchema(prisma: PrismaService): Promise<void> {
+  const requiredUserColumns = [
+    "failedLoginAttempts",
+    "lockedUntil",
+    "lastLoginAt",
+    "lastLoginIp",
+    "lastLoginUserAgent",
+    "lastLoginDeviceFingerprint",
+  ];
+
+  const rows = await prisma.$queryRaw<
+    Array<{ column_name: string }>
+  >`SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'users'
+      AND column_name IN (${requiredUserColumns[0]}, ${requiredUserColumns[1]}, ${requiredUserColumns[2]}, ${requiredUserColumns[3]}, ${requiredUserColumns[4]}, ${requiredUserColumns[5]})`;
+
+  const existing = new Set(rows.map((item) => item.column_name));
+  const missing = requiredUserColumns.filter((column) => !existing.has(column));
+  if (missing.length > 0) {
+    throw new Error(
+      `数据库结构未同步，缺少 users.${missing.join(", users.")}，请先执行: npm run db:push`,
+    );
+  }
+}
+
 async function bootstrap() {
   validateCriticalEnv();
 
@@ -79,6 +107,7 @@ async function bootstrap() {
     logger: logger,
   });
   const isProduction = process.env.NODE_ENV === "production";
+  await validateCriticalSchema(app.get(PrismaService));
 
   // 全局前缀
   app.setGlobalPrefix("api");
