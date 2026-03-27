@@ -3,6 +3,7 @@
 // InfFinanceMs - 预算管理页面
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   Button,
@@ -34,6 +35,7 @@ import {
 import { api } from "@/lib/api";
 import { FEE_TYPE_LABELS, formatAmount } from "@/lib/constants";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 import {
   formatLocaleMoney,
   formatThousandSeparated,
@@ -88,6 +90,14 @@ interface BudgetSummary {
 }
 
 export default function BudgetsPage() {
+  const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("budget.view");
+  const canCreate = has("budget.create");
+  const canEdit = has("budget.edit");
+  const canFreeze = has("budget.freeze");
+  const canClose = has("budget.close");
+  const canDelete = has("budget.delete");
   const [loading, setLoading] = useState(false);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [total, setTotal] = useState(0);
@@ -113,6 +123,7 @@ export default function BudgetsPage() {
 
   // 加载预算列表
   const fetchBudgets = useCallback(async () => {
+    if (!canView) return;
     setLoading(true);
     try {
       const params: Record<string, unknown> = { page, pageSize };
@@ -127,20 +138,22 @@ export default function BudgetsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, yearFilter, departmentFilter]);
+  }, [canView, page, pageSize, yearFilter, departmentFilter]);
 
   // 加载部门列表
   const fetchDepartments = useCallback(async () => {
+    if (!canView) return;
     try {
       const res = await api.get<string[]>("/budgets/departments");
       setDepartments(res);
     } catch (error) {
       console.error("加载部门列表失败", error);
     }
-  }, []);
+  }, [canView]);
 
   // 加载汇总数据
   const fetchSummary = useCallback(async () => {
+    if (!canView) return;
     if (!departmentFilter || !yearFilter) {
       setSummary(null);
       return;
@@ -153,12 +166,18 @@ export default function BudgetsPage() {
     } catch (error) {
       console.error("加载汇总失败", error);
     }
-  }, [departmentFilter, yearFilter]);
+  }, [canView, departmentFilter, yearFilter]);
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.warning("当前账号没有查看预算权限");
+      router.replace("/dashboard");
+      return;
+    }
     fetchBudgets();
     fetchDepartments();
-  }, [fetchBudgets, fetchDepartments]);
+  }, [canView, fetchBudgets, fetchDepartments, permissionLoaded, router]);
 
   useEffect(() => {
     fetchSummary();
@@ -166,6 +185,10 @@ export default function BudgetsPage() {
 
   // 打开新增弹窗
   const handleAdd = () => {
+    if (!canCreate) {
+      message.warning("当前账号没有新增预算权限");
+      return;
+    }
     setModalTitle("新增预算");
     setEditingId(null);
     form.resetFields();
@@ -175,6 +198,10 @@ export default function BudgetsPage() {
 
   // 打开编辑弹窗
   const handleEdit = (record: Budget) => {
+    if (!canEdit) {
+      message.warning("当前账号没有编辑预算权限");
+      return;
+    }
     setModalTitle("编辑预算");
     setEditingId(record.id);
     form.setFieldsValue({
@@ -213,6 +240,10 @@ export default function BudgetsPage() {
 
   // 冻结/解冻
   const handleToggleFreeze = async (id: string) => {
+    if (!canFreeze) {
+      message.warning("当前账号没有冻结/解冻预算权限");
+      return;
+    }
     try {
       await api.patch(`/budgets/${id}/freeze`);
       message.success("操作成功");
@@ -224,6 +255,10 @@ export default function BudgetsPage() {
 
   // 关闭预算
   const handleClose = async (id: string) => {
+    if (!canClose) {
+      message.warning("当前账号没有关闭预算权限");
+      return;
+    }
     try {
       await api.patch(`/budgets/${id}/close`);
       message.success("已关闭");
@@ -235,6 +270,10 @@ export default function BudgetsPage() {
 
   // 删除预算
   const handleDelete = async (id: string) => {
+    if (!canDelete) {
+      message.warning("当前账号没有删除预算权限");
+      return;
+    }
     try {
       await api.delete(`/budgets/${id}`);
       message.success("删除成功");
@@ -337,7 +376,7 @@ export default function BudgetsPage() {
       width: 180,
       render: (_: unknown, record: Budget) => (
         <Space size="small">
-          {record.status === "ACTIVE" && (
+          {record.status === "ACTIVE" && canEdit && (
             <>
               <Button
                 type="link"
@@ -347,6 +386,10 @@ export default function BudgetsPage() {
               >
                 编辑
               </Button>
+            </>
+          )}
+          {record.status === "ACTIVE" && canFreeze && (
+            <>
               <Popconfirm
                 title="确定冻结该预算吗？"
                 onConfirm={() => handleToggleFreeze(record.id)}
@@ -357,7 +400,7 @@ export default function BudgetsPage() {
               </Popconfirm>
             </>
           )}
-          {record.status === "FROZEN" && (
+          {record.status === "FROZEN" && canFreeze && (
             <Button
               type="link"
               size="small"
@@ -367,7 +410,7 @@ export default function BudgetsPage() {
               解冻
             </Button>
           )}
-          {record.status !== "CLOSED" && (
+          {record.status !== "CLOSED" && canClose && (
             <Popconfirm
               title="确定关闭该预算吗？关闭后不可恢复"
               onConfirm={() => handleClose(record.id)}
@@ -379,7 +422,7 @@ export default function BudgetsPage() {
               </Button>
             </Popconfirm>
           )}
-          {record.status === "ACTIVE" && (
+          {record.status === "ACTIVE" && canDelete && (
             <Popconfirm
               title="确定删除该预算吗？"
               description="删除后数据将无法恢复"
@@ -401,13 +444,22 @@ export default function BudgetsPage() {
   const currentYear = new Date().getFullYear();
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
 
+  if (!permissionLoaded || !canView) {
+    return null;
+  }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <Title level={4} className="!mb-0">
           预算管理
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleAdd}
+          disabled={!canCreate}
+        >
           新增预算
         </Button>
       </div>

@@ -3,6 +3,7 @@
 // InfFinanceMs - 报表看板页面
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Row,
   Col,
@@ -27,6 +28,7 @@ import {
 import apiClient, { api } from "@/lib/api";
 import { formatAmount } from "@/lib/constants";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 
@@ -66,6 +68,10 @@ interface ProfitRow {
 }
 
 export default function ReportsPage() {
+  const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("report.view");
+  const canExport = has("report.export");
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [activeTab, setActiveTab] = useState("receivables");
@@ -77,6 +83,12 @@ export default function ReportsPage() {
 
   // 加载数据
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.warning("当前账号没有查看报表权限");
+      router.replace("/dashboard");
+      return;
+    }
     const fetchData = async () => {
       try {
         const [receivablesRes, customerRes, profitRes] = await Promise.all([
@@ -95,7 +107,11 @@ export default function ReportsPage() {
     };
 
     fetchData();
-  }, []);
+  }, [canView, permissionLoaded, router]);
+
+  if (!permissionLoaded || !canView) {
+    return null;
+  }
 
   if (loading) {
     return (
@@ -174,6 +190,10 @@ export default function ReportsPage() {
   };
 
   const handleExport = async () => {
+    if (!canExport) {
+      message.warning("当前账号没有导出报表权限");
+      return;
+    }
     setExporting(true);
     try {
       const response = await apiClient.get(getExportEndpoint(activeTab), {
@@ -426,6 +446,7 @@ export default function ReportsPage() {
             icon={<DownloadOutlined />}
             loading={exporting}
             onClick={handleExport}
+            disabled={!canExport}
           >
             导出当前报表
           </Button>

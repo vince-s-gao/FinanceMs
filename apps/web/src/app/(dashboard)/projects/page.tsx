@@ -3,6 +3,7 @@
 // InfFinanceMs - 项目管理页面
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   Button,
@@ -28,6 +29,7 @@ import {
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/constants";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 import dayjs from "dayjs";
 
 const { Title } = Typography;
@@ -66,6 +68,12 @@ interface ProjectListResponse {
 }
 
 export default function ProjectsPage() {
+  const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("project.view");
+  const canCreate = has("project.create");
+  const canEdit = has("project.edit");
+  const canDelete = has("project.delete");
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [total, setTotal] = useState(0);
@@ -80,6 +88,7 @@ export default function ProjectsPage() {
 
   // 加载项目列表
   const fetchProjects = useCallback(async () => {
+    if (!canView) return;
     setLoading(true);
     try {
       const params: Record<string, string | number> = { page, pageSize };
@@ -94,14 +103,28 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword, statusFilter]);
+  }, [canView, page, pageSize, keyword, statusFilter]);
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.warning("当前账号没有查看项目权限");
+      router.replace("/dashboard");
+      return;
+    }
     fetchProjects();
-  }, [fetchProjects]);
+  }, [canView, fetchProjects, permissionLoaded, router]);
 
   // 打开新增/编辑弹窗
   const handleOpenModal = (project?: Project) => {
+    if (project && !canEdit) {
+      message.warning("当前账号没有编辑项目权限");
+      return;
+    }
+    if (!project && !canCreate) {
+      message.warning("当前账号没有新增项目权限");
+      return;
+    }
     setEditingProject(project || null);
     if (project) {
       form.setFieldsValue({
@@ -146,6 +169,10 @@ export default function ProjectsPage() {
 
   // 删除项目
   const handleDelete = async (id: string) => {
+    if (!canDelete) {
+      message.warning("当前账号没有删除项目权限");
+      return;
+    }
     try {
       await api.delete(`/projects/${id}`);
       message.success("删除成功");
@@ -215,29 +242,37 @@ export default function ProjectsPage() {
       width: 120,
       render: (_: unknown, record: Project) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleOpenModal(record)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确定删除该项目吗？"
-            description="删除后数据将无法恢复"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
+          {canEdit && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleOpenModal(record)}
+            >
+              编辑
             </Button>
-          </Popconfirm>
+          )}
+          {canDelete && (
+            <Popconfirm
+              title="确定删除该项目吗？"
+              description="删除后数据将无法恢复"
+              onConfirm={() => handleDelete(record.id)}
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
   ];
+
+  if (!permissionLoaded || !canView) {
+    return null;
+  }
 
   return (
     <div>
@@ -249,6 +284,7 @@ export default function ProjectsPage() {
           type="primary"
           icon={<PlusOutlined />}
           onClick={() => handleOpenModal()}
+          disabled={!canCreate}
         >
           新增项目
         </Button>

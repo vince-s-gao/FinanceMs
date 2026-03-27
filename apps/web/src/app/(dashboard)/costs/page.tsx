@@ -38,9 +38,11 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import { api } from "@/lib/api";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 import {
   COST_SOURCE_LABELS,
   FEE_TYPE_LABELS,
@@ -120,6 +122,12 @@ function buildDatePart() {
 }
 
 export default function CostsPage() {
+  const router = useRouter();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canView = has("cost.view");
+  const canCreate = has("cost.create");
+  const canEdit = has("cost.edit");
+  const canDelete = has("cost.delete");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [keyword, setKeyword] = useState("");
@@ -187,6 +195,7 @@ export default function CostsPage() {
     queryFn: () =>
       api.get<PaginatedData<CostItem>>("/costs", { params: queryParams }),
     placeholderData: keepPreviousData,
+    enabled: permissionLoaded && canView,
   });
 
   const summaryQuery = useQuery({
@@ -212,6 +221,7 @@ export default function CostsPage() {
           endDate,
         },
       }),
+    enabled: permissionLoaded && canView,
   });
 
   const contractsQuery = useQuery({
@@ -221,6 +231,7 @@ export default function CostsPage() {
         params: { pageSize: 200, sortBy: "signDate", sortOrder: "desc" },
       }),
     staleTime: 5 * 60 * 1000,
+    enabled: permissionLoaded && canView,
   });
 
   const projectsQuery = useQuery({
@@ -230,6 +241,7 @@ export default function CostsPage() {
         params: { pageSize: 200, status: "ACTIVE" },
       }),
     staleTime: 5 * 60 * 1000,
+    enabled: permissionLoaded && canView,
   });
 
   const invalidateCostQueries = async () => {
@@ -316,6 +328,15 @@ export default function CostsPage() {
   });
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canView) {
+      message.warning("当前账号没有查看费用权限");
+      router.replace("/dashboard");
+    }
+  }, [canView, permissionLoaded, router]);
+
+  useEffect(() => {
+    if (!permissionLoaded || !canView) return;
     if (!costsQuery.data) return;
     const hasNextPage = page * pageSize < costsQuery.data.total;
     if (!hasNextPage) return;
@@ -339,6 +360,7 @@ export default function CostsPage() {
         }),
     });
   }, [
+    canView,
     contractFilter,
     costsQuery.data,
     debouncedKeyword,
@@ -351,15 +373,24 @@ export default function CostsPage() {
     queryParams,
     sourceFilter,
     startDate,
+    permissionLoaded,
   ]);
 
   const handleAdd = () => {
+    if (!canCreate) {
+      message.warning("当前账号没有创建费用权限");
+      return;
+    }
     setEditingCost(null);
     form.resetFields();
     setModalVisible(true);
   };
 
   const handleEdit = (record: CostItem) => {
+    if (!canEdit) {
+      message.warning("当前账号没有编辑费用权限");
+      return;
+    }
     if (record.source !== "DIRECT") {
       return;
     }
@@ -399,6 +430,10 @@ export default function CostsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!canDelete) {
+      message.warning("当前账号没有删除费用权限");
+      return;
+    }
     await deleteMutation.mutateAsync(id);
   };
 
@@ -413,6 +448,10 @@ export default function CostsPage() {
   };
 
   const handleExport = async () => {
+    if (!canView) {
+      message.warning("当前账号没有导出费用权限");
+      return;
+    }
     try {
       const blob = await api.get<Blob>("/costs/export/excel", {
         params: {
@@ -548,33 +587,48 @@ export default function CostsPage() {
       width: 160,
       fixed: "right" as const,
       render: (_: unknown, record: CostItem) =>
-        record.source === "DIRECT" ? (
+        record.source === "DIRECT" && (canEdit || canDelete) ? (
           <Space size="small">
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-            >
-              编辑
-            </Button>
-            <Popconfirm
-              title="确定删除该费用吗？"
-              description="删除后数据将无法恢复"
-              onConfirm={() => handleDelete(record.id)}
-              okText="确定"
-              cancelText="取消"
-            >
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-                删除
+            {canEdit && (
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => handleEdit(record)}
+              >
+                编辑
               </Button>
-            </Popconfirm>
+            )}
+            {canDelete && (
+              <Popconfirm
+                title="确定删除该费用吗？"
+                description="删除后数据将无法恢复"
+                onConfirm={() => handleDelete(record.id)}
+                okText="确定"
+                cancelText="取消"
+              >
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                >
+                  删除
+                </Button>
+              </Popconfirm>
+            )}
           </Space>
+        ) : record.source === "DIRECT" ? (
+          <Text type="secondary">无可操作权限</Text>
         ) : (
           <Text type="secondary">报销生成不可操作</Text>
         ),
     },
   ];
+
+  if (!permissionLoaded || !canView) {
+    return null;
+  }
 
   return (
     <div>
@@ -586,13 +640,23 @@ export default function CostsPage() {
           <Button
             icon={<UploadOutlined />}
             onClick={() => setImportModalVisible(true)}
+            disabled={!canCreate}
           >
             批量导入
           </Button>
-          <Button icon={<DownloadOutlined />} onClick={handleExport}>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={handleExport}
+            disabled={!canView}
+          >
             导出Excel
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleAdd}
+            disabled={!canCreate}
+          >
             直接录入
           </Button>
         </Space>
