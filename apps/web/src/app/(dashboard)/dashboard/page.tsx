@@ -28,6 +28,7 @@ import { api } from "@/lib/api";
 import { useAuthStore, isFinance, isManager } from "@/stores/auth";
 import { formatAmount, formatDate } from "@/lib/constants";
 import { getErrorMessage } from "@/lib/error";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 
@@ -151,6 +152,11 @@ export default function DashboardPage() {
   }
 
   const { user } = useAuthStore();
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canViewReports = has("report.view");
+  const canViewPaymentRequests = has("payment-request.view");
+  const canViewCustomers = has("customer.view");
+  const canViewSuppliers = has("supplier.view");
   const currentDate = new Date().toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "long",
@@ -180,8 +186,17 @@ export default function DashboardPage() {
 
   // 加载数据 - 并行加载，不阻塞渲染
   useEffect(() => {
+    if (!permissionLoaded) return;
+
     // 只有财务和管理层可以看到完整数据
     if (!isFinance(user) && !isManager(user)) {
+      setLoadingMap({
+        receivables: false,
+        contracts: false,
+        expenses: false,
+        paymentRequests: false,
+        entities: false,
+      });
       return;
     }
 
@@ -236,13 +251,19 @@ export default function DashboardPage() {
 
     const fetchEntityCounts = async () => {
       try {
+        const customerPromise = canViewCustomers
+          ? api.get<{ total: number }>("/customers", {
+              params: { page: 1, pageSize: 1 },
+            })
+          : Promise.resolve({ total: 0 });
+        const supplierPromise = canViewSuppliers
+          ? api.get<{ total: number }>("/suppliers", {
+              params: { page: 1, pageSize: 1 },
+            })
+          : Promise.resolve({ total: 0 });
         const [customerRes, supplierRes] = await Promise.all([
-          api.get<{ total: number }>("/customers", {
-            params: { page: 1, pageSize: 1 },
-          }),
-          api.get<{ total: number }>("/suppliers", {
-            params: { page: 1, pageSize: 1 },
-          }),
+          customerPromise,
+          supplierPromise,
         ]);
         setEntityCounts({
           customerCount: customerRes?.total || 0,
@@ -255,12 +276,38 @@ export default function DashboardPage() {
       }
     };
 
-    fetchReceivables();
-    fetchContracts();
-    fetchExpenses();
-    fetchPaymentRequests();
-    fetchEntityCounts();
-  }, [user]);
+    if (canViewReports) {
+      fetchReceivables();
+      fetchContracts();
+      fetchExpenses();
+    } else {
+      setLoadingMap((prev) => ({
+        ...prev,
+        receivables: false,
+        contracts: false,
+        expenses: false,
+      }));
+    }
+
+    if (canViewPaymentRequests) {
+      fetchPaymentRequests();
+    } else {
+      setLoadingMap((prev) => ({ ...prev, paymentRequests: false }));
+    }
+
+    if (canViewCustomers || canViewSuppliers) {
+      fetchEntityCounts();
+    } else {
+      setLoadingMap((prev) => ({ ...prev, entities: false }));
+    }
+  }, [
+    canViewCustomers,
+    canViewPaymentRequests,
+    canViewReports,
+    canViewSuppliers,
+    permissionLoaded,
+    user,
+  ]);
 
   // 员工视图
   if (user?.role === "EMPLOYEE") {
