@@ -74,6 +74,7 @@ export default function ExpensesPage() {
   const { loaded: permissionLoaded, has } = useFunctionPermissions();
   const canView = has("expense.view");
   const canCreate = has("expense.create");
+  const canEdit = has("expense.edit");
   const canDelete = has("expense.delete");
   const canSubmit = has("expense.submit");
   const canApprove = has("expense.approve");
@@ -186,7 +187,9 @@ export default function ExpensesPage() {
       key: "expenseNo",
       width: 140,
       render: (v: string, record: Expense) => (
-        <a onClick={() => router.push(`/expenses/${record.id}`)}>{v}</a>
+        <a onClick={() => router.push(`/expenses/new?expenseId=${record.id}`)}>
+          {v}
+        </a>
       ),
     },
     {
@@ -251,10 +254,24 @@ export default function ExpensesPage() {
             type="link"
             size="small"
             icon={<EyeOutlined />}
-            onClick={() => router.push(`/expenses/${record.id}`)}
+            onClick={() => router.push(`/expenses/new?expenseId=${record.id}`)}
           >
-            详情
+            查看
           </Button>
+
+          {["DRAFT", "REJECTED"].includes(record.status) &&
+            record.applicant.id === user?.id &&
+            canEdit && (
+              <Button
+                type="link"
+                size="small"
+                onClick={() =>
+                  router.push(`/expenses/new?expenseId=${record.id}`)
+                }
+              >
+                编辑
+              </Button>
+            )}
 
           {/* 草稿/驳回状态可提交 */}
           {["DRAFT", "REJECTED"].includes(record.status) &&

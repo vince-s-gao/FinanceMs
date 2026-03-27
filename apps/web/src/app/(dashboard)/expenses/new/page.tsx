@@ -3,7 +3,7 @@
 // InfFinanceMs - 新增报销页面
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Form,
   Input,
@@ -53,6 +53,26 @@ interface ExpenseDetail {
   invoiceNo?: string;
 }
 
+interface ExpenseDetailApiItem {
+  id: string;
+  description?: string;
+  occurDate: string;
+  amount: number;
+  feeType: string;
+  hasInvoice: boolean;
+  invoiceType?: string;
+  invoiceNo?: string;
+}
+
+interface ExpenseForEdit {
+  id: string;
+  expenseNo: string;
+  project?: { id: string; code: string; name: string };
+  contract?: { id: string; contractNo: string; name: string };
+  reason?: string;
+  details: ExpenseDetailApiItem[];
+}
+
 interface Contract {
   id: string;
   contractNo: string;
@@ -80,8 +100,12 @@ interface ExpenseTypeOption {
 
 export default function NewExpensePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const expenseId = searchParams.get("expenseId");
+  const isEditMode = !!expenseId;
   const { loaded: permissionLoaded, has } = useFunctionPermissions();
   const canCreate = has("expense.create");
+  const canEdit = has("expense.edit");
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -91,7 +115,7 @@ export default function NewExpensePage() {
 
   // 加载合同列表
   useEffect(() => {
-    if (!permissionLoaded || !canCreate) return;
+    if (!permissionLoaded || (!canCreate && !isEditMode)) return;
     const fetchContracts = async () => {
       try {
         const res = await api.get<ListResponse<Contract>>("/contracts", {
@@ -103,11 +127,11 @@ export default function NewExpensePage() {
       }
     };
     fetchContracts();
-  }, [canCreate, permissionLoaded]);
+  }, [canCreate, isEditMode, permissionLoaded]);
 
   // 加载项目列表
   useEffect(() => {
-    if (!permissionLoaded || !canCreate) return;
+    if (!permissionLoaded || (!canCreate && !isEditMode)) return;
     const fetchProjects = async () => {
       try {
         const res = await api.get<ListResponse<Project>>("/projects", {
@@ -119,19 +143,58 @@ export default function NewExpensePage() {
       }
     };
     fetchProjects();
-  }, [canCreate, permissionLoaded]);
+  }, [canCreate, isEditMode, permissionLoaded]);
 
   useEffect(() => {
     if (!permissionLoaded) return;
-    if (!canCreate) {
+    if (isEditMode && !canEdit) {
+      message.warning("当前账号没有编辑报销权限");
+      router.replace("/expenses");
+      return;
+    }
+    if (!isEditMode && !canCreate) {
       message.warning("当前账号没有创建报销权限");
       router.replace("/expenses");
     }
-  }, [canCreate, permissionLoaded, router]);
+  }, [canCreate, canEdit, isEditMode, permissionLoaded, router]);
+
+  useEffect(() => {
+    if (!permissionLoaded || !isEditMode || !expenseId || !canEdit) return;
+    const fetchExpense = async () => {
+      try {
+        const res = await api.get<ExpenseForEdit>(`/expenses/${expenseId}`);
+        form.setFieldsValue({
+          projectId: res.project?.id,
+          contractId: res.contract?.id,
+          reason: res.reason || "",
+        });
+        setDetails(
+          (res.details || []).map((item, index) => ({
+            key: item.id || `${Date.now()}-${index}`,
+            description: item.description || "",
+            occurDate: dayjs(item.occurDate).format("YYYY-MM-DD"),
+            amount: Number(item.amount),
+            feeType: item.feeType || "OTHER",
+            hasInvoice: Boolean(item.hasInvoice),
+            invoiceType: item.invoiceType,
+            invoiceNo: item.invoiceNo,
+          })),
+        );
+      } catch (error: unknown) {
+        message.error(getErrorMessage(error, "加载报销信息失败"));
+        router.replace("/expenses");
+      }
+    };
+    fetchExpense();
+  }, [canEdit, expenseId, form, isEditMode, permissionLoaded, router]);
 
   // 添加明细行
   const handleAddDetail = () => {
-    if (!canCreate) {
+    if (isEditMode && !canEdit) {
+      message.warning("当前账号没有编辑报销权限");
+      return;
+    }
+    if (!isEditMode && !canCreate) {
       message.warning("当前账号没有创建报销权限");
       return;
     }
@@ -189,7 +252,11 @@ export default function NewExpensePage() {
 
   // 提交表单
   const handleSubmit = async () => {
-    if (!canCreate) {
+    if (isEditMode && !canEdit) {
+      message.warning("当前账号没有编辑报销权限");
+      return;
+    }
+    if (!isEditMode && !canCreate) {
       message.warning("当前账号没有创建报销权限");
       return;
     }
@@ -230,11 +297,18 @@ export default function NewExpensePage() {
         })),
       };
 
-      await api.post("/expenses", payload);
-      message.success("创建成功");
+      if (isEditMode && expenseId) {
+        await api.patch(`/expenses/${expenseId}`, payload);
+        message.success("更新成功");
+      } else {
+        await api.post("/expenses", payload);
+        message.success("创建成功");
+      }
       router.push("/expenses");
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, "创建失败"));
+      message.error(
+        getErrorMessage(error, isEditMode ? "更新失败" : "创建失败"),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -356,7 +430,10 @@ export default function NewExpensePage() {
     },
   ];
 
-  if (!permissionLoaded || !canCreate) {
+  if (!permissionLoaded) {
+    return null;
+  }
+  if ((isEditMode && !canEdit) || (!isEditMode && !canCreate)) {
     return null;
   }
 
@@ -371,7 +448,7 @@ export default function NewExpensePage() {
           返回
         </Button>
         <Title level={4} className="!mb-0">
-          新增报销
+          {isEditMode ? "编辑报销" : "新增报销"}
         </Title>
       </div>
 
