@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
-import { Tabs, Typography } from "antd";
+import { useEffect, useMemo } from "react";
+import { Tabs, Typography, message } from "antd";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import InvoiceManagementPage from "@/components/invoices/InvoiceManagementPage";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title } = Typography;
 
@@ -13,11 +14,25 @@ export default function InvoicesPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { loaded, has } = useFunctionPermissions();
+  const canView = has("invoice.view");
+
+  useEffect(() => {
+    if (!loaded) return;
+    if (!canView) {
+      message.warning("当前账号没有查看发票权限");
+      router.replace("/dashboard");
+    }
+  }, [canView, loaded, router]);
 
   const activeTab = useMemo<InvoiceTabKey>(() => {
     const raw = searchParams.get("tab");
     return raw === "outbound" ? "outbound" : "inbound";
   }, [searchParams]);
+
+  if (loaded && !canView) {
+    return null;
+  }
 
   return (
     <div>
