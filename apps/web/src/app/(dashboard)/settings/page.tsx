@@ -3,6 +3,7 @@
 // InfFinanceMs - 系统设置页面
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   Button,
@@ -30,6 +31,7 @@ import { api } from "@/lib/api";
 import { ROLE_LABELS, ROLE_COLORS } from "@/lib/constants";
 import { getErrorMessage } from "@/lib/error";
 import { useAuthStore } from "@/stores/auth";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -51,7 +53,13 @@ interface UserListResponse {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const currentUser = useAuthStore((state) => state.user);
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canViewPage = currentUser?.role === "ADMIN";
+  const canCreateUser = has("user.create");
+  const canEditUser = has("user.edit");
+  const canDeleteUser = has("user.delete");
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
@@ -70,6 +78,7 @@ export default function SettingsPage() {
 
   // 加载用户列表
   const fetchUsers = useCallback(async () => {
+    if (!canViewPage) return;
     setLoading(true);
     try {
       const isActive =
@@ -84,14 +93,24 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, statusFilter]);
+  }, [canViewPage, page, pageSize, statusFilter]);
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canViewPage) {
+      message.warning("当前账号没有系统设置权限");
+      router.replace("/dashboard");
+      return;
+    }
     fetchUsers();
-  }, [fetchUsers]);
+  }, [canViewPage, fetchUsers, permissionLoaded, router]);
 
   // 打开新增弹窗
   const handleAdd = () => {
+    if (!canCreateUser) {
+      message.warning("当前账号没有新增用户权限");
+      return;
+    }
     setModalTitle("新增用户");
     setEditingId(null);
     form.resetFields();
@@ -100,6 +119,10 @@ export default function SettingsPage() {
 
   // 打开编辑弹窗
   const handleEdit = (record: User) => {
+    if (!canEditUser) {
+      message.warning("当前账号没有编辑用户权限");
+      return;
+    }
     setModalTitle("编辑用户");
     setEditingId(record.id);
     form.setFieldsValue({
@@ -138,6 +161,10 @@ export default function SettingsPage() {
 
   // 禁用/启用用户
   const handleToggleActive = async (id: string, isActive: boolean) => {
+    if (!canEditUser) {
+      message.warning("当前账号没有编辑用户权限");
+      return;
+    }
     try {
       await api.patch(`/users/${id}`, { isActive: !isActive });
       message.success(isActive ? "已禁用" : "已启用");
@@ -148,6 +175,10 @@ export default function SettingsPage() {
   };
 
   const handleDeleteUser = async (id: string) => {
+    if (!canDeleteUser) {
+      message.warning("当前账号没有删除用户权限");
+      return;
+    }
     try {
       await api.delete(`/users/${id}`);
       message.success("删除成功");
@@ -209,49 +240,59 @@ export default function SettingsPage() {
       width: 220,
       render: (_: unknown, record: User) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title={`确定${record.isActive ? "禁用" : "启用"}该用户吗？`}
-            onConfirm={() => handleToggleActive(record.id, record.isActive)}
-          >
+          {canEditUser && (
             <Button
               type="link"
               size="small"
-              danger={record.isActive}
-              icon={record.isActive ? <StopOutlined /> : <CheckOutlined />}
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
             >
-              {record.isActive ? "禁用" : "启用"}
+              编辑
             </Button>
-          </Popconfirm>
-          <Popconfirm
-            title="确定删除该用户吗？"
-            description="删除后该账号将被禁用且无法登录"
-            onConfirm={() => handleDeleteUser(record.id)}
-            okText="确定"
-            cancelText="取消"
-            disabled={record.id === currentUser?.id}
-          >
-            <Button
-              type="link"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
+          )}
+          {canEditUser && (
+            <Popconfirm
+              title={`确定${record.isActive ? "禁用" : "启用"}该用户吗？`}
+              onConfirm={() => handleToggleActive(record.id, record.isActive)}
+            >
+              <Button
+                type="link"
+                size="small"
+                danger={record.isActive}
+                icon={record.isActive ? <StopOutlined /> : <CheckOutlined />}
+              >
+                {record.isActive ? "禁用" : "启用"}
+              </Button>
+            </Popconfirm>
+          )}
+          {canDeleteUser && (
+            <Popconfirm
+              title="确定删除该用户吗？"
+              description="删除后该账号将被禁用且无法登录"
+              onConfirm={() => handleDeleteUser(record.id)}
+              okText="确定"
+              cancelText="取消"
               disabled={record.id === currentUser?.id}
             >
-              删除
-            </Button>
-          </Popconfirm>
+              <Button
+                type="link"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                disabled={record.id === currentUser?.id}
+              >
+                删除
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
   ];
+
+  if (!permissionLoaded || !canViewPage) {
+    return null;
+  }
 
   const tabItems = [
     {
@@ -275,7 +316,12 @@ export default function SettingsPage() {
                 <Option value="all">全部用户</Option>
               </Select>
             </Space>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleAdd}
+              disabled={!canCreateUser}
+            >
               新增用户
             </Button>
           </div>
