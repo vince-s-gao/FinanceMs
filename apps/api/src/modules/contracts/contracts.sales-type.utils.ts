@@ -37,9 +37,12 @@ export async function resolveSalesContractTypeContext(args: {
   const fallback = (args.fallbackCodes || ["SALES"])
     .map((item) => normalizeText(item).toUpperCase())
     .filter(Boolean);
+  const resolvedCodes =
+    detected.length > 0 ? detected : rows.length === 0 ? fallback : [];
 
   return {
-    codes: [...new Set([...detected, ...fallback])],
+    // 仅当字典中完全无法识别销售类型时，才回退到默认编码，避免误配置时把非销售合同误判为销售。
+    codes: [...new Set(resolvedCodes)],
     codeByLookup,
   };
 }

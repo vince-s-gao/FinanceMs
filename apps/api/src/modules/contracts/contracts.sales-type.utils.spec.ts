@@ -5,7 +5,7 @@ import {
 
 describe("contracts.sales-type.utils", () => {
   describe("resolveSalesContractTypeContext", () => {
-    it("should detect sales by code/value and keep fallback SALES", async () => {
+    it("should detect sales by code/value", async () => {
       const prisma = {
         dictionary: {
           findMany: jest.fn().mockResolvedValue([
@@ -26,6 +26,37 @@ describe("contracts.sales-type.utils", () => {
         where: { type: "CONTRACT_TYPE", isEnabled: true },
         select: { code: true, name: true, value: true },
       });
+    });
+
+    it("should fallback to SALES when dictionary rows are empty", async () => {
+      const prisma = {
+        dictionary: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+      } as any;
+
+      const context = await resolveSalesContractTypeContext({
+        prisma,
+      });
+
+      expect(context.codes).toEqual(["SALES"]);
+    });
+
+    it("should not fallback to SALES when dictionary exists but has no sales types", async () => {
+      const prisma = {
+        dictionary: {
+          findMany: jest.fn().mockResolvedValue([
+            { code: "NDA", name: "保密协议", value: "保密" },
+            { code: "PURCHASE", name: "采购合同", value: "采购" },
+          ]),
+        },
+      } as any;
+
+      const context = await resolveSalesContractTypeContext({
+        prisma,
+      });
+
+      expect(context.codes).toEqual([]);
     });
 
     it("should include disabled types when includeDisabled is true", async () => {
