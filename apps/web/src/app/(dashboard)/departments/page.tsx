@@ -1,8 +1,9 @@
-'use client';
+"use client";
 
 // InfFinanceMs - 员工管理页面（员工 + 部门）
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   Button,
@@ -19,23 +20,24 @@ import {
   Switch,
   Tabs,
   Input,
-} from 'antd';
+} from "antd";
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
   StopOutlined,
   CheckOutlined,
-} from '@ant-design/icons';
-import { api } from '@/lib/api';
-import { ROLE_COLORS, ROLE_LABELS } from '@/lib/constants';
-import { getErrorMessage } from '@/lib/error';
-import { useAuthStore } from '@/stores/auth';
+} from "@ant-design/icons";
+import { api } from "@/lib/api";
+import { ROLE_COLORS, ROLE_LABELS } from "@/lib/constants";
+import { getErrorMessage } from "@/lib/error";
+import { useAuthStore } from "@/stores/auth";
+import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-type StatusFilter = 'active' | 'inactive' | 'all';
+type StatusFilter = "active" | "inactive" | "all";
 
 interface UserOption {
   id: string;
@@ -77,7 +79,7 @@ interface EmployeeFormValues {
   password?: string;
   name: string;
   phone?: string;
-  role: 'EMPLOYEE' | 'FINANCE' | 'MANAGER' | 'ADMIN';
+  role: "EMPLOYEE" | "FINANCE" | "MANAGER" | "ADMIN";
   departmentId?: string;
 }
 
@@ -116,7 +118,14 @@ interface DepartmentFormValues {
 }
 
 export default function EmployeeManagementPage() {
+  const router = useRouter();
   const currentUser = useAuthStore((state) => state.user);
+  const { loaded: permissionLoaded, has } = useFunctionPermissions();
+  const canManageDepartment = has("department.manage");
+  const canCreateUser = has("user.create");
+  const canEditUser = has("user.edit");
+  const canDeleteUser = has("user.delete");
+  const canViewPage = currentUser?.role === "ADMIN";
 
   // 员工管理状态
   const [employeeLoading, setEmployeeLoading] = useState(false);
@@ -124,11 +133,16 @@ export default function EmployeeManagementPage() {
   const [employeeTotal, setEmployeeTotal] = useState(0);
   const [employeePage, setEmployeePage] = useState(1);
   const [employeePageSize, setEmployeePageSize] = useState(20);
-  const [employeeRoleFilter, setEmployeeRoleFilter] = useState<string | undefined>();
-  const [employeeStatusFilter, setEmployeeStatusFilter] = useState<StatusFilter>('active');
+  const [employeeRoleFilter, setEmployeeRoleFilter] = useState<
+    string | undefined
+  >();
+  const [employeeStatusFilter, setEmployeeStatusFilter] =
+    useState<StatusFilter>("active");
   const [employeeModalVisible, setEmployeeModalVisible] = useState(false);
-  const [employeeModalTitle, setEmployeeModalTitle] = useState('新增员工');
-  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
+  const [employeeModalTitle, setEmployeeModalTitle] = useState("新增员工");
+  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(
+    null,
+  );
   const [employeeSubmitting, setEmployeeSubmitting] = useState(false);
   const [employeeForm] = Form.useForm<EmployeeFormValues>();
 
@@ -138,22 +152,29 @@ export default function EmployeeManagementPage() {
   const [allDepartments, setAllDepartments] = useState<Department[]>([]);
   const [allUsers, setAllUsers] = useState<UserOption[]>([]);
   const [departmentModalVisible, setDepartmentModalVisible] = useState(false);
-  const [departmentModalTitle, setDepartmentModalTitle] = useState('新增部门');
-  const [editingDepartmentId, setEditingDepartmentId] = useState<string | null>(null);
+  const [departmentModalTitle, setDepartmentModalTitle] = useState("新增部门");
+  const [editingDepartmentId, setEditingDepartmentId] = useState<string | null>(
+    null,
+  );
   const [departmentSubmitting, setDepartmentSubmitting] = useState(false);
   const [departmentForm] = Form.useForm<DepartmentFormValues>();
 
   // 成员管理弹窗
   const [memberModalVisible, setMemberModalVisible] = useState(false);
-  const [currentDepartment, setCurrentDepartment] = useState<Department | null>(null);
+  const [currentDepartment, setCurrentDepartment] = useState<Department | null>(
+    null,
+  );
   const [departmentMembers, setDepartmentMembers] = useState<UserOption[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | undefined>();
 
   const fetchEmployees = useCallback(async () => {
+    if (!canViewPage) return;
     setEmployeeLoading(true);
     try {
       const isActive =
-        employeeStatusFilter === 'all' ? undefined : employeeStatusFilter === 'active';
+        employeeStatusFilter === "all"
+          ? undefined
+          : employeeStatusFilter === "active";
       const params: Record<string, unknown> = {
         page: employeePage,
         pageSize: employeePageSize,
@@ -161,84 +182,120 @@ export default function EmployeeManagementPage() {
       if (employeeRoleFilter) params.role = employeeRoleFilter;
       if (isActive !== undefined) params.isActive = isActive;
 
-      const res = await api.get<EmployeeListResponse>('/users', { params });
+      const res = await api.get<EmployeeListResponse>("/users", { params });
       setEmployees(res.items);
       setEmployeeTotal(res.total);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '加载员工失败'));
+      message.error(getErrorMessage(error, "加载员工失败"));
     } finally {
       setEmployeeLoading(false);
     }
-  }, [employeePage, employeePageSize, employeeRoleFilter, employeeStatusFilter]);
+  }, [
+    canViewPage,
+    employeePage,
+    employeePageSize,
+    employeeRoleFilter,
+    employeeStatusFilter,
+  ]);
 
   const fetchDepartmentTree = useCallback(async () => {
+    if (!canViewPage) return;
     setDepartmentLoading(true);
     try {
-      const res = await api.get<Department[]>('/departments/tree');
+      const res = await api.get<Department[]>("/departments/tree");
       setTreeData(res);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '加载部门树失败'));
+      message.error(getErrorMessage(error, "加载部门树失败"));
     } finally {
       setDepartmentLoading(false);
     }
-  }, []);
+  }, [canViewPage]);
 
   const fetchDepartmentOptions = useCallback(async () => {
+    if (!canViewPage) return;
     try {
-      const res = await api.get<Department[]>('/departments/options');
+      const res = await api.get<Department[]>("/departments/options");
       setAllDepartments(res);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '加载部门选项失败'));
+      message.error(getErrorMessage(error, "加载部门选项失败"));
     }
-  }, []);
+  }, [canViewPage]);
 
   const fetchUserOptions = useCallback(async () => {
+    if (!canViewPage) return;
     try {
-      const res = await api.get<UserOption[]>('/users/options');
+      const res = await api.get<UserOption[]>("/users/options");
       setAllUsers(res || []);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '加载员工选项失败'));
+      message.error(getErrorMessage(error, "加载员工选项失败"));
     }
-  }, []);
+  }, [canViewPage]);
 
-  const fetchDepartmentMembers = useCallback(async (departmentId: string) => {
-    try {
-      const res = await api.get<UserOption[]>(`/departments/${departmentId}/members`);
-      setDepartmentMembers(res || []);
-    } catch (error: unknown) {
-      message.error(getErrorMessage(error, '加载部门成员失败'));
-    }
-  }, []);
+  const fetchDepartmentMembers = useCallback(
+    async (departmentId: string) => {
+      if (!canViewPage) return;
+      try {
+        const res = await api.get<UserOption[]>(
+          `/departments/${departmentId}/members`,
+        );
+        setDepartmentMembers(res || []);
+      } catch (error: unknown) {
+        message.error(getErrorMessage(error, "加载部门成员失败"));
+      }
+    },
+    [canViewPage],
+  );
 
   useEffect(() => {
+    if (!permissionLoaded) return;
+    if (!canViewPage) {
+      message.warning("当前账号没有员工管理权限");
+      router.replace("/dashboard");
+      return;
+    }
     fetchEmployees();
-  }, [fetchEmployees]);
+  }, [canViewPage, fetchEmployees, permissionLoaded, router]);
 
   useEffect(() => {
+    if (!permissionLoaded || !canViewPage) return;
     fetchDepartmentTree();
     fetchDepartmentOptions();
     fetchUserOptions();
-  }, [fetchDepartmentTree, fetchDepartmentOptions, fetchUserOptions]);
+  }, [
+    canViewPage,
+    fetchDepartmentTree,
+    fetchDepartmentOptions,
+    fetchUserOptions,
+    permissionLoaded,
+  ]);
 
   const handleAddEmployee = () => {
-    setEmployeeModalTitle('新增员工');
+    if (!canCreateUser) {
+      message.warning("当前账号没有新增员工权限");
+      return;
+    }
+    setEmployeeModalTitle("新增员工");
     setEditingEmployeeId(null);
     employeeForm.resetFields();
     employeeForm.setFieldsValue({
-      role: 'EMPLOYEE',
+      role: "EMPLOYEE",
     });
     setEmployeeModalVisible(true);
   };
 
   const handleEditEmployee = (record: Employee) => {
-    setEmployeeModalTitle('编辑员工');
+    if (!canEditUser) {
+      message.warning("当前账号没有编辑员工权限");
+      return;
+    }
+    setEmployeeModalTitle("编辑员工");
     setEditingEmployeeId(record.id);
     employeeForm.setFieldsValue({
       email: record.email,
       password: undefined,
       name: record.name,
       phone: record.phone || undefined,
-      role: record.role as EmployeeFormValues['role'],
+      role: record.role as EmployeeFormValues["role"],
       departmentId: record.departmentId || undefined,
     });
     setEmployeeModalVisible(true);
@@ -258,52 +315,76 @@ export default function EmployeeManagementPage() {
         };
         if (values.password) payload.password = values.password;
         await api.patch(`/users/${editingEmployeeId}`, payload);
-        message.success('员工信息已更新');
+        message.success("员工信息已更新");
       } else {
-        await api.post('/users', {
+        await api.post("/users", {
           ...values,
           departmentId: values.departmentId || null,
         });
-        message.success('员工创建成功');
+        message.success("员工创建成功");
       }
 
       setEmployeeModalVisible(false);
-      await Promise.all([fetchEmployees(), fetchDepartmentTree(), fetchUserOptions()]);
+      await Promise.all([
+        fetchEmployees(),
+        fetchDepartmentTree(),
+        fetchUserOptions(),
+      ]);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '提交失败'));
+      message.error(getErrorMessage(error, "提交失败"));
     } finally {
       setEmployeeSubmitting(false);
     }
   };
 
   const handleToggleEmployeeActive = async (id: string, isActive: boolean) => {
+    if (!canEditUser) {
+      message.warning("当前账号没有编辑员工权限");
+      return;
+    }
     try {
       await api.patch(`/users/${id}`, { isActive: !isActive });
-      message.success(isActive ? '已禁用员工' : '已启用员工');
+      message.success(isActive ? "已禁用员工" : "已启用员工");
       await fetchEmployees();
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '状态更新失败'));
+      message.error(getErrorMessage(error, "状态更新失败"));
     }
   };
 
   const handleDeleteEmployee = async (id: string) => {
+    if (!canDeleteUser) {
+      message.warning("当前账号没有删除员工权限");
+      return;
+    }
     try {
       await api.delete(`/users/${id}`);
-      message.success('员工删除成功');
-      await Promise.all([fetchEmployees(), fetchDepartmentTree(), fetchUserOptions()]);
+      message.success("员工删除成功");
+      await Promise.all([
+        fetchEmployees(),
+        fetchDepartmentTree(),
+        fetchUserOptions(),
+      ]);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '删除失败'));
+      message.error(getErrorMessage(error, "删除失败"));
     }
   };
 
   const handleAddDepartment = () => {
-    setDepartmentModalTitle('新增部门');
+    if (!canManageDepartment) {
+      message.warning("当前账号没有部门管理权限");
+      return;
+    }
+    setDepartmentModalTitle("新增部门");
     setEditingDepartmentId(null);
     departmentForm.resetFields();
     setDepartmentModalVisible(true);
   };
 
   const handleAddChildDepartment = (parent: Department) => {
+    if (!canManageDepartment) {
+      message.warning("当前账号没有部门管理权限");
+      return;
+    }
     setDepartmentModalTitle(`新增子部门 - ${parent.name}`);
     setEditingDepartmentId(null);
     departmentForm.resetFields();
@@ -312,7 +393,11 @@ export default function EmployeeManagementPage() {
   };
 
   const handleEditDepartment = (record: Department) => {
-    setDepartmentModalTitle('编辑部门');
+    if (!canManageDepartment) {
+      message.warning("当前账号没有部门管理权限");
+      return;
+    }
+    setDepartmentModalTitle("编辑部门");
     setEditingDepartmentId(record.id);
     departmentForm.setFieldsValue({
       name: record.name,
@@ -324,46 +409,72 @@ export default function EmployeeManagementPage() {
   };
 
   const handleSubmitDepartment = async () => {
+    if (!canManageDepartment) {
+      message.warning("当前账号没有部门管理权限");
+      return;
+    }
     try {
       const values = await departmentForm.validateFields();
       setDepartmentSubmitting(true);
       if (editingDepartmentId) {
         await api.patch(`/departments/${editingDepartmentId}`, values);
-        message.success('部门更新成功');
+        message.success("部门更新成功");
       } else {
-        await api.post('/departments', values);
-        message.success('部门创建成功');
+        await api.post("/departments", values);
+        message.success("部门创建成功");
       }
       setDepartmentModalVisible(false);
-      await Promise.all([fetchDepartmentTree(), fetchDepartmentOptions(), fetchEmployees(), fetchUserOptions()]);
+      await Promise.all([
+        fetchDepartmentTree(),
+        fetchDepartmentOptions(),
+        fetchEmployees(),
+        fetchUserOptions(),
+      ]);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '提交失败'));
+      message.error(getErrorMessage(error, "提交失败"));
     } finally {
       setDepartmentSubmitting(false);
     }
   };
 
   const handleToggleDepartmentActive = async (id: string) => {
+    if (!canManageDepartment) {
+      message.warning("当前账号没有部门管理权限");
+      return;
+    }
     try {
       await api.patch(`/departments/${id}/toggle`);
-      message.success('部门状态已更新');
+      message.success("部门状态已更新");
       await Promise.all([fetchDepartmentTree(), fetchDepartmentOptions()]);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '操作失败'));
+      message.error(getErrorMessage(error, "操作失败"));
     }
   };
 
   const handleDeleteDepartment = async (id: string) => {
+    if (!canManageDepartment) {
+      message.warning("当前账号没有部门管理权限");
+      return;
+    }
     try {
       await api.delete(`/departments/${id}`);
-      message.success('部门删除成功');
-      await Promise.all([fetchDepartmentTree(), fetchDepartmentOptions(), fetchEmployees(), fetchUserOptions()]);
+      message.success("部门删除成功");
+      await Promise.all([
+        fetchDepartmentTree(),
+        fetchDepartmentOptions(),
+        fetchEmployees(),
+        fetchUserOptions(),
+      ]);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '删除失败'));
+      message.error(getErrorMessage(error, "删除失败"));
     }
   };
 
   const handleManageDepartmentMembers = async (record: Department) => {
+    if (!canManageDepartment) {
+      message.warning("当前账号没有部门管理权限");
+      return;
+    }
     setCurrentDepartment(record);
     setSelectedUserId(undefined);
     await fetchDepartmentMembers(record.id);
@@ -371,10 +482,16 @@ export default function EmployeeManagementPage() {
   };
 
   const handleAddMember = async () => {
+    if (!canManageDepartment) {
+      message.warning("当前账号没有部门管理权限");
+      return;
+    }
     if (!currentDepartment || !selectedUserId) return;
     try {
-      await api.post(`/departments/${currentDepartment.id}/members/${selectedUserId}`);
-      message.success('成员添加成功');
+      await api.post(
+        `/departments/${currentDepartment.id}/members/${selectedUserId}`,
+      );
+      message.success("成员添加成功");
       await Promise.all([
         fetchDepartmentMembers(currentDepartment.id),
         fetchDepartmentTree(),
@@ -383,15 +500,21 @@ export default function EmployeeManagementPage() {
       ]);
       setSelectedUserId(undefined);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '添加失败'));
+      message.error(getErrorMessage(error, "添加失败"));
     }
   };
 
   const handleRemoveMember = async (userId: string) => {
+    if (!canManageDepartment) {
+      message.warning("当前账号没有部门管理权限");
+      return;
+    }
     if (!currentDepartment) return;
     try {
-      await api.delete(`/departments/${currentDepartment.id}/members/${userId}`);
-      message.success('成员移除成功');
+      await api.delete(
+        `/departments/${currentDepartment.id}/members/${userId}`,
+      );
+      message.success("成员移除成功");
       await Promise.all([
         fetchDepartmentMembers(currentDepartment.id),
         fetchDepartmentTree(),
@@ -399,15 +522,21 @@ export default function EmployeeManagementPage() {
         fetchUserOptions(),
       ]);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '移除失败'));
+      message.error(getErrorMessage(error, "移除失败"));
     }
   };
 
   const handleSetManager = async (userId: string | null) => {
+    if (!canManageDepartment) {
+      message.warning("当前账号没有部门管理权限");
+      return;
+    }
     if (!currentDepartment) return;
     try {
-      await api.patch(`/departments/${currentDepartment.id}/manager`, { userId });
-      message.success(userId ? '负责人设置成功' : '负责人已取消');
+      await api.patch(`/departments/${currentDepartment.id}/manager`, {
+        userId,
+      });
+      message.success(userId ? "负责人设置成功" : "负责人已取消");
       setCurrentDepartment((prev) =>
         prev ? { ...prev, managerId: userId || undefined } : prev,
       );
@@ -418,7 +547,7 @@ export default function EmployeeManagementPage() {
         fetchUserOptions(),
       ]);
     } catch (error: unknown) {
-      message.error(getErrorMessage(error, '设置失败'));
+      message.error(getErrorMessage(error, "设置失败"));
     }
   };
 
@@ -429,90 +558,105 @@ export default function EmployeeManagementPage() {
 
   const employeeColumns = [
     {
-      title: '邮箱',
-      dataIndex: 'email',
-      key: 'email',
+      title: "邮箱",
+      dataIndex: "email",
+      key: "email",
       width: 220,
     },
     {
-      title: '姓名',
-      dataIndex: 'name',
-      key: 'name',
+      title: "姓名",
+      dataIndex: "name",
+      key: "name",
       width: 120,
     },
     {
-      title: '手机号',
-      dataIndex: 'phone',
-      key: 'phone',
+      title: "手机号",
+      dataIndex: "phone",
+      key: "phone",
       width: 140,
-      render: (value: string | null | undefined) => value || '-',
+      render: (value: string | null | undefined) => value || "-",
     },
     {
-      title: '角色',
-      dataIndex: 'role',
-      key: 'role',
+      title: "角色",
+      dataIndex: "role",
+      key: "role",
       width: 120,
       render: (role: string) => (
         <Tag color={ROLE_COLORS[role]}>{ROLE_LABELS[role] || role}</Tag>
       ),
     },
     {
-      title: '部门',
-      key: 'department',
+      title: "部门",
+      key: "department",
       width: 180,
-      render: (_: unknown, record: Employee) => record.department?.name || '-',
+      render: (_: unknown, record: Employee) => record.department?.name || "-",
     },
     {
-      title: '状态',
-      dataIndex: 'isActive',
-      key: 'isActive',
+      title: "状态",
+      dataIndex: "isActive",
+      key: "isActive",
       width: 100,
       render: (isActive: boolean) => (
-        <Tag color={isActive ? 'green' : 'red'}>{isActive ? '启用' : '禁用'}</Tag>
+        <Tag color={isActive ? "green" : "red"}>
+          {isActive ? "启用" : "禁用"}
+        </Tag>
       ),
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 260,
       render: (_: unknown, record: Employee) => (
         <Space size="small">
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditEmployee(record)}>
-            编辑
-          </Button>
-          <Popconfirm
-            title={`确定${record.isActive ? '禁用' : '启用'}该员工吗？`}
-            onConfirm={() => handleToggleEmployeeActive(record.id, record.isActive)}
-            okText="确定"
-            cancelText="取消"
-          >
+          {canEditUser && (
             <Button
               type="link"
               size="small"
-              danger={record.isActive}
-              icon={record.isActive ? <StopOutlined /> : <CheckOutlined />}
+              icon={<EditOutlined />}
+              onClick={() => handleEditEmployee(record)}
             >
-              {record.isActive ? '禁用' : '启用'}
+              编辑
             </Button>
-          </Popconfirm>
-          <Popconfirm
-            title="确定删除该员工吗？"
-            description="删除后该账号将被禁用，无法登录系统"
-            onConfirm={() => handleDeleteEmployee(record.id)}
-            okText="确定"
-            cancelText="取消"
-            disabled={record.id === currentUser?.id}
-          >
-            <Button
-              type="link"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
+          )}
+          {canEditUser && (
+            <Popconfirm
+              title={`确定${record.isActive ? "禁用" : "启用"}该员工吗？`}
+              onConfirm={() =>
+                handleToggleEmployeeActive(record.id, record.isActive)
+              }
+              okText="确定"
+              cancelText="取消"
+            >
+              <Button
+                type="link"
+                size="small"
+                danger={record.isActive}
+                icon={record.isActive ? <StopOutlined /> : <CheckOutlined />}
+              >
+                {record.isActive ? "禁用" : "启用"}
+              </Button>
+            </Popconfirm>
+          )}
+          {canDeleteUser && (
+            <Popconfirm
+              title="确定删除该员工吗？"
+              description="删除后该账号将被禁用，无法登录系统"
+              onConfirm={() => handleDeleteEmployee(record.id)}
+              okText="确定"
+              cancelText="取消"
               disabled={record.id === currentUser?.id}
             >
-              删除
-            </Button>
-          </Popconfirm>
+              <Button
+                type="link"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                disabled={record.id === currentUser?.id}
+              >
+                删除
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -520,74 +664,106 @@ export default function EmployeeManagementPage() {
 
   const departmentColumns = [
     {
-      title: '部门名称',
-      dataIndex: 'name',
-      key: 'name',
+      title: "部门名称",
+      dataIndex: "name",
+      key: "name",
       width: 220,
     },
     {
-      title: '部门编号',
-      dataIndex: 'code',
-      key: 'code',
+      title: "部门编号",
+      dataIndex: "code",
+      key: "code",
       width: 130,
     },
     {
-      title: '负责人',
-      key: 'manager',
+      title: "负责人",
+      key: "manager",
       width: 140,
       render: (_: unknown, record: Department) =>
-        record.manager ? <Tag color="blue">{record.manager.name}</Tag> : <Text type="secondary">未设置</Text>,
+        record.manager ? (
+          <Tag color="blue">{record.manager.name}</Tag>
+        ) : (
+          <Text type="secondary">未设置</Text>
+        ),
     },
     {
-      title: '成员数',
-      key: 'memberCount',
+      title: "成员数",
+      key: "memberCount",
       width: 90,
       render: (_: unknown, record: Department) => record._count?.members || 0,
     },
     {
-      title: '状态',
-      dataIndex: 'isActive',
-      key: 'isActive',
+      title: "状态",
+      dataIndex: "isActive",
+      key: "isActive",
       width: 120,
       render: (isActive: boolean, record: Department) => (
         <Switch
           checked={isActive}
           onChange={() => handleToggleDepartmentActive(record.id)}
+          disabled={!canManageDepartment}
           checkedChildren="启用"
           unCheckedChildren="禁用"
         />
       ),
     },
     {
-      title: '操作',
-      key: 'action',
+      title: "操作",
+      key: "action",
       width: 300,
       render: (_: unknown, record: Department) => (
         <Space size="small">
-          <Button type="link" size="small" onClick={() => handleManageDepartmentMembers(record)}>
-            成员管理
-          </Button>
-          <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => handleAddChildDepartment(record)}>
-            子部门
-          </Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditDepartment(record)}>
-            编辑
-          </Button>
-          <Popconfirm
-            title="确定删除该部门吗？"
-            description="删除后将不可恢复"
-            onConfirm={() => handleDeleteDepartment(record.id)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
+          {canManageDepartment && (
+            <>
+              <Button
+                type="link"
+                size="small"
+                onClick={() => handleManageDepartmentMembers(record)}
+              >
+                成员管理
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => handleAddChildDepartment(record)}
+              >
+                子部门
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => handleEditDepartment(record)}
+              >
+                编辑
+              </Button>
+              <Popconfirm
+                title="确定删除该部门吗？"
+                description="删除后将不可恢复"
+                onConfirm={() => handleDeleteDepartment(record.id)}
+                okText="确定"
+                cancelText="取消"
+              >
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                >
+                  删除
+                </Button>
+              </Popconfirm>
+            </>
+          )}
         </Space>
       ),
     },
   ];
+
+  if (!permissionLoaded || !canViewPage) {
+    return null;
+  }
 
   const employeeTab = (
     <Card>
@@ -595,7 +771,7 @@ export default function EmployeeManagementPage() {
         <Space>
           <Input
             placeholder="按角色筛选"
-            value={employeeRoleFilter || ''}
+            value={employeeRoleFilter || ""}
             onChange={(event) => {
               const role = event.target.value.trim().toUpperCase();
               setEmployeePage(1);
@@ -617,7 +793,12 @@ export default function EmployeeManagementPage() {
             <Option value="all">全部状态</Option>
           </Select>
         </Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAddEmployee}>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleAddEmployee}
+          disabled={!canCreateUser}
+        >
           新增员工
         </Button>
       </div>
@@ -647,7 +828,12 @@ export default function EmployeeManagementPage() {
   const departmentTab = (
     <Card>
       <div className="flex justify-end mb-4">
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAddDepartment}>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleAddDepartment}
+          disabled={!canManageDepartment}
+        >
           新增部门
         </Button>
       </div>
@@ -661,7 +847,7 @@ export default function EmployeeManagementPage() {
         scroll={{ x: 1220 }}
         expandable={{
           defaultExpandAllRows: true,
-          childrenColumnName: 'children',
+          childrenColumnName: "children",
         }}
       />
     </Card>
@@ -675,13 +861,13 @@ export default function EmployeeManagementPage() {
         className="mt-4"
         items={[
           {
-            key: 'employees',
-            label: '员工管理',
+            key: "employees",
+            label: "员工管理",
             children: employeeTab,
           },
           {
-            key: 'departments',
-            label: '部门管理',
+            key: "departments",
+            label: "部门管理",
             children: departmentTab,
           },
         ]}
@@ -700,8 +886,8 @@ export default function EmployeeManagementPage() {
             name="email"
             label="邮箱"
             rules={[
-              { required: true, message: '请输入邮箱' },
-              { type: 'email', message: '请输入有效邮箱地址' },
+              { required: true, message: "请输入邮箱" },
+              { type: "email", message: "请输入有效邮箱地址" },
             ]}
           >
             <Input placeholder="请输入邮箱" disabled={!!editingEmployeeId} />
@@ -712,17 +898,25 @@ export default function EmployeeManagementPage() {
             label="密码"
             rules={
               editingEmployeeId
-                ? [{ min: 6, message: '密码长度不能少于6位' }]
+                ? [{ min: 6, message: "密码长度不能少于6位" }]
                 : [
-                    { required: true, message: '请输入密码' },
-                    { min: 6, message: '密码长度不能少于6位' },
+                    { required: true, message: "请输入密码" },
+                    { min: 6, message: "密码长度不能少于6位" },
                   ]
             }
           >
-            <Input.Password placeholder={editingEmployeeId ? '留空表示不修改' : '请输入初始密码'} />
+            <Input.Password
+              placeholder={
+                editingEmployeeId ? "留空表示不修改" : "请输入初始密码"
+              }
+            />
           </Form.Item>
 
-          <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
+          <Form.Item
+            name="name"
+            label="姓名"
+            rules={[{ required: true, message: "请输入姓名" }]}
+          >
             <Input placeholder="请输入姓名" />
           </Form.Item>
 
@@ -730,7 +924,11 @@ export default function EmployeeManagementPage() {
             <Input placeholder="请输入手机号" />
           </Form.Item>
 
-          <Form.Item name="role" label="角色" rules={[{ required: true, message: '请选择角色' }]}>
+          <Form.Item
+            name="role"
+            label="角色"
+            rules={[{ required: true, message: "请选择角色" }]}
+          >
             <Select placeholder="请选择角色">
               <Option value="EMPLOYEE">员工</Option>
               <Option value="FINANCE">财务</Option>
@@ -740,7 +938,12 @@ export default function EmployeeManagementPage() {
           </Form.Item>
 
           <Form.Item name="departmentId" label="所属部门">
-            <Select placeholder="请选择部门（可选）" allowClear showSearch optionFilterProp="children">
+            <Select
+              placeholder="请选择部门（可选）"
+              allowClear
+              showSearch
+              optionFilterProp="children"
+            >
               {allDepartments.map((department) => (
                 <Option key={department.id} value={department.id}>
                   {department.name} ({department.code})
@@ -760,12 +963,21 @@ export default function EmployeeManagementPage() {
         width={520}
       >
         <Form form={departmentForm} layout="vertical" className="mt-4">
-          <Form.Item name="name" label="部门名称" rules={[{ required: true, message: '请输入部门名称' }]}>
+          <Form.Item
+            name="name"
+            label="部门名称"
+            rules={[{ required: true, message: "请输入部门名称" }]}
+          >
             <Input placeholder="请输入部门名称" />
           </Form.Item>
 
           <Form.Item name="parentId" label="上级部门">
-            <Select placeholder="请选择上级部门（可选）" allowClear showSearch optionFilterProp="children">
+            <Select
+              placeholder="请选择上级部门（可选）"
+              allowClear
+              showSearch
+              optionFilterProp="children"
+            >
               {allDepartments
                 .filter((department) => department.id !== editingDepartmentId)
                 .map((department) => (
@@ -777,7 +989,11 @@ export default function EmployeeManagementPage() {
           </Form.Item>
 
           <Form.Item name="sortOrder" label="排序">
-            <InputNumber placeholder="数字越小越靠前" min={0} style={{ width: '100%' }} />
+            <InputNumber
+              placeholder="数字越小越靠前"
+              min={0}
+              style={{ width: "100%" }}
+            />
           </Form.Item>
 
           <Form.Item name="remark" label="备注">
@@ -787,7 +1003,7 @@ export default function EmployeeManagementPage() {
       </Modal>
 
       <Modal
-        title={`成员管理 - ${currentDepartment?.name || ''}`}
+        title={`成员管理 - ${currentDepartment?.name || ""}`}
         open={memberModalVisible}
         onCancel={() => setMemberModalVisible(false)}
         footer={null}
@@ -809,7 +1025,11 @@ export default function EmployeeManagementPage() {
               </Option>
             ))}
           </Select>
-          <Button type="primary" onClick={handleAddMember} disabled={!selectedUserId}>
+          <Button
+            type="primary"
+            onClick={handleAddMember}
+            disabled={!selectedUserId || !canManageDepartment}
+          >
             添加成员
           </Button>
         </div>
@@ -820,36 +1040,46 @@ export default function EmployeeManagementPage() {
           pagination={false}
           size="small"
           columns={[
-            { title: '姓名', dataIndex: 'name', key: 'name', width: 140 },
-            { title: '邮箱', dataIndex: 'email', key: 'email', width: 220 },
+            { title: "姓名", dataIndex: "name", key: "name", width: 140 },
+            { title: "邮箱", dataIndex: "email", key: "email", width: 220 },
             {
-              title: '角色',
-              dataIndex: 'role',
-              key: 'role',
+              title: "角色",
+              dataIndex: "role",
+              key: "role",
               width: 110,
               render: (role: string) => ROLE_LABELS[role] || role,
             },
             {
-              title: '负责人',
-              key: 'isManager',
+              title: "负责人",
+              key: "isManager",
               width: 130,
               render: (_: unknown, record: UserOption) =>
                 currentDepartment?.managerId === record.id ? (
                   <Tag color="gold">负责人</Tag>
                 ) : (
-                  <Button type="link" size="small" onClick={() => handleSetManager(record.id)}>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => handleSetManager(record.id)}
+                    disabled={!canManageDepartment}
+                  >
                     设为负责人
                   </Button>
                 ),
             },
             {
-              title: '操作',
-              key: 'action',
+              title: "操作",
+              key: "action",
               width: 180,
               render: (_: unknown, record: UserOption) => (
                 <Space>
                   {currentDepartment?.managerId === record.id && (
-                    <Button type="link" size="small" onClick={() => handleSetManager(null)}>
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => handleSetManager(null)}
+                      disabled={!canManageDepartment}
+                    >
                       取消负责人
                     </Button>
                   )}
@@ -860,7 +1090,12 @@ export default function EmployeeManagementPage() {
                     okText="确定"
                     cancelText="取消"
                   >
-                    <Button type="link" size="small" danger>
+                    <Button
+                      type="link"
+                      size="small"
+                      danger
+                      disabled={!canManageDepartment}
+                    >
                       移除
                     </Button>
                   </Popconfirm>

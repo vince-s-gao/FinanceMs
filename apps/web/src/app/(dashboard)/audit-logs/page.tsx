@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   Button,
@@ -17,6 +18,7 @@ import {
 import type { TableColumnsType } from "antd";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/error";
+import { useAuthStore } from "@/stores/auth";
 import type { AuditLogItem, PaginatedData } from "@inffinancems/shared";
 
 const { Title, Text } = Typography;
@@ -42,6 +44,9 @@ interface AuditMeta {
 }
 
 export default function AuditLogsPage() {
+  const router = useRouter();
+  const currentUser = useAuthStore((state) => state.user);
+  const canViewAuditLogs = currentUser?.role === "ADMIN";
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [actionFilter, setActionFilter] = useState<string>();
@@ -53,6 +58,7 @@ export default function AuditLogsPage() {
     queryKey: ["audit-logs", "meta"],
     queryFn: () => api.get<AuditMeta>("/audit-logs/meta"),
     staleTime: 5 * 60 * 1000,
+    enabled: canViewAuditLogs,
   });
 
   const logsQuery = useQuery({
@@ -75,7 +81,14 @@ export default function AuditLogsPage() {
         },
       }),
     placeholderData: keepPreviousData,
+    enabled: canViewAuditLogs,
   });
+
+  useEffect(() => {
+    if (currentUser && !canViewAuditLogs) {
+      router.replace("/dashboard");
+    }
+  }, [canViewAuditLogs, currentUser, router]);
 
   const columns = useMemo<TableColumnsType<AuditLogItem>>(
     () => [
@@ -150,6 +163,10 @@ export default function AuditLogsPage() {
     ],
     [],
   );
+
+  if (!currentUser || !canViewAuditLogs) {
+    return null;
+  }
 
   return (
     <div>
