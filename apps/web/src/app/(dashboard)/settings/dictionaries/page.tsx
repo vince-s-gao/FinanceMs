@@ -25,7 +25,6 @@ import type { TableColumnsType } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/error";
-import { useAuthStore } from "@/stores/auth";
 import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title, Text } = Typography;
@@ -74,9 +73,8 @@ const DICT_TYPE_LABEL_MAP = DICT_TYPES.reduce<Record<string, string>>(
 
 export default function DictionariesPage() {
   const router = useRouter();
-  const currentUser = useAuthStore((state) => state.user);
   const { loaded: permissionLoaded, has } = useFunctionPermissions();
-  const canView = currentUser?.role === "ADMIN" && has("dictionary.read");
+  const canView = has("dictionary.read");
   const canCreate = has("dictionary.create");
   const canEdit = has("dictionary.edit");
   const canDelete = has("dictionary.delete");
