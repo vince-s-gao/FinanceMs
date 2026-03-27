@@ -395,6 +395,7 @@ export default function DictionariesPage() {
         dataSource={dictionaries}
         rowKey="id"
         loading={loading}
+        scroll={{ x: 1000 }}
         pagination={false}
       />
 

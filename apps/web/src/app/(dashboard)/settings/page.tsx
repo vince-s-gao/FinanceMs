@@ -331,6 +331,7 @@ export default function SettingsPage() {
             dataSource={users}
             rowKey="id"
             loading={loading}
+            scroll={{ x: 1200 }}
             pagination={{
               current: page,
               pageSize,

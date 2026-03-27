@@ -512,6 +512,7 @@ export default function DashboardPage() {
                   rowKey="planId"
                   pagination={false}
                   size="small"
+                  scroll={{ x: 900 }}
                   columns={[
                     {
                       title: "合同编号",
