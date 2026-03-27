@@ -195,7 +195,7 @@ export default function EditPaymentRequestPage() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const { loaded: permissionLoaded, has } = useFunctionPermissions();
   const canEditRequest = has("payment-request.edit");
-  const canEditBankAccount = has("bank-account.edit");
+  const canCreateBankAccount = has("bank-account.create");
 
   // 加载银行账户列表
   const loadBankAccounts = async () => {
@@ -309,7 +309,7 @@ export default function EditPaymentRequestPage() {
         )}
       </div>
       {/* 新增按钮 */}
-      {canEditBankAccount ? (
+      {canCreateBankAccount ? (
         <div className="p-2 border-t">
           <Button
             type="dashed"
