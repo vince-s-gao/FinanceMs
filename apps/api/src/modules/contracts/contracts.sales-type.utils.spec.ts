@@ -91,5 +91,16 @@ describe("contracts.sales-type.utils", () => {
       });
       expect(result).toBe(false);
     });
+
+    it("should keep confidential-like text as non-sales even without NDA token", () => {
+      const result = isSalesContractByContext({
+        contractType: "销售保密协议",
+        context: {
+          codes: ["SALES"],
+          codeByLookup: new Map([["销售保密协议", "SALES"]]),
+        },
+      });
+      expect(result).toBe(false);
+    });
   });
 });

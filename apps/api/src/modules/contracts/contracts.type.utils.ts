@@ -2,6 +2,8 @@ import { normalizeText } from "../../common/utils/tabular.utils";
 
 const NON_SALES_TYPE_HINTS = [
   "NDA",
+  "CONFIDENTIAL",
+  "保密",
   "TS",
   "FA",
   "OTHER",

@@ -9,6 +9,8 @@ describe("contracts.type.utils", () => {
 
   it("should exclude non-sales types even if mixed with noisy text", () => {
     expect(isSalesContractType(["NDA"])).toBe(false);
+    expect(isSalesContractType(["销售保密协议"])).toBe(false);
+    expect(isSalesContractType(["Confidential Agreement"])).toBe(false);
     expect(isSalesContractType(["采购合同"])).toBe(false);
     expect(isSalesContractType(["OTHER"])).toBe(false);
     expect(isSalesContractType(["TS"])).toBe(false);
