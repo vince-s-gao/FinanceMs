@@ -42,6 +42,7 @@ import { useEntityDelete } from "@/hooks/useEntityDelete";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useImportUpload } from "@/hooks/useImportUpload";
 import { getErrorMessage } from "@/lib/error";
+import { buildKeywordTypeParams } from "@/lib/form";
 import { useFunctionPermissions } from "@/hooks/useFunctionPermissions";
 
 const { Title } = Typography;
@@ -214,10 +215,7 @@ export default function CustomersPage() {
       message.warning("您没有导出客户的权限");
       return;
     }
-    const params: Record<string, unknown> = {};
-    if (keyword) params.keyword = keyword;
-    if (typeFilter) params.type = typeFilter;
-    await triggerExport(params);
+    await triggerExport(buildKeywordTypeParams(keyword, typeFilter));
   };
   const { importing, uploadProps } = useImportUpload({
     endpoint: "/customers/import",
