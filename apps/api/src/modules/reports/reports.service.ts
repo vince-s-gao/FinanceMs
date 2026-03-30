@@ -340,61 +340,65 @@ export class ReportsService {
    * 报销分析
    */
   async getExpenseAnalysis() {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return this.withReportCache("expense-analysis", async () => {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-    // 本月已打款报销总额
-    const monthlyPaid = await this.prisma.expense.aggregate({
-      where: {
-        status: ExpenseStatus.PAID,
-        paymentDate: {
-          gte: startOfMonth,
-          lte: endOfMonth,
+      // 本月已打款报销总额
+      const monthlyPaid = await this.prisma.expense.aggregate({
+        where: {
+          status: ExpenseStatus.PAID,
+          paymentDate: {
+            gte: startOfMonth,
+            lte: endOfMonth,
+          },
         },
-      },
-      _sum: { totalAmount: true },
-      _count: true,
-    });
+        _sum: { totalAmount: true },
+        _count: true,
+      });
 
-    // 待审批报销
-    const pending = await this.prisma.expense.aggregate({
-      where: { status: ExpenseStatus.PENDING },
-      _sum: { totalAmount: true },
-      _count: true,
-    });
+      // 待审批报销
+      const pending = await this.prisma.expense.aggregate({
+        where: { status: ExpenseStatus.PENDING },
+        _sum: { totalAmount: true },
+        _count: true,
+      });
 
-    // 待打款报销
-    const approved = await this.prisma.expense.aggregate({
-      where: { status: ExpenseStatus.APPROVED },
-      _sum: { totalAmount: true },
-      _count: true,
-    });
+      // 待打款报销
+      const approved = await this.prisma.expense.aggregate({
+        where: { status: ExpenseStatus.APPROVED },
+        _sum: { totalAmount: true },
+        _count: true,
+      });
 
-    // 无票金额统计
-    const allDetails = await this.prisma.expenseDetail.aggregate({
-      _sum: { amount: true },
-    });
-    const noInvoiceDetails = await this.prisma.expenseDetail.aggregate({
-      where: { hasInvoice: false },
-      _sum: { amount: true },
-    });
+      // 无票金额统计
+      const allDetails = await this.prisma.expenseDetail.aggregate({
+        _sum: { amount: true },
+      });
+      const noInvoiceDetails = await this.prisma.expenseDetail.aggregate({
+        where: { hasInvoice: false },
+        _sum: { amount: true },
+      });
 
-    const totalDetailAmount = allDetails._sum.amount || new Decimal(0);
-    const noInvoiceAmount = noInvoiceDetails._sum.amount || new Decimal(0);
-    const noInvoiceRatio = totalDetailAmount.gt(0)
-      ? noInvoiceAmount.div(totalDetailAmount).times(100).toNumber()
-      : 0;
+      const totalDetailAmount = allDetails._sum.amount || new Decimal(0);
+      const noInvoiceAmount = noInvoiceDetails._sum.amount || new Decimal(0);
+      const noInvoiceRatio = totalDetailAmount.gt(0)
+        ? noInvoiceAmount.div(totalDetailAmount).times(100).toNumber()
+        : 0;
 
-    return {
-      monthlyTotal: (monthlyPaid._sum.totalAmount || new Decimal(0)).toNumber(),
-      monthlyCount: monthlyPaid._count,
-      pendingCount: pending._count,
-      pendingAmount: (pending._sum.totalAmount || new Decimal(0)).toNumber(),
-      unpaidCount: approved._count,
-      unpaidAmount: (approved._sum.totalAmount || new Decimal(0)).toNumber(),
-      noInvoiceRatio: Number(noInvoiceRatio.toFixed(2)),
-    };
+      return {
+        monthlyTotal: (
+          monthlyPaid._sum.totalAmount || new Decimal(0)
+        ).toNumber(),
+        monthlyCount: monthlyPaid._count,
+        pendingCount: pending._count,
+        pendingAmount: (pending._sum.totalAmount || new Decimal(0)).toNumber(),
+        unpaidCount: approved._count,
+        unpaidAmount: (approved._sum.totalAmount || new Decimal(0)).toNumber(),
+        noInvoiceRatio: Number(noInvoiceRatio.toFixed(2)),
+      };
+    });
   }
 
   /**
@@ -553,54 +557,57 @@ export class ReportsService {
    * 合同毛利分析
    */
   async getContractProfitAnalysis(contractId?: string) {
-    const where: Prisma.ContractWhereInput = {
-      isDeleted: false,
-      status: { in: [ContractStatus.EXECUTING, ContractStatus.COMPLETED] },
-    };
-
-    if (contractId) {
-      where.id = contractId;
-    }
-
-    const contracts = await this.prisma.contract.findMany({
-      where,
-      include: {
-        customer: {
-          select: { id: true, name: true },
-        },
-        paymentRecords: true,
-        costs: true,
-      },
-    });
-
-    return contracts.map((contract) => {
-      const totalReceived = contract.paymentRecords.reduce(
-        (sum, record) => sum.plus(record.amount),
-        new Decimal(0),
-      );
-
-      const totalCost = contract.costs.reduce(
-        (sum, cost) => sum.plus(cost.amount),
-        new Decimal(0),
-      );
-
-      const profit = totalReceived.minus(totalCost);
-      const profitRate = totalReceived.gt(0)
-        ? profit.div(totalReceived).times(100).toNumber()
-        : 0;
-
-      return {
-        contractId: contract.id,
-        contractNo: contract.contractNo,
-        contractName: contract.name,
-        customerName: contract.customer.name,
-        contractAmount: contract.amountWithTax,
-        totalReceived: totalReceived.toNumber(),
-        totalCost: totalCost.toNumber(),
-        profit: profit.toNumber(),
-        profitRate: Number(profitRate.toFixed(2)),
-        isLoss: profit.lt(0),
+    const cacheKey = `contract-profit-analysis:${contractId || "all"}`;
+    return this.withReportCache(cacheKey, async () => {
+      const where: Prisma.ContractWhereInput = {
+        isDeleted: false,
+        status: { in: [ContractStatus.EXECUTING, ContractStatus.COMPLETED] },
       };
+
+      if (contractId) {
+        where.id = contractId;
+      }
+
+      const contracts = await this.prisma.contract.findMany({
+        where,
+        include: {
+          customer: {
+            select: { id: true, name: true },
+          },
+          paymentRecords: true,
+          costs: true,
+        },
+      });
+
+      return contracts.map((contract) => {
+        const totalReceived = contract.paymentRecords.reduce(
+          (sum, record) => sum.plus(record.amount),
+          new Decimal(0),
+        );
+
+        const totalCost = contract.costs.reduce(
+          (sum, cost) => sum.plus(cost.amount),
+          new Decimal(0),
+        );
+
+        const profit = totalReceived.minus(totalCost);
+        const profitRate = totalReceived.gt(0)
+          ? profit.div(totalReceived).times(100).toNumber()
+          : 0;
+
+        return {
+          contractId: contract.id,
+          contractNo: contract.contractNo,
+          contractName: contract.name,
+          customerName: contract.customer.name,
+          contractAmount: contract.amountWithTax,
+          totalReceived: totalReceived.toNumber(),
+          totalCost: totalCost.toNumber(),
+          profit: profit.toNumber(),
+          profitRate: Number(profitRate.toFixed(2)),
+          isLoss: profit.lt(0),
+        };
+      });
     });
   }
 
