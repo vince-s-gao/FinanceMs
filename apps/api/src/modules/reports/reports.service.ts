@@ -20,6 +20,7 @@ const ContractStatus = PrismaContractStatus;
 const ExpenseStatus = PrismaExpenseStatus;
 const SALES_CONTRACT_TYPES_CACHE_TTL_MS = 5 * 60 * 1000;
 const REPORT_CACHE_TTL_MS = 30 * 1000;
+const REPORT_CACHE_MAX_ENTRIES = 200;
 
 // 计算账龄
 function calculateAging(dueDate: Date | string): number {
@@ -55,6 +56,33 @@ export class ReportsService {
 
   constructor(private prisma: PrismaService) {}
 
+  private pruneReportCache(now: number): void {
+    if (this.reportCache.size === 0) return;
+    for (const [key, entry] of this.reportCache.entries()) {
+      if (entry.expiresAt <= now) {
+        this.reportCache.delete(key);
+      }
+    }
+  }
+
+  private setReportCache(key: string, data: unknown, now: number): void {
+    this.pruneReportCache(now);
+
+    if (this.reportCache.size >= REPORT_CACHE_MAX_ENTRIES) {
+      const oldestKey = this.reportCache.keys().next().value as
+        | string
+        | undefined;
+      if (oldestKey) {
+        this.reportCache.delete(oldestKey);
+      }
+    }
+
+    this.reportCache.set(key, {
+      expiresAt: now + REPORT_CACHE_TTL_MS,
+      data,
+    });
+  }
+
   private async withReportCache<T>(
     key: string,
     loader: () => Promise<T>,
@@ -64,11 +92,11 @@ export class ReportsService {
     if (cached && cached.expiresAt > now) {
       return cached.data as T;
     }
+    if (cached && cached.expiresAt <= now) {
+      this.reportCache.delete(key);
+    }
     const data = await loader();
-    this.reportCache.set(key, {
-      expiresAt: now + REPORT_CACHE_TTL_MS,
-      data,
-    });
+    this.setReportCache(key, data, now);
     return data;
   }
 
