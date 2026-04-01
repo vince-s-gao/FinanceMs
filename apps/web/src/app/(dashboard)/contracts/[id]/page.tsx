@@ -155,9 +155,9 @@ export default function ContractDetailPage() {
       }
     }
     if (typeof window !== "undefined") {
-      return `${window.location.protocol}//${window.location.hostname}:3001/api/contracts/${id}/attachment/download`;
+      return `${window.location.protocol}//${window.location.hostname}:43201/api/contracts/${id}/attachment/download`;
     }
-    return `http://127.0.0.1:3001/api/contracts/${id}/attachment/download`;
+    return `http://127.0.0.1:43201/api/contracts/${id}/attachment/download`;
   };
 
   const resolveAttachmentPreviewUrl = (id: string) => {
@@ -175,9 +175,9 @@ export default function ContractDetailPage() {
       }
     }
     if (typeof window !== "undefined") {
-      return `${window.location.protocol}//${window.location.hostname}:3001/api/contracts/${id}/attachment/preview`;
+      return `${window.location.protocol}//${window.location.hostname}:43201/api/contracts/${id}/attachment/preview`;
     }
-    return `http://127.0.0.1:3001/api/contracts/${id}/attachment/preview`;
+    return `http://127.0.0.1:43201/api/contracts/${id}/attachment/preview`;
   };
 
   const resolveInvoiceAttachmentUrl = (url?: string | null) => {
@@ -196,9 +196,9 @@ export default function ContractDetailPage() {
     }
 
     if (typeof window !== "undefined") {
-      return `${window.location.protocol}//${window.location.hostname}:3001${normalizedPath}`;
+      return `${window.location.protocol}//${window.location.hostname}:43201${normalizedPath}`;
     }
-    return `http://127.0.0.1:3001${normalizedPath}`;
+    return `http://127.0.0.1:43201${normalizedPath}`;
   };
 
   const resolveInvoiceAttachmentDownloadUrl = (id: string) => {
@@ -216,9 +216,9 @@ export default function ContractDetailPage() {
       }
     }
     if (typeof window !== "undefined") {
-      return `${window.location.protocol}//${window.location.hostname}:3001/api/invoices/${id}/attachment/download`;
+      return `${window.location.protocol}//${window.location.hostname}:43201/api/invoices/${id}/attachment/download`;
     }
-    return `http://127.0.0.1:3001/api/invoices/${id}/attachment/download`;
+    return `http://127.0.0.1:43201/api/invoices/${id}/attachment/download`;
   };
 
   const resolveContractFlow = (contractTypeCode?: string | null) => {

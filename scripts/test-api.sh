@@ -3,7 +3,7 @@
 # InfFinanceMs - API 测试脚本
 # 用于测试项目管理和报销管理相关接口
 
-BASE_URL="http://localhost:3001/api"
+BASE_URL="http://localhost:43201/api"
 TOKEN=""
 COOKIE_FILE="/tmp/inffinancems_test_api.cookies"
 CSRF_TOKEN=""

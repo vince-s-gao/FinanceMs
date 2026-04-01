@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Button, Card, Input, message, Typography, Divider } from 'antd';
+import { useState } from "react";
+import { Button, Card, Input, message, Typography, Divider } from "antd";
 
 const { Title, Text } = Typography;
 
 export default function TestLoginPage() {
-  const [email, setEmail] = useState('admin@inffinancems.com');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("admin@inffinancems.com");
+  const [password, setPassword] = useState("");
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -17,36 +17,39 @@ export default function TestLoginPage() {
 
     try {
       // 1. 测试登录API
-      const loginResponse = await fetch('http://localhost:3001/api/auth/login', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
+      const loginResponse = await fetch(
+        "http://localhost:43201/api/auth/login",
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, password }),
         },
-        body: JSON.stringify({ email, password }),
-      });
+      );
 
       const loginData = await loginResponse.json();
 
       if (!loginResponse.ok) {
-        throw new Error(loginData.message || '登录失败');
+        throw new Error(loginData.message || "登录失败");
       }
 
       setResult({
-        step: '登录成功',
+        step: "登录成功",
         data: loginData,
       });
 
       // 2. 测试受保护的API（使用 httpOnly Cookie）
-      const meResponse = await fetch('http://localhost:3001/api/auth/me', {
-        credentials: 'include',
+      const meResponse = await fetch("http://localhost:43201/api/auth/me", {
+        credentials: "include",
       });
 
       const meData = await meResponse.json();
 
       setResult((prev) => ({
         ...(prev || {}),
-        step: '获取用户信息成功',
+        step: "获取用户信息成功",
         meData,
       }));
 
@@ -54,21 +57,20 @@ export default function TestLoginPage() {
       const cookies = document.cookie;
       setResult((prev) => ({
         ...(prev || {}),
-        step: 'Cookie设置成功',
+        step: "Cookie设置成功",
         cookies,
       }));
 
       // 5. 测试跳转到dashboard
-      message.success('登录测试成功！即将跳转到dashboard...');
+      message.success("登录测试成功！即将跳转到dashboard...");
       setTimeout(() => {
-        window.location.href = '/dashboard';
+        window.location.href = "/dashboard";
       }, 2000);
-
     } catch (error: unknown) {
-      const messageText = error instanceof Error ? error.message : '测试失败';
+      const messageText = error instanceof Error ? error.message : "测试失败";
       message.error(messageText);
       setResult({
-        step: '失败',
+        step: "失败",
         error: messageText,
       });
     } finally {
@@ -78,22 +80,22 @@ export default function TestLoginPage() {
 
   const checkCookies = () => {
     const cookies = document.cookie;
-      setResult({
-        step: '当前Cookie',
-        cookies,
-      });
-    };
+    setResult({
+      step: "当前Cookie",
+      cookies,
+    });
+  };
 
   const clearAuth = async () => {
-    await fetch('http://localhost:3001/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include',
+    await fetch("http://localhost:43201/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({}),
     });
-    message.success('已清除认证信息');
+    message.success("已清除认证信息");
     setResult(null);
   };
 
@@ -126,9 +128,7 @@ export default function TestLoginPage() {
             <Button type="primary" onClick={testLogin} loading={loading}>
               测试登录
             </Button>
-            <Button onClick={checkCookies}>
-              检查Cookie
-            </Button>
+            <Button onClick={checkCookies}>检查Cookie</Button>
             <Button danger onClick={clearAuth}>
               清除认证
             </Button>

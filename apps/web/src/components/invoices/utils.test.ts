@@ -19,10 +19,10 @@ describe("invoice utils", () => {
       "https://example.com/a.pdf",
     );
     expect(resolveAttachmentUrl("uploads/a.pdf")).toBe(
-      "http://localhost:3001/uploads/a.pdf",
+      "http://localhost:43201/uploads/a.pdf",
     );
     expect(resolveAttachmentUrl("/uploads/b.pdf")).toBe(
-      "http://localhost:3001/uploads/b.pdf",
+      "http://localhost:43201/uploads/b.pdf",
     );
   });
 

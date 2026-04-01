@@ -1,6 +1,7 @@
 # InfFinanceMs - 安全配置指南
 
 ## 目录
+
 1. [环境变量配置](#)
 2. [JWT 密钥生成](#)
 3. [数据库安全](#)
@@ -26,7 +27,7 @@ JWT_REFRESH_TOKEN_EXPIRES_IN="7d"
 
 # 应用配置
 NODE_ENV="production"
-API_PORT=3001
+API_PORT=43201
 WEB_PORT=3000
 
 # CORS 配置（仅允许前端域名）
@@ -70,8 +71,8 @@ node jwt-secret-generator.js
 ### 手动生成（Node.js）
 
 ```javascript
-const crypto = require('crypto');
-const secret = crypto.randomBytes(32).toString('base64');
+const crypto = require("crypto");
+const secret = crypto.randomBytes(32).toString("base64");
 console.log(secret);
 ```
 
@@ -161,7 +162,7 @@ server {
     add_header X-XSS-Protection "1; mode=block" always;
 
     location / {
-        proxy_pass http://localhost:3001;
+        proxy_pass http://localhost:43201;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -284,6 +285,7 @@ sudo iptables-save > /etc/iptables/rules.v4
 ### 告警配置
 
 建议设置以下告警：
+
 - 登录失败次数超过阈值
 - API 错误率超过 5%
 - 服务器响应时间超过 3 秒
@@ -333,6 +335,7 @@ gpg --decrypt backup.sql.gz.gpg > backup.sql.gz
 ### 备份验证
 
 定期测试备份恢复：
+
 ```bash
 # 恢复测试
 gunzip backup.sql.gz
@@ -346,6 +349,7 @@ psql -U inffinancems_app inffinancems_test < backup.sql
 部署前请确认：
 
 ### 环境配置
+
 - [ ] JWT_SECRET 已设置为强随机密钥
 - [ ] DATABASE_URL 使用强密码
 - [ ] NODE_ENV 设置为 production
@@ -353,6 +357,7 @@ psql -U inffinancems_app inffinancems_test < backup.sql
 - [ ] .env 文件不在版本控制中
 
 ### 网络安全
+
 - [ ] HTTPS 已启用
 - [ ] SSL 证书有效
 - [ ] 防火墙已配置
@@ -360,6 +365,7 @@ psql -U inffinancems_app inffinancems_test < backup.sql
 - [ ] 数据库仅允许本地访问
 
 ### 应用安全
+
 - [ ] 速率限制已启用
 - [ ] 安全头已配置
 - [ ] 审计日志已启用
@@ -367,6 +373,7 @@ psql -U inffinancems_app inffinancems_test < backup.sql
 - [ ] 文件上传验证已启用
 
 ### 数据安全
+
 - [ ] 数据库用户权限已限制
 - [ ] 敏感数据已加密
 - [ ] 备份策略已实施
@@ -374,12 +381,14 @@ psql -U inffinancems_app inffinancems_test < backup.sql
 - [ ] 备份恢复已测试
 
 ### 监控和日志
+
 - [ ] 日志轮转已配置
 - [ ] 监控已设置
 - [ ] 告警已配置
 - [ ] 日志已定期审查
 
 ### 测试
+
 - [ ] 安全扫描已完成
 - [ ] 渗透测试已完成
 - [ ] 依赖项漏洞已修复
@@ -429,6 +438,7 @@ tail -f /var/log/inffinancems/audit.log
 ## 联系方式
 
 如有安全问题，请联系：
+
 - 安全团队邮箱：security@inffinancems.com
 - 紧急联系电话：+86-xxx-xxxx-xxxx
 

@@ -21,7 +21,7 @@ function normalizeConfiguredApiBase(
   if (!raw) return null;
 
   if (runtime && raw.startsWith("/")) {
-    return `${runtime.protocol}//${runtime.hostname}:3001/api`;
+    return `${runtime.protocol}//${runtime.hostname}:43201/api`;
   }
 
   let adjusted = raw;
@@ -60,7 +60,7 @@ const API_BASE_URL = (() => {
     if (normalizedConfigured) {
       return normalizedConfigured;
     }
-    return `${protocol}//${hostname}:3001/api`;
+    return `${protocol}//${hostname}:43201/api`;
   }
   const normalizedServerConfigured = normalizeConfiguredApiBase(
     process.env.NEXT_PUBLIC_API_URL,
@@ -68,7 +68,7 @@ const API_BASE_URL = (() => {
   if (normalizedServerConfigured) {
     return normalizedServerConfigured;
   }
-  return "http://127.0.0.1:3001/api";
+  return "http://127.0.0.1:43201/api";
 })();
 
 interface PendingRequest {

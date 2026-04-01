@@ -27,12 +27,12 @@
             }
             
             try {
-                await fetch('http://localhost:3001/api/auth/csrf', {
+                await fetch('http://localhost:43201/api/auth/csrf', {
                     method: 'GET',
                     credentials: 'include',
                 });
 
-                const response = await fetch('http://localhost:3001/api/auth/login', {
+                const response = await fetch('http://localhost:43201/api/auth/login', {
                     method: 'POST',
                     credentials: 'include',
                     headers: {
@@ -70,7 +70,7 @@
 
         async function testProtectedAPI() {
             try {
-                const response = await fetch('http://localhost:3001/api/auth/me', {
+                const response = await fetch('http://localhost:43201/api/auth/me', {
                     method: 'GET',
                     credentials: 'include',
                 });

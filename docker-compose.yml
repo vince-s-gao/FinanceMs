@@ -45,7 +45,7 @@ services:
     container_name: inffinancems-api
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "43201:43201"
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://inffinancems:inffinancems123@postgres:5432/inffinancems
@@ -55,7 +55,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api"]
+      test: ["CMD", "curl", "-f", "http://localhost:43201/api"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -71,7 +71,7 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://api:3001
+      - NEXT_PUBLIC_API_URL=http://api:43201
     depends_on:
       - api
 

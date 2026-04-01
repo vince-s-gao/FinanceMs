@@ -35,7 +35,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/database/dist ./packages/database/dist
 
 # 暴露端口
-EXPOSE 3001
+EXPOSE 43201
 
 # 启动命令
 CMD ["node", "dist/main.js"]
